@@ -17,13 +17,13 @@
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.1.1</string>
+	<string>0.0.1</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>2.1.2</string>
+	<string>0.0.1</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2016 Marcus Kida. All rights reserved.</string>
+	<string>Copyright © 2017 Marcus Kida. All rights reserved. Modified work copyright 2018 Andrew Malota.</string>
 	<key>NSPrincipalClass</key>
 	<string>DeveloperExcuses.DeveloperExcusesView</string>
 </dict>

@@ -1,5 +1,5 @@
 //
-//  OnelinerView.swift
+//  StarryExcusesView.swift
 //  OnelinerKit
 //
 //  Created by Marcus Kida on 17.12.17.
@@ -8,7 +8,7 @@
 
 import ScreenSaver
 
-open class OnelinerView: ScreenSaverView {
+open class StarryExcusesView: ScreenSaverView {
     private let fetchQueue = DispatchQueue(label: .fetchQueue)
     private let mainQueue = DispatchQueue.main
     
