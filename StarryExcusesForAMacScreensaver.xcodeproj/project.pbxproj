@@ -22,6 +22,11 @@
 		2A9D0E6817DB87B300DBFFBD /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A9D0E6717DB87B300DBFFBD /* Cocoa.framework */; };
 		2A9D0E6A17DB87B300DBFFBD /* ScreenSaver.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2A9D0E6917DB87B300DBFFBD /* ScreenSaver.framework */; };
 		2A9D0E7417DB87B300DBFFBD /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 2A9D0E7217DB87B300DBFFBD /* InfoPlist.strings */; };
+		3E388FB022777FF600DA8974 /* CGContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E388FAF22777FF600DA8974 /* CGContext.swift */; };
+		3E388FB2227789BC00DA8974 /* Buildings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E388FB1227789BC00DA8974 /* Buildings.swift */; };
+		3E388FB422779A4A00DA8974 /* Skyline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E388FB322779A4A00DA8974 /* Skyline.swift */; };
+		3E388FB62277A0C100DA8974 /* SkylineDraw.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E388FB52277A0C100DA8974 /* SkylineDraw.swift */; };
+		3E388FB82277ADF500DA8974 /* Points.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E388FB72277ADF500DA8974 /* Points.swift */; };
 		8117802E1D80A79F00127177 /* thumbnail@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 8117802D1D80A79F00127177 /* thumbnail@2x.png */; };
 		811780321D80B5DD00127177 /* thumbnail.png in Resources */ = {isa = PBXBuildFile; fileRef = 811780311D80B5DD00127177 /* thumbnail.png */; };
 /* End PBXBuildFile section */
@@ -62,6 +67,11 @@
 		2A9D0E7117DB87B300DBFFBD /* StarryExcusesForAMacScreensaver-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "StarryExcusesForAMacScreensaver-Info.plist"; sourceTree = "<group>"; };
 		2A9D0E7317DB87B300DBFFBD /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		2A9D0E7517DB87B300DBFFBD /* StarryExcusesForAMacScreensaver-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "StarryExcusesForAMacScreensaver-Prefix.pch"; sourceTree = "<group>"; };
+		3E388FAF22777FF600DA8974 /* CGContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CGContext.swift; sourceTree = "<group>"; };
+		3E388FB1227789BC00DA8974 /* Buildings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Buildings.swift; sourceTree = "<group>"; };
+		3E388FB322779A4A00DA8974 /* Skyline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skyline.swift; sourceTree = "<group>"; };
+		3E388FB52277A0C100DA8974 /* SkylineDraw.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkylineDraw.swift; sourceTree = "<group>"; };
+		3E388FB72277ADF500DA8974 /* Points.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Points.swift; sourceTree = "<group>"; };
 		8117802D1D80A79F00127177 /* thumbnail@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "thumbnail@2x.png"; sourceTree = "<group>"; };
 		811780311D80B5DD00127177 /* thumbnail.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = thumbnail.png; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -101,6 +111,10 @@
 		07B5E450218645D50005E36F /* View */ = {
 			isa = PBXGroup;
 			children = (
+				3E388FB1227789BC00DA8974 /* Buildings.swift */,
+				3E388FB322779A4A00DA8974 /* Skyline.swift */,
+				3E388FB52277A0C100DA8974 /* SkylineDraw.swift */,
+				3E388FB72277ADF500DA8974 /* Points.swift */,
 			);
 			path = View;
 			sourceTree = "<group>";
@@ -113,6 +127,7 @@
 				07B5E456218645DF0005E36F /* UserDefaults+LastLine.swift */,
 				07B5E457218645DF0005E36F /* Date+FetchInterval.swift */,
 				07B5E458218645DF0005E36F /* TimeInterval+FetchInterval.swift */,
+				3E388FAF22777FF600DA8974 /* CGContext.swift */,
 			);
 			path = Extension;
 			sourceTree = "<group>";
@@ -237,7 +252,7 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 0830;
-				LastUpgradeCheck = 1000;
+				LastUpgradeCheck = 1020;
 				ORGANIZATIONNAME = 2bitoperations;
 				TargetAttributes = {
 					076642ED1EE92D6D00FE8619 = {
@@ -247,13 +262,13 @@
 					};
 					2A9D0E6317DB87B300DBFFBD = {
 						DevelopmentTeam = P9X3RB9T75;
-						LastSwiftMigration = 0910;
+						LastSwiftMigration = 1020;
 					};
 				};
 			};
 			buildConfigurationList = 2A9D0E5D17DB87B300DBFFBD /* Build configuration list for PBXProject "StarryExcusesForAMacScreensaver" */;
 			compatibilityVersion = "Xcode 3.2";
-			developmentRegion = English;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
@@ -317,8 +332,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				077BC2B11DA22D14007DE060 /* StarryExcusesView.swift in Sources */,
+				3E388FB62277A0C100DA8974 /* SkylineDraw.swift in Sources */,
+				3E388FB2227789BC00DA8974 /* Buildings.swift in Sources */,
 				07B5E45B218645DF0005E36F /* UserDefaults+LastLine.swift in Sources */,
 				07B5E45C218645DF0005E36F /* Date+FetchInterval.swift in Sources */,
+				3E388FB422779A4A00DA8974 /* Skyline.swift in Sources */,
+				3E388FB82277ADF500DA8974 /* Points.swift in Sources */,
+				3E388FB022777FF600DA8974 /* CGContext.swift in Sources */,
 				07B5E459218645DF0005E36F /* String+Constants.swift in Sources */,
 				07B5E45D218645DF0005E36F /* TimeInterval+FetchInterval.swift in Sources */,
 				07B5E45A218645DF0005E36F /* NSTextField+Label.swift in Sources */,
@@ -413,6 +433,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_COMMA = YES;
@@ -449,7 +470,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 10.10;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
@@ -461,6 +482,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_COMMA = YES;
@@ -490,7 +512,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 10.10;
 				SDKROOT = macosx;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
@@ -515,7 +537,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.2bitoperations.StarryExcusesForAMacScreensaver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 5.0;
 				WRAPPER_EXTENSION = saver;
 			};
 			name = Debug;
@@ -536,7 +558,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.2bitoperations.StarryExcusesForAMacScreensaver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 5.0;
 				WRAPPER_EXTENSION = saver;
 			};
 			name = Release;
