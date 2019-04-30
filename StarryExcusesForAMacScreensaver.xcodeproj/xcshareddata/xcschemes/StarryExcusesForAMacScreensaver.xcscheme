@@ -28,7 +28,26 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "3E388FBC2277C18200DA8974"
+               BuildableName = "StarryTests.xctest"
+               BlueprintName = "StarryTests"
+               ReferencedContainer = "container:StarryExcusesForAMacScreensaver.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "2A9D0E6317DB87B300DBFFBD"
+            BuildableName = "StarryExcusesForAMacScreensaver.saver"
+            BlueprintName = "StarryExcusesForAMacScreensaver"
+            ReferencedContainer = "container:StarryExcusesForAMacScreensaver.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
       <AdditionalOptions>
       </AdditionalOptions>
    </TestAction>

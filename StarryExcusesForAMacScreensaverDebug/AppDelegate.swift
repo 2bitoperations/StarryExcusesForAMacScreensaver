@@ -11,7 +11,7 @@ import Cocoa
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
 
-    lazy var screenSaverView = DeveloperExcusesView(frame: .zero, isPreview: false)
+    lazy var screenSaverView = StarryExcusesView(frame: .zero, isPreview: false)
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         guard

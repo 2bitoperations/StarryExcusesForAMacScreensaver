@@ -1,6 +1,5 @@
 //
 //  StarryExcusesView.swift
-//  OnelinerKit
 //
 //  Original Code:
 //  Created by Marcus Kida on 17.12.17.
@@ -15,12 +14,9 @@
 
 import ScreenSaver
 import Foundation
+import os
 
-@available(OSX 10.10, *)
 open class StarryExcusesView: ScreenSaverView {
-    private let fetchQueue = DispatchQueue(label: .fetchQueue)
-    private let mainQueue = DispatchQueue.main
-    
     private var fetchingDue = true
     private var lastFetchDate: Date?
     
@@ -28,6 +24,7 @@ open class StarryExcusesView: ScreenSaverView {
     public var textColor = NSColor.white
     
     private var skyDraw: SkylineDraw?
+    private var log: OSLog?
     
     convenience init() {
         self.init(frame: .zero, isPreview: false)
@@ -53,7 +50,7 @@ open class StarryExcusesView: ScreenSaverView {
     }
     
     override open func animateOneFrame() {
-        return
+        //self.skyDraw?.drawSingleFrame()
     }
     
     override open func draw(_ rect: NSRect) {
@@ -63,24 +60,23 @@ open class StarryExcusesView: ScreenSaverView {
             return
         }
         
-        //let skyline = Skyline(screenXMax: rect, screenYMax: <#T##Int#>)
-        //self.skyDraw = SkylineDraw
+        guard let log = self.log else {
+            return
+        }
+        
+        os_log("invoking skyline view init", log: log, type: .info)
+        do {
+            let skyline = Skyline(screenXMax: context.width, screenYMax: context.height)
+            //self.skyDraw = SkylineDraw(skyline: skyline, context: context)
+            //self.skyDraw?.drawSingleFrame()
+        } catch {
+            let errorDetails = "unexpected error \(error)"
+            os_log("%{public}@", log: log, type: .info, errorDetails)
+        }
     }
     
     private func initialize() {
-        animationTimeInterval = 0.05
-        scheduleNext()
-    }
-    
-    private func scheduleNext() {
-        mainQueue.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let 🕑 = self?.lastFetchDate else {
-                return
-            }
-            guard Date().isFetchDue(since: 🕑) else {
-                self?.scheduleNext()
-                return
-            }
-        }
+        self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "View")
+        animationTimeInterval = 0.5
     }
 }
