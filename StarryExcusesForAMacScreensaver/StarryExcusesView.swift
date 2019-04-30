@@ -17,12 +17,6 @@ import Foundation
 import os
 
 open class StarryExcusesView: ScreenSaverView {
-    private var fetchingDue = true
-    private var lastFetchDate: Date?
-    
-    public var backgroundColor = NSColor.black
-    public var textColor = NSColor.white
-    
     private var skyDraw: SkylineDraw?
     private var log: OSLog?
     
