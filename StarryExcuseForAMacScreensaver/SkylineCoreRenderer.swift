@@ -8,48 +8,58 @@
 
 import Foundation
 import os
+import AppKit
 
 class SkylineCoreRenderer {
     let skyline: Skyline
-    let context: CGContext
+    let context: NSGraphicsContext
     
-    init(skyline: Skyline, context: CGContext) {
+    init(skyline: Skyline, context: NSGraphicsContext) {
         self.skyline = skyline
         self.context = context
     }
     
     func drawSingleFrame() {
-        drawStars()
+        drawTestLine()
+        //drawStars()
         //drawBuildings()
+    }
+    
+    func drawTestLine() {
+        for xIndex in 0...skyline.width {
+            let point = Point(xPos: xIndex, yPos: 10 + xIndex, color: Color(red: 0.0, green: 0.0, blue: 1.0))
+            drawSinglePoint(point: point)
+        }
     }
     
     func drawStars() {
         for _ in 0...skyline.starsPerUpdate {
             let star = skyline.getSingleStar()
-            self.drawSinglePoint(point: star)
+            drawSinglePoint(point: star)
         }
     }
     
     func drawBuildings() {
         for _ in 0...skyline.buildingLightsPerUpdate {
             let light = skyline.getSingleBuildingPoint()
-            self.drawSinglePoint(point: light)
+            drawSinglePoint(point: light)
         }
     }
     
-    func convertColor(color: Color) -> CGColor {
-        return CGColor(red: CGFloat(color.red),
+    func convertColor(color: Color) -> NSColor {
+        return NSColor(red: CGFloat(color.red),
                        green: CGFloat(color.green),
                        blue: CGFloat(color.blue),
                        alpha: 1.0)
     }
     
     func drawSinglePoint(point: Point) {
-        context.saveGState()
+        context.saveGraphicsState()
         let color = self.convertColor(color: point.color)
-        context.setFillColor(color)
-        context.fill(CGRect(x: point.xPos, y: point.yPos, width: 1, height: 1))
-        context.restoreGState()
+        color.setFill()
+        let rect = NSRect(x: point.xPos, y: point.yPos, width: 10, height: 10)
+        rect.fill()
+        context.restoreGraphicsState()
     }
 }
 

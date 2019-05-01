@@ -39,11 +39,11 @@ class Skyline {
         self.buildingMaxHeight = Int(Double(screenYMax) * buildingHeightPercentMax)
         self.buildingColor = buildingColor
         
-        os_log("invoking skyline init", log: log, type: .info)
+        os_log("invoking skyline init, screen %{PUBLIC}dx%{PUBLIC}d", log: log, type: .fault, screenXMax, screenYMax)
         
         os_log("found %{PUBLIC}d styles",
                log: log,
-               type: .info,
+               type: .fault,
                styles.count)
         
         for buildingZIndex in 0...buildingCount {
@@ -65,7 +65,7 @@ class Skyline {
                                     style: style)
             os_log("created building at %{public}d, width %{public}d, height %{public}d",
                    log: log,
-                   type: .debug,
+                   type: .fault,
                    building.startX,
                    building.width,
                    building.height)
@@ -90,20 +90,24 @@ class Skyline {
             screenXPos = Int.random(in: 0...self.width)
             os_log("generated single star at %{public}dx%{public}d",
                    log: log,
-                   type: .debug,
+                   type: .info,
                    screenXPos,
                    screenYPos)
         } while (getBuildingAtPoint(screenXPos: screenXPos, screenYPos: screenYPos) != nil)
-        os_log("returning single star at %{public}dx%{public}d",
+        let color = Color(red: Double.random(in: 0.0...0.5),
+                          green: Double.random(in: 0.0...0.5),
+                          blue: Double.random(in: 0.0...1))
+        os_log("returning single star at %{public}dx%{public}d, color r:%{public}f, g:%{public}f, b:%{public}f",
                log: log,
                type: .info,
                screenXPos,
-               screenYPos)
+               screenYPos,
+               color.red,
+               color.green,
+               color.blue)
         return Point(xPos: screenXPos,
                      yPos: screenYPos,
-                     color: Color(red: Double.random(in: 0.0...0.5),
-                                  green: Double.random(in: 0.0...0.5),
-                                  blue: Double.random(in: 0.0...1)))
+                     color: color)
     }
     
     func getSingleBuildingPoint() -> Point {
@@ -117,7 +121,7 @@ class Skyline {
                                                screenYPos: screenYPos)
             os_log("checking light at %{public}@x%{public}@",
                    log: log,
-                   type: .debug,
+                   type: .fault,
                    screenXPos,
                    screenYPos)
         } while (buildingAtPos?.isLightOn(screenXPos: screenYPos,
@@ -125,7 +129,7 @@ class Skyline {
         
         os_log("returning light at %{public}dx%{public}d",
                log: log,
-               type: .info,
+               type: .fault,
                screenXPos,
                screenYPos)
         return Point(xPos: screenXPos,

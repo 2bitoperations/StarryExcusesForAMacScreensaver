@@ -14,40 +14,57 @@ class StarryExcuseForAView: ScreenSaverView {
     private var log: OSLog?
     private var skyline: Skyline?
     private var skylineRenderer: SkylineCoreRenderer?
+    private var rect: NSRect?
     
-    private func setupInternal() {
-        guard let context = NSGraphicsContext.current?.cgContext else {
-            return
-        }
+    override init?(frame: NSRect, isPreview: Bool) {
+        super.init(frame: frame, isPreview: isPreview)
+        os_log("start skyline init")
         
         if self.log == nil {
             self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         }
-        os_log("invoking skyline view setup internal", log: self.log!, type: .info)
         
-        if self.skyline == nil || skyline?.width != context.width {
-            self.skyline = Skyline(screenXMax: context.width, screenYMax: context.height)
-            self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, context: context)
-            os_log("created skyline", log: self.log!, type: .info)
-            self.animationTimeInterval = 0.005
-        }
+        self.animationTimeInterval = TimeInterval(1.0)
     }
     
+    required init?(coder decoder: NSCoder) {
+        super.init(coder: decoder)
+    }
+    
+    override func startAnimation() {
+        super.startAnimation()
+        
+    }
+    
+    override func stopAnimation() {
+        super.stopAnimation()
+    }
+
+    
     override open func animateOneFrame() {
-        self.setupInternal()
+        super.animateOneFrame()
+        os_log("skyline init animate one frame", log: self.log!, type: .fault)
+        guard let _ = self.skylineRenderer else {
+            os_log("skyline init animate one frame exit skyline not init", log: self.log!, type: .fault)
+            return
+        }
         self.skylineRenderer?.drawSingleFrame()
     }
     
     override open func draw(_ rect: NSRect) {
-        super.draw(rect)
-        
-        guard let context = NSGraphicsContext.current?.cgContext else {
+        self.rect = rect
+        guard let context = NSGraphicsContext.current else {
+            os_log("skyline init draw abort, context couldn't be fetched", log: self.log!, type: .fault)
             return
         }
-        //context.setFillColor(CGColor(red:1.0, green:0.0, blue: 0.0, alpha: 1.0))
-        //rect.fill()
         
-        self.setupInternal()
-        skylineRenderer?.drawSingleFrame()
+        os_log("invoking skyline init", log: self.log!, type: .fault)
+        self.skyline = Skyline(screenXMax: Int(rect.size.width),
+                               screenYMax: Int(rect.size.height),
+                               starsPerUpdate: 120)
+        self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, context: context)
+        self.startAnimation()
+        super.draw(rect)
+        os_log("skyline init created skyline", log: self.log!, type: .fault)
     }
 }
