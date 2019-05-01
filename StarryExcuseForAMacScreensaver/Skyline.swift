@@ -102,8 +102,8 @@ class Skyline {
         return Point(xPos: screenXPos,
                      yPos: screenYPos,
                      color: Color(red: Double.random(in: 0.0...0.5),
-                         green: Double.random(in: 0.0...0.5),
-                         blue: Double.random(in: 0.0...1)))
+                                  green: Double.random(in: 0.0...0.5),
+                                  blue: Double.random(in: 0.0...1)))
     }
     
     func getSingleBuildingPoint() -> Point {
@@ -114,7 +114,7 @@ class Skyline {
             screenYPos = Skyline.getWeightedRandomHeight(maxHeight: self.buildingMaxHeight)
             screenXPos = Int.random(in: 0...self.width-1)
             buildingAtPos = getBuildingAtPoint(screenXPos: screenXPos,
-                                                  screenYPos: screenYPos)
+                                               screenYPos: screenYPos)
             os_log("checking light at %{public}@x%{public}@",
                    log: log,
                    type: .debug,

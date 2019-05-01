@@ -1,15 +1,15 @@
 //
-//  SkylineDraw.swift
-//  StarryExcusesForAMacScreensaver
+//  SkylineCoreRenderer.swift
+//  StarryExcuseForAMacScreensaver
 //
-//  Created by Andrew Malota on 4/29/19.
-//  Copyright © 2019 2bitoperations. All rights reserved.
+//  Created by Andrew Malota on 4/30/19.
+//  Copyright © 2019 Andrew Malota. All rights reserved.
 //
 
 import Foundation
 import os
 
-class SkyRenderer {
+class SkylineCoreRenderer {
     let skyline: Skyline
     let context: CGContext
     
@@ -20,7 +20,7 @@ class SkyRenderer {
     
     func drawSingleFrame() {
         drawStars()
-        drawBuildings()
+        //drawBuildings()
     }
     
     func drawStars() {
@@ -45,10 +45,11 @@ class SkyRenderer {
     }
     
     func drawSinglePoint(point: Point) {
-        context.protectGState {
-            let color = self.convertColor(color: point.color)
-            context.setFillColor(color)
-            context.fill(CGRect(x: point.xPos, y: point.yPos, width: 1, height: 1))
-        }
-    } 
+        context.saveGState()
+        let color = self.convertColor(color: point.color)
+        context.setFillColor(color)
+        context.fill(CGRect(x: point.xPos, y: point.yPos, width: 1, height: 1))
+        context.restoreGState()
+    }
 }
+
