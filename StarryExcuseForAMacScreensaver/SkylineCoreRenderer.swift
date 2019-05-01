@@ -12,40 +12,38 @@ import ScreenSaver
 
 class SkylineCoreRenderer {
     let skyline: Skyline
-    let context: CGContext
     let log: OSLog
-    let starSize = 10
+    let starSize = 1
     
-    init(skyline: Skyline, context: CGContext, log: OSLog) {
+    init(skyline: Skyline, log: OSLog) {
         self.skyline = skyline
-        self.context = context
         self.log = log
     }
     
-    func drawSingleFrame() {
-        drawTestLine()
-        drawStars()
+    func drawSingleFrame(context: CGContext) {
+        //drawTestLine(context: context)
+        drawStars(context: context)
         //drawBuildings()
     }
     
-    func drawTestLine() {
+    func drawTestLine(context: CGContext) {
         for xIndex in 0...skyline.width {
             let point = Point(xPos: xIndex, yPos: 10 + xIndex, color: Color(red: 0.0, green: 0.0, blue: 1.0))
-            drawSinglePoint(point: point)
+            drawSinglePoint(point: point, context: context)
         }
     }
     
-    func drawStars() {
+    func drawStars(context: CGContext) {
         for _ in 0...skyline.starsPerUpdate {
             let star = skyline.getSingleStar()
-            self.drawSinglePoint(point: star)
+            self.drawSinglePoint(point: star, size: starSize, context: context)
         }
     }
     
-    func drawBuildings() {
+    func drawBuildings(context: CGContext) {
         for _ in 0...skyline.buildingLightsPerUpdate {
             let light = skyline.getSingleBuildingPoint()
-            self.drawSinglePoint(point: light)
+            self.drawSinglePoint(point: light, context: context)
         }
     }
     
@@ -56,11 +54,11 @@ class SkylineCoreRenderer {
                        alpha: 1.0)
     }
     
-    func drawSinglePoint(point: Point) {
+    func drawSinglePoint(point: Point, size: Int = 10, context: CGContext) {
         context.saveGState()
         let color = self.convertColor(color: point.color)
         context.setFillColor(color)
-        context.fill(CGRect(x: point.xPos, y: point.yPos, width: starSize, height: starSize))
+        context.fill(CGRect(x: point.xPos, y: point.yPos, width: starSize, height: size))
         context.restoreGState()
     }
 }
