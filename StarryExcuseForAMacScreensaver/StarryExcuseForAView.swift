@@ -48,6 +48,11 @@ class StarryExcuseForAView: ScreenSaverView {
         // https://github.com/lionheart/openradar-mirror/issues/20659
         if (bitmapBuffer == nil) {
             bitmapBuffer = self.bitmapImageRepForCachingDisplay(in: self.bounds)
+            let context = NSGraphicsContext(bitmapImageRep: self.bitmapBuffer!)?.cgContext
+            context?.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
+            let bufferSize = (bitmapBuffer?.size)!
+            let rect = CGRect(origin: CGPoint(x: 0, y: 0), size: bufferSize)
+            context?.fill(rect)
         }
         let context = NSGraphicsContext(bitmapImageRep: self.bitmapBuffer!)?.cgContext
         self.skylineRenderer?.drawSingleFrame(context: context!)
@@ -65,12 +70,11 @@ class StarryExcuseForAView: ScreenSaverView {
         
         os_log("invoking skyline init", log: self.log!, type: .fault)
         if self.skyline == nil {
-            super.draw(rect)
             self.skyline = Skyline(screenXMax: context.width,
                                    screenYMax: context.height,
                                    starsPerUpdate: 120)
             self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, log: self.log!)
-            self.startAnimation()
+            super.draw(rect)
             os_log("skyline init created skyline", log: self.log!, type: .fault)
         }
         
