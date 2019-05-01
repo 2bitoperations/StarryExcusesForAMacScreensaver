@@ -7,8 +7,9 @@
 //
 
 import Foundation
+import os
 
-class SkylineDraw {
+class SkyRenderer {
     let skyline: Skyline
     let context: CGContext
     
@@ -36,7 +37,7 @@ class SkylineDraw {
         }
     }
     
-    static func convertColor(color: Color) -> CGColor {
+    func convertColor(color: Color) -> CGColor {
         return CGColor(red: CGFloat(color.red),
                        green: CGFloat(color.green),
                        blue: CGFloat(color.blue),
@@ -45,9 +46,9 @@ class SkylineDraw {
     
     func drawSinglePoint(point: Point) {
         context.protectGState {
-            let color = SkylineDraw.convertColor(color: point.color)
+            let color = self.convertColor(color: point.color)
             context.setFillColor(color)
             context.fill(CGRect(x: point.xPos, y: point.yPos, width: 1, height: 1))
         }
-    }
+    } 
 }

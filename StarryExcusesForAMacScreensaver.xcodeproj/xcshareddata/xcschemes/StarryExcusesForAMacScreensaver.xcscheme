@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2A9D0E6317DB87B300DBFFBD"
+               BlueprintIdentifier = "3E01E1872278B52100FE757F"
                BuildableName = "StarryExcusesForAMacScreensaver.saver"
                BlueprintName = "StarryExcusesForAMacScreensaver"
                ReferencedContainer = "container:StarryExcusesForAMacScreensaver.xcodeproj">
@@ -32,9 +32,9 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "3E388FBC2277C18200DA8974"
-               BuildableName = "StarryTests.xctest"
-               BlueprintName = "StarryTests"
+               BlueprintIdentifier = "3E01E1982278B55500FE757F"
+               BuildableName = "StarryExcusesForTests.xctest"
+               BlueprintName = "StarryExcusesForTests"
                ReferencedContainer = "container:StarryExcusesForAMacScreensaver.xcodeproj">
             </BuildableReference>
          </TestableReference>
@@ -42,7 +42,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "2A9D0E6317DB87B300DBFFBD"
+            BlueprintIdentifier = "3E01E1872278B52100FE757F"
             BuildableName = "StarryExcusesForAMacScreensaver.saver"
             BlueprintName = "StarryExcusesForAMacScreensaver"
             ReferencedContainer = "container:StarryExcusesForAMacScreensaver.xcodeproj">
@@ -64,7 +64,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "2A9D0E6317DB87B300DBFFBD"
+            BlueprintIdentifier = "3E01E1872278B52100FE757F"
             BuildableName = "StarryExcusesForAMacScreensaver.saver"
             BlueprintName = "StarryExcusesForAMacScreensaver"
             ReferencedContainer = "container:StarryExcusesForAMacScreensaver.xcodeproj">
@@ -82,7 +82,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "2A9D0E6317DB87B300DBFFBD"
+            BlueprintIdentifier = "3E01E1872278B52100FE757F"
             BuildableName = "StarryExcusesForAMacScreensaver.saver"
             BlueprintName = "StarryExcusesForAMacScreensaver"
             ReferencedContainer = "container:StarryExcusesForAMacScreensaver.xcodeproj">
