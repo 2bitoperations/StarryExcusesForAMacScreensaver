@@ -14,7 +14,6 @@ class StarryExcuseForAView: ScreenSaverView {
     private var log: OSLog?
     private var skyline: Skyline?
     private var skylineRenderer: SkylineCoreRenderer?
-    private var rect: NSRect?
     
     override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
@@ -52,17 +51,16 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     override open func draw(_ rect: NSRect) {
-        self.rect = rect
-        guard let context = NSGraphicsContext.current else {
+        guard let context = NSGraphicsContext.current?.cgContext else {
             os_log("skyline init draw abort, context couldn't be fetched", log: self.log!, type: .fault)
             return
         }
         
         os_log("invoking skyline init", log: self.log!, type: .fault)
-        self.skyline = Skyline(screenXMax: Int(rect.size.width),
-                               screenYMax: Int(rect.size.height),
+        self.skyline = Skyline(screenXMax: context.width,
+                               screenYMax: context.height,
                                starsPerUpdate: 120)
-        self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, context: context)
+        self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, context: context, log: self.log!)
         self.startAnimation()
         super.draw(rect)
         os_log("skyline init created skyline", log: self.log!, type: .fault)

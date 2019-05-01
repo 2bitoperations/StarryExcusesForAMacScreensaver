@@ -8,20 +8,23 @@
 
 import Foundation
 import os
-import AppKit
+import ScreenSaver
 
 class SkylineCoreRenderer {
     let skyline: Skyline
-    let context: NSGraphicsContext
+    let context: CGContext
+    let log: OSLog
+    let starSize = 10
     
-    init(skyline: Skyline, context: NSGraphicsContext) {
+    init(skyline: Skyline, context: CGContext, log: OSLog) {
         self.skyline = skyline
         self.context = context
+        self.log = log
     }
     
     func drawSingleFrame() {
         drawTestLine()
-        //drawStars()
+        drawStars()
         //drawBuildings()
     }
     
@@ -35,31 +38,30 @@ class SkylineCoreRenderer {
     func drawStars() {
         for _ in 0...skyline.starsPerUpdate {
             let star = skyline.getSingleStar()
-            drawSinglePoint(point: star)
+            self.drawSinglePoint(point: star)
         }
     }
     
     func drawBuildings() {
         for _ in 0...skyline.buildingLightsPerUpdate {
             let light = skyline.getSingleBuildingPoint()
-            drawSinglePoint(point: light)
+            self.drawSinglePoint(point: light)
         }
     }
     
-    func convertColor(color: Color) -> NSColor {
-        return NSColor(red: CGFloat(color.red),
+    func convertColor(color: Color) -> CGColor {
+        return CGColor(red: CGFloat(color.red),
                        green: CGFloat(color.green),
                        blue: CGFloat(color.blue),
                        alpha: 1.0)
     }
     
     func drawSinglePoint(point: Point) {
-        context.saveGraphicsState()
+        context.saveGState()
         let color = self.convertColor(color: point.color)
-        color.setFill()
-        let rect = NSRect(x: point.xPos, y: point.yPos, width: 10, height: 10)
-        rect.fill()
-        context.restoreGraphicsState()
+        context.setFillColor(color)
+        context.fill(CGRect(x: point.xPos, y: point.yPos, width: starSize, height: starSize))
+        context.restoreGState()
     }
 }
 
