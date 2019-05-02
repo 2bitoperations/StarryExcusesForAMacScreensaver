@@ -27,6 +27,9 @@ class Skyline {
     let flasherPeriod: TimeInterval
     var flasherPosition: Point?
     var flasherOnAt: NSDate
+    let createdAt: NSDate
+    let clearAfterDuration: TimeInterval
+    let traceEnabled: Bool
     
     init(screenXMax: Int,
          screenYMax: Int,
@@ -34,12 +37,14 @@ class Skyline {
          buildingWidthMin: Int = 40,
          buildingWidthMax: Int = 300,
          buildingCount: Int = 100,
-         starsPerUpdate: Int = 12,
+         starsPerUpdate: Int = 100,
          buildingLightsPerUpdate: Int = 15,
          buildingColor: Color = Color(red: 0.972, green: 0.945, blue: 0.012),
          flasherRadius: Int = 4,
          flasherPeriod: TimeInterval = TimeInterval(2.0),
-         log: OSLog) throws {
+         log: OSLog,
+         clearAfterDuration: TimeInterval = TimeInterval(120),
+         traceEnabled: Bool = false) throws {
         self.log = log
         var buildingWorkingList = [Building]()
         self.width = screenXMax
@@ -52,12 +57,15 @@ class Skyline {
         self.flasherRadius = flasherRadius
         self.flasherPeriod = flasherPeriod
         self.flasherOnAt = NSDate()
+        self.createdAt = NSDate()
+        self.clearAfterDuration = clearAfterDuration
+        self.traceEnabled = traceEnabled
         
-        os_log("invoking skyline init, screen %{PUBLIC}dx%{PUBLIC}d", log: log, type: .fault, screenXMax, screenYMax)
+        os_log("invoking skyline init, screen %{PUBLIC}dx%{PUBLIC}d", log: log, type: .info, screenXMax, screenYMax)
         
         os_log("found %{PUBLIC}d styles",
                log: log,
-               type: .fault,
+               type: .debug,
                styles.count)
         
         for buildingZIndex in 0...buildingCount {
@@ -87,7 +95,7 @@ class Skyline {
         for building in buildings {
             os_log("created building at %{public}d, width %{public}d, height %{public}d",
                    log: log,
-                   type: .fault,
+                   type: .info,
                    building.startX,
                    building.width,
                    building.height)
@@ -99,6 +107,10 @@ class Skyline {
     static func getWeightedRandomHeight(maxHeight: Int) -> Int {
         let weightedHeightPercentage = pow(Double.random(in: 0.01...1),2)
         return max(1, Int(weightedHeightPercentage * Double(maxHeight)))
+    }
+    
+    func shouldClearNow() -> Bool {
+        return (abs(self.createdAt.timeIntervalSinceNow) > self.clearAfterDuration)
     }
     
     func getSingleStar() -> Point {
@@ -114,15 +126,17 @@ class Skyline {
         let color = Color(red: Double.random(in: 0.0...0.5),
                           green: Double.random(in: 0.0...0.5),
                           blue: Double.random(in: 0.0...1))
-        os_log("returning single star at %{public}dx%{public}d, color r:%{public}f, g:%{public}f, b:%{public}f, tries %{public}d",
-               log: log,
-               type: .info,
-               screenXPos,
-               screenYPos,
-               color.red,
-               color.green,
-               color.blue,
-               triesBeforeNoCollision)
+        if (traceEnabled) {
+            os_log("returning single star at %{public}dx%{public}d, color r:%{public}f, g:%{public}f, b:%{public}f, tries %{public}d",
+                   log: log,
+                   type: .info,
+                   screenXPos,
+                   screenYPos,
+                   color.red,
+                   color.green,
+                   color.blue,
+                   triesBeforeNoCollision)
+        }
         return Point(xPos: screenXPos,
                      yPos: screenYPos,
                      color: color)
@@ -147,12 +161,15 @@ class Skyline {
             }
         }
         
-        os_log("returning light at %{public}dx%{public}d after %{public}d tries",
-               log: log,
-               type: .info,
-               screenXPos,
-               screenYPos,
-               tries)
+        
+        if (traceEnabled) {
+            os_log("returning light at %{public}dx%{public}d after %{public}d tries",
+                   log: log,
+                   type: .debug,
+                   screenXPos,
+                   screenYPos,
+                   tries)
+        }
         return Point(xPos: screenXPos,
                      yPos: screenYPos,
                      color: buildingColor)
@@ -211,7 +228,7 @@ class Skyline {
         
         os_log("flasher enabled at %{public}dx%{public}d r=%{public}d",
                log: log,
-               type: .fault,
+               type: .info,
                flasherXLoc,
                flasherYLoc,
                flasherRadius)
@@ -238,9 +255,11 @@ class Skyline {
             return Point(xPos: flasherPosition.xPos, yPos: flasherPosition.yPos, color: Color(red: 0.0, green: 0.0, blue: 0.0))
         // more than one flasher period since the last time we turned "on" the flasher? turn it on again, remember time.
         } else {
-            os_log("flasher reset",
-                   log: log,
-                   type: .info)
+            if (traceEnabled) {
+                os_log("flasher reset",
+                       log: log,
+                       type: .debug)
+            }
             self.flasherOnAt = NSDate()
             return flasherPosition
         }

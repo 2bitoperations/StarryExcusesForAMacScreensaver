@@ -14,13 +14,18 @@ class SkylineCoreRenderer {
     let skyline: Skyline
     let log: OSLog
     let starSize = 1
+    let traceEnabled: Bool
     
-    init(skyline: Skyline, log: OSLog) {
+    init(skyline: Skyline, log: OSLog, traceEnabled: Bool) {
         self.skyline = skyline
         self.log = log
+        self.traceEnabled = traceEnabled
     }
     
     func drawSingleFrame(context: CGContext) {
+        if (traceEnabled) {
+            os_log("drawing single frame", log: self.log, type: .debug)
+        }
         //drawTestLine(context: context)
         drawStars(context: context)
         drawBuildings(context: context)
