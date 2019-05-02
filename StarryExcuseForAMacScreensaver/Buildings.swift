@@ -79,7 +79,13 @@ class Building {
     let zCoordinate: Int
     let style: BuildingStyle
     
-    init(width: Int, height: Int, startX: Int, startY: Int, zCoordinate: Int, style: BuildingStyle) {
+    init(width: Int, height: Int, startX: Int, startY: Int, zCoordinate: Int, style: BuildingStyle) throws {
+        if (width <= 0) {
+            throw StateError.ConstraintViolation(msg: "width can't be less than or equal to zero - \(width) is invalid")
+        }
+        if (height <= 0) {
+            throw StateError.ConstraintViolation(msg: "height can't be less than or equal to zero - \(height) is invalid")
+        }
         self.width = width
         self.height = height
         self.startX = startX

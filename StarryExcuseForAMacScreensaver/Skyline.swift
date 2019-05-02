@@ -9,6 +9,10 @@
 import Foundation
 import os
 
+enum StateError: Error {
+    case ConstraintViolation(msg: String)
+}
+
 class Skyline {
     // list of buildings on the screen, sorted by startX coordinate
     let buildings: [Building]
@@ -35,7 +39,7 @@ class Skyline {
          buildingColor: Color = Color(red: 0.972, green: 0.945, blue: 0.012),
          flasherRadius: Int = 4,
          flasherPeriod: TimeInterval = TimeInterval(2.0),
-         log: OSLog) {
+         log: OSLog) throws {
         self.log = log
         var buildingWorkingList = [Building]()
         self.width = screenXMax
@@ -57,7 +61,6 @@ class Skyline {
                styles.count)
         
         for buildingZIndex in 0...buildingCount {
-            os_log("building a building", log: log, type: .debug)
             // pick a style
             let style = styles[Int.random(in: 0...styles.count - 1)]
             
@@ -66,8 +69,9 @@ class Skyline {
             let height = Skyline.getWeightedRandomHeight(maxHeight: buildingMaxHeight)
             
             let buildingXStart = Int.random(in: 0...screenXMax - 1)
+            let buildingWidth = min(Int.random(in: buildingWidthMin...buildingWidthMax-1), screenXMax - buildingXStart)
             
-            let building = Building(width: Int.random(in: buildingWidthMin...buildingWidthMax-1),
+            let building = try Building(width: buildingWidth,
                                     height: height,
                                     startX: buildingXStart,
                                     startY: 0,
@@ -93,8 +97,8 @@ class Skyline {
     }
     
     static func getWeightedRandomHeight(maxHeight: Int) -> Int {
-        let weightedHeightPercentage = pow(Double.random(in: 0...1),2)
-        return Int(weightedHeightPercentage * Double(maxHeight))
+        let weightedHeightPercentage = pow(Double.random(in: 0.01...1),2)
+        return max(1, Int(weightedHeightPercentage * Double(maxHeight)))
     }
     
     func getSingleStar() -> Point {
@@ -145,7 +149,7 @@ class Skyline {
         
         os_log("returning light at %{public}dx%{public}d after %{public}d tries",
                log: log,
-               type: .fault,
+               type: .info,
                screenXPos,
                screenYPos,
                tries)
@@ -234,6 +238,9 @@ class Skyline {
             return Point(xPos: flasherPosition.xPos, yPos: flasherPosition.yPos, color: Color(red: 0.0, green: 0.0, blue: 0.0))
         // more than one flasher period since the last time we turned "on" the flasher? turn it on again, remember time.
         } else {
+            os_log("flasher reset",
+                   log: log,
+                   type: .fault)
             self.flasherOnAt = NSDate()
             return flasherPosition
         }

@@ -15,7 +15,6 @@ class StarryExcuseForAView: ScreenSaverView {
     private var log: OSLog?
     private var skyline: Skyline?
     private var skylineRenderer: SkylineCoreRenderer?
-    private var iteration = 1
     private var bitmapBuffer: NSBitmapImageRep?
     
     override init?(frame: NSRect, isPreview: Bool) {
@@ -56,8 +55,6 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         let context = NSGraphicsContext(bitmapImageRep: self.bitmapBuffer!)?.cgContext
         self.skylineRenderer?.drawSingleFrame(context: context!)
-        //self.skylineRenderer?.drawSinglePoint(point: Point(xPos: 100 + (iteration * 10), yPos: 200, color: Color(red: 1.0, green: 1.0, blue: 1.0)), size: 100, context: context!)
-        iteration += 1
         context?.flush()
         self.needsDisplay = true
     }
@@ -68,13 +65,17 @@ class StarryExcuseForAView: ScreenSaverView {
             return
         }
         
-        os_log("invoking skyline init", log: self.log!, type: .fault)
         if self.skyline == nil {
-            self.skyline = Skyline(screenXMax: context.width,
-                                   screenYMax: context.height,
-                                   starsPerUpdate: 120,
-                                   log: self.log!)
-            self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, log: self.log!)
+            do {
+                self.skyline = try Skyline(screenXMax: context.width,
+                                       screenYMax: context.height,
+                                       starsPerUpdate: 120,
+                                       log: self.log!)
+                self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, log: self.log!)
+            } catch {
+                let msg = "\(error)"
+                os_log("unable to init skyline %{public}@", log: self.log!, type: .fault, msg)
+            }
             super.draw(rect)
             os_log("skyline init created skyline", log: self.log!, type: .fault)
         }
