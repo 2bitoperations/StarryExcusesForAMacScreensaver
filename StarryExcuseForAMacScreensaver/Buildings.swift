@@ -89,7 +89,7 @@ class Building {
     }
     
     func isPixelInsideBuilding(screenXPos: Int, screenYPos: Int) -> Bool {
-        return (startX <= screenXPos) && (screenYPos < (startX + width))
+        return (startX <= screenXPos) && (screenXPos < (startX + width))
             && (startY <= screenYPos) && (screenYPos < (startY + height))
     }
     

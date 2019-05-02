@@ -23,7 +23,8 @@ class SkylineCoreRenderer {
     func drawSingleFrame(context: CGContext) {
         //drawTestLine(context: context)
         drawStars(context: context)
-        //drawBuildings()
+        drawBuildings(context: context)
+        drawFlasher(context: context)
     }
     
     func drawTestLine(context: CGContext) {
@@ -43,8 +44,16 @@ class SkylineCoreRenderer {
     func drawBuildings(context: CGContext) {
         for _ in 0...skyline.buildingLightsPerUpdate {
             let light = skyline.getSingleBuildingPoint()
-            self.drawSinglePoint(point: light, context: context)
+            self.drawSinglePoint(point: light, size: starSize, context: context)
         }
+    }
+    
+    func drawFlasher(context: CGContext) {
+        guard let flasher = skyline.getFlasher() else {
+            return
+        }
+        
+        self.drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
     }
     
     func convertColor(color: Color) -> CGColor {
@@ -52,6 +61,16 @@ class SkylineCoreRenderer {
                        green: CGFloat(color.green),
                        blue: CGFloat(color.blue),
                        alpha: 1.0)
+    }
+    
+    func drawSingleCircle(point: Point, radius: Int = 4, context: CGContext) {
+        context.saveGState()
+        let color = self.convertColor(color: point.color)
+        context.setFillColor(color)
+        let boundingRect = CGRect(x: point.xPos - radius, y: point.yPos - radius, width: radius * 2, height: radius * 2)
+        context.addEllipse(in: boundingRect)
+        context.drawPath(using: .fill)
+        context.restoreGState()
     }
     
     func drawSinglePoint(point: Point, size: Int = 10, context: CGContext) {

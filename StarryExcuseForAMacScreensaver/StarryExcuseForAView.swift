@@ -72,7 +72,8 @@ class StarryExcuseForAView: ScreenSaverView {
         if self.skyline == nil {
             self.skyline = Skyline(screenXMax: context.width,
                                    screenYMax: context.height,
-                                   starsPerUpdate: 120)
+                                   starsPerUpdate: 120,
+                                   log: self.log!)
             self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, log: self.log!)
             super.draw(rect)
             os_log("skyline init created skyline", log: self.log!, type: .fault)
