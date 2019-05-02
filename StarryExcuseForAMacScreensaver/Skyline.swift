@@ -240,7 +240,7 @@ class Skyline {
         } else {
             os_log("flasher reset",
                    log: log,
-                   type: .fault)
+                   type: .info)
             self.flasherOnAt = NSDate()
             return flasherPosition
         }
