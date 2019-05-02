@@ -2,8 +2,10 @@
 //  Skyline.swift
 //  StarryExcusesForAMacScreensaver
 //
-//  Created by Andrew Malota on 4/29/19.
-//  Copyright © 2019 2bitoperations. All rights reserved.
+//  Created by Andrew Malota on 2019-04-29
+//  forked from Marcus Kida's work https://github.com/kimar/DeveloperExcuses
+//  port of Evan Green's implementation for Windows https://github.com/evangreen/starryn
+//  released under the MIT license
 //
 
 import Foundation
@@ -37,7 +39,7 @@ class Skyline {
          buildingWidthMin: Int = 40,
          buildingWidthMax: Int = 300,
          buildingCount: Int = 100,
-         starsPerUpdate: Int = 100,
+         starsPerUpdate: Int = 50,
          buildingLightsPerUpdate: Int = 15,
          buildingColor: Color = Color(red: 0.972, green: 0.945, blue: 0.012),
          flasherRadius: Int = 4,

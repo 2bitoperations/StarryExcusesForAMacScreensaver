@@ -2,8 +2,10 @@
 //  BuildingStyles.swift
 //  StarryExcusesForAMacScreensaver
 //
-//  Created by Andrew Malota on 4/29/19.
-//  Copyright © 2019 2bitoperations. All rights reserved.
+//  Created by Andrew Malota on 2019-04-29
+//  forked from Marcus Kida's work https://github.com/kimar/DeveloperExcuses
+//  port of Evan Green's implementation for Windows https://github.com/evangreen/starryn
+//  released under the MIT license
 //
 
 import Foundation
