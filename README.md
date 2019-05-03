@@ -7,7 +7,7 @@ Very basic implementation.
 - [x] buildings
 - [x] stars
 - [x] flasher
-- [ ] configuration panel
+- [x] configuration panel
 - [ ] rain
 - [ ] shooting stars
 
