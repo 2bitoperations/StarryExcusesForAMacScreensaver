@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3E597E0D227BA6210092CA49 /* StarryExcusesConfigSheet.xib in Resources */ = {isa = PBXBuildFile; fileRef = 3E597E0C227BA6210092CA49 /* StarryExcusesConfigSheet.xib */; };
+		3E597E0F227BA8780092CA49 /* StarryConfigSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E597E0E227BA8780092CA49 /* StarryConfigSheetController.swift */; };
+		3E597E12227BD9C70092CA49 /* StarryDefaultsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E597E10227BAE390092CA49 /* StarryDefaultsManager.swift */; };
 		3EAA85FF22792D30009F5745 /* StarryExcuseForAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA85FE22792D30009F5745 /* StarryExcuseForAView.swift */; };
 		3EAA860122795E14009F5745 /* Buildings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA860022795E14009F5745 /* Buildings.swift */; };
 		3EAA860322795E3C009F5745 /* Skyline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA860222795E3C009F5745 /* Skyline.swift */; };
@@ -15,6 +18,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		3E597E0C227BA6210092CA49 /* StarryExcusesConfigSheet.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = StarryExcusesConfigSheet.xib; sourceTree = "<group>"; };
+		3E597E0E227BA8780092CA49 /* StarryConfigSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarryConfigSheetController.swift; sourceTree = "<group>"; };
+		3E597E10227BAE390092CA49 /* StarryDefaultsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarryDefaultsManager.swift; sourceTree = "<group>"; };
 		3EAA85F122792D13009F5745 /* StarryExcuseForAMacScreensaver.saver */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StarryExcuseForAMacScreensaver.saver; sourceTree = BUILT_PRODUCTS_DIR; };
 		3EAA85F822792D13009F5745 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		3EAA85FE22792D30009F5745 /* StarryExcuseForAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarryExcuseForAView.swift; sourceTree = "<group>"; };
@@ -54,12 +60,15 @@
 		3EAA85F322792D13009F5745 /* StarryExcuseForAMacScreensaver */ = {
 			isa = PBXGroup;
 			children = (
+				3E597E0C227BA6210092CA49 /* StarryExcusesConfigSheet.xib */,
 				3EAA85F822792D13009F5745 /* Info.plist */,
 				3EAA85FE22792D30009F5745 /* StarryExcuseForAView.swift */,
 				3EAA860022795E14009F5745 /* Buildings.swift */,
 				3EAA860222795E3C009F5745 /* Skyline.swift */,
 				3EAA860422795E4C009F5745 /* Points.swift */,
 				3EAA86062279605D009F5745 /* SkylineCoreRenderer.swift */,
+				3E597E0E227BA8780092CA49 /* StarryConfigSheetController.swift */,
+				3E597E10227BAE390092CA49 /* StarryDefaultsManager.swift */,
 			);
 			path = StarryExcuseForAMacScreensaver;
 			sourceTree = "<group>";
@@ -132,6 +141,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3E597E0D227BA6210092CA49 /* StarryExcusesConfigSheet.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +156,8 @@
 				3EAA85FF22792D30009F5745 /* StarryExcuseForAView.swift in Sources */,
 				3EAA860322795E3C009F5745 /* Skyline.swift in Sources */,
 				3EAA860122795E14009F5745 /* Buildings.swift in Sources */,
+				3E597E12227BD9C70092CA49 /* StarryDefaultsManager.swift in Sources */,
+				3E597E0F227BA8780092CA49 /* StarryConfigSheetController.swift in Sources */,
 				3EAA86072279605D009F5745 /* SkylineCoreRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

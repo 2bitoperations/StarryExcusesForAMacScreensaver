@@ -20,6 +20,16 @@ class StarryExcuseForAView: ScreenSaverView {
     private var bitmapBuffer: NSBitmapImageRep?
     private var bitmapBackedContext: CGContext?
     private var traceEnabled: Bool
+    private lazy var configSheetController: StarryConfigSheetController = StarryConfigSheetController(windowNibName: "StarryExcusesConfigSheet")
+    private var defaultsManager = StarryDefaultsManager()
+    
+    public override var hasConfigureSheet: Bool {
+        get { return true }
+    }
+    
+    public override var configureSheet: NSWindow? {
+        get { return configSheetController.window }
+    }
     
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
@@ -46,7 +56,6 @@ class StarryExcuseForAView: ScreenSaverView {
     override func stopAnimation() {
         super.stopAnimation()
     }
-
     
     override open func animateOneFrame() {
         guard let context = getCGContext() else {
@@ -126,6 +135,7 @@ class StarryExcuseForAView: ScreenSaverView {
         do {
             self.skyline = try Skyline(screenXMax: xMax,
                                        screenYMax: yMax,
+                                       starsPerUpdate: 80,
                                        log: self.log!,
                                        traceEnabled: traceEnabled)
             self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, log: self.log!, traceEnabled: self.traceEnabled)
