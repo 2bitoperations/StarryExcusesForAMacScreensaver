@@ -18,6 +18,16 @@ class StarryConfigSheetController : NSWindowController {
     // stars
     @IBOutlet weak var starsPerUpdate: NSTextField!
     
+    @IBOutlet weak var buildingHeightSlider: NSSlider!
+    @IBOutlet weak var buildingHeightPreview: NSTextField!
+    
+    @IBAction func buildingHeightChanged(_ sender: Any) {
+        buildingHeightPreview.stringValue = String.init(format: "%.3f", buildingHeightSlider.doubleValue)
+        
+    }
+    
+    @IBOutlet weak var secsBetweenClears: NSTextField!
+    
     public func setView(view: StarryExcuseForAView) {
         self.view = view
     }
@@ -26,6 +36,10 @@ class StarryConfigSheetController : NSWindowController {
         super.windowDidLoad()
         
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
+        buildingHeightSlider.doubleValue = defaultsManager.buildingHeight
+        buildingHeightPreview.stringValue = String.init(format: "%.3f", defaultsManager.buildingHeight)
+        secsBetweenClears.doubleValue = defaultsManager.secsBetweenClears
+        
         self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
     }
     
@@ -33,6 +47,8 @@ class StarryConfigSheetController : NSWindowController {
         os_log("hit saveClose", log: self.log!, type: .fault)
         
         defaultsManager.starsPerUpdate = starsPerUpdate.integerValue
+        defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
+        defaultsManager.secsBetweenClears = secsBetweenClears.doubleValue
         
         view?.settingsChanged()
         

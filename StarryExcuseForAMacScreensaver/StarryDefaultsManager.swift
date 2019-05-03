@@ -31,4 +31,34 @@ class StarryDefaultsManager {
             }
         }
     }
+    
+    var buildingHeight: Double {
+        set(newValue) {
+            self.defaults.set(newValue, forKey: "BuildingHeight")
+            defaults.synchronize()
+        }
+        get {
+            let storedValue = self.defaults.double(forKey: "BuildingHeight")
+            if (storedValue > 0 && storedValue < 1) {
+                return storedValue
+            } else {
+                return 0.35
+            }
+        }
+    }
+    
+    var secsBetweenClears: Double {
+        set(newValue) {
+            self.defaults.set(newValue, forKey: "SecsBetweenClears")
+            defaults.synchronize()
+        }
+        get {
+            let storedValue = self.defaults.double(forKey: "SecsBetweenClears")
+            if (storedValue > 0) {
+                return storedValue
+            } else {
+                return 120
+            }
+        }
+    }
 }

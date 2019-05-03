@@ -142,8 +142,10 @@ class StarryExcuseForAView: ScreenSaverView {
         do {
             self.skyline = try Skyline(screenXMax: xMax,
                                        screenYMax: yMax,
+                                       buildingHeightPercentMax: self.defaultsManager.buildingHeight,
                                        starsPerUpdate: self.defaultsManager.starsPerUpdate,
                                        log: self.log!,
+                                       clearAfterDuration: TimeInterval(self.defaultsManager.secsBetweenClears),
                                        traceEnabled: traceEnabled)
             self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, log: self.log!, traceEnabled: self.traceEnabled)
         } catch {
