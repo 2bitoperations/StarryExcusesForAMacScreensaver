@@ -28,7 +28,10 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     public override var configureSheet: NSWindow? {
-        get { return configSheetController.window }
+        get {
+            configSheetController.setView(view: self)
+            return configSheetController.window
+        }
     }
     
     override init?(frame: NSRect, isPreview: Bool) {
@@ -57,6 +60,10 @@ class StarryExcuseForAView: ScreenSaverView {
         super.stopAnimation()
     }
     
+    func settingsChanged() {
+        self.skyline = nil
+    }
+    
     override open func animateOneFrame() {
         guard let context = getCGContext() else {
             os_log("animateOneFrame abort, context couldn't be fetched", log: self.log!, type: .fault)
@@ -64,8 +71,8 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         // do we need to create a new skyline?
-        if (skyline?.shouldClearNow() ?? false) {
-            initSkyline(xMax: skyline!.width, yMax: skyline!.height)
+        if (skyline == nil || skyline?.shouldClearNow() ?? false) {
+            initSkyline(xMax: context.width, yMax: context.height)
             clearScreen(contextOpt: context)
         }
  
@@ -135,7 +142,7 @@ class StarryExcuseForAView: ScreenSaverView {
         do {
             self.skyline = try Skyline(screenXMax: xMax,
                                        screenYMax: yMax,
-                                       starsPerUpdate: 80,
+                                       starsPerUpdate: self.defaultsManager.starsPerUpdate,
                                        log: self.log!,
                                        traceEnabled: traceEnabled)
             self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, log: self.log!, traceEnabled: self.traceEnabled)
