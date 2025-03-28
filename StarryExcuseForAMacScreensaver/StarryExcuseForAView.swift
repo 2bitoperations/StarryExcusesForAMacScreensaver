@@ -105,10 +105,4 @@ class StarryExcuseForAView: ScreenSaverView {
         } catch {
             let msg = "\(error)"
     }
-    
-    deinit {
-        imageView?.removeFromSuperview()
-        imageView = nil
-        currentContext = nil
-    }
 }
