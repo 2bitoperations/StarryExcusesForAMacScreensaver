@@ -94,6 +94,7 @@ class StarryExcuseForAView: ScreenSaverView {
     
     func settingsChanged() {
         self.skyline = nil
+        self.skylineRenderer = nil
     }
     
     override open func animateOneFrame() {
@@ -156,5 +157,12 @@ class StarryExcuseForAView: ScreenSaverView {
             os_log("unable to init skyline %{public}@", log: self.log!, type: .fault, msg)
         }
         os_log("created skyline", log: self.log!, type: .info)
+    }
+    
+    deinit {
+        imageView?.removeFromSuperview()
+        imageView = nil
+        currentContext?.flush()
+        currentContext = nil
     }
 }

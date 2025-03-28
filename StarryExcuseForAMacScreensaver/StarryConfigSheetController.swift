@@ -12,7 +12,7 @@ import os
 
 class StarryConfigSheetController : NSWindowController {
     let defaultsManager = StarryDefaultsManager()
-    var view: StarryExcuseForAView?
+    weak var view: StarryExcuseForAView?
     private var log: OSLog?
     
     // stars
