@@ -161,6 +161,7 @@ class StarryExcuseForAView: ScreenSaverView {
     deinit {
         imageView?.removeFromSuperview()
         imageView = nil
+        currentContext?.flush()
         currentContext = nil
     }
 }
