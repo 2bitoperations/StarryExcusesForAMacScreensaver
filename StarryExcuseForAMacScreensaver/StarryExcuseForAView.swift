@@ -94,6 +94,7 @@ class StarryExcuseForAView: ScreenSaverView {
     
     func settingsChanged() {
         self.skyline = nil
+        self.skylineRenderer = nil
     }
     
     override open func animateOneFrame() {
