@@ -46,11 +46,33 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         self.animationTimeInterval = TimeInterval(0.1)
+        
+        registerListeners()
     }
     
     required init?(coder decoder: NSCoder) {
         self.traceEnabled = false
         super.init(coder: decoder)
+    }
+    
+    // holy moly this was driving me crazy
+    // https://zsmb.co/building-a-macos-screen-saver-in-kotlin/#how-do-we-fix-this
+    // thanks, Márton Braun. finding a workaround for this bug is a huge help.
+    private func registerListeners() {
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.willStopHandler(_:)),
+            name: Notification.Name("com.apple.screensaver.willstop"),
+            object: nil
+        )
+        os_log("willStop listener registered.", log: self.log!)
+    }
+    
+    @objc func willStopHandler(_ aNotification: Notification) {
+        if (!isPreview) {
+            os_log("willStop received, not a preview, exiting.", log: self.log!)
+            NSApplication.shared.terminate(nil)
+        }
     }
     
     func screenshot() -> CGImage {
@@ -82,7 +104,7 @@ class StarryExcuseForAView: ScreenSaverView {
         self.imageView = NSImageView(frame: NSRect(origin: CGPoint.init(), size: self.size!))
         self.imageView?.image = NSImage(cgImage: image, size: self.size!)
         addSubview(imageView!)
-        os_log("leaving startAnimation %d %d", log: self.log!, type: .info,
+        os_log("leaving startAnimation %d %d", log: self.log!,
                context.width, context.height)
         super.startAnimation()
         
@@ -120,7 +142,7 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         if (skyline.shouldClearNow()) {
-            os_log("should clear", log: self.log!, type: .info)
+            os_log("should clear", log: self.log!)
             self.initSkyline(xMax: Int(context.width), yMax: Int(context.height))
             self.clearScreen(contextOpt: context)
         }
@@ -139,7 +161,7 @@ class StarryExcuseForAView: ScreenSaverView {
         context.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
         context.fill(rect)
         
-        os_log("screen cleared", log: self.log!, type: .info)
+        os_log("screen cleared", log: self.log!)
     }
         
     fileprivate func initSkyline(xMax: Int, yMax: Int) {
@@ -156,13 +178,21 @@ class StarryExcuseForAView: ScreenSaverView {
             let msg = "\(error)"
             os_log("unable to init skyline %{public}@", log: self.log!, type: .fault, msg)
         }
-        os_log("created skyline", log: self.log!, type: .info)
+        os_log("created skyline", log: self.log!)
     }
     
-    deinit {
+    private func deallocateResources() {
         imageView?.removeFromSuperview()
         imageView = nil
         currentContext?.flush()
         currentContext = nil
+        skyline = nil
+        skylineRenderer = nil
+        
+        os_log("deallocated resources", log: self.log!)
+    }
+    
+    deinit {
+        deallocateResources()
     }
 }
