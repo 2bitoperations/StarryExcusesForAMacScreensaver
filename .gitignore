@@ -107,6 +107,7 @@ fastlane/test_output
 
 ### Xcode Patch ###
 *.xcodeproj/*
+StarryExcuseForAMacScreensaver.xcodeproj/**
 !*.xcodeproj/project.pbxproj
 !*.xcodeproj/xcshareddata/
 !*.xcworkspace/contents.xcworkspacedata
