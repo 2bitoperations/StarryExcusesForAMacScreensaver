@@ -28,11 +28,11 @@ class StarryExcuseForAView: ScreenSaverView {
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
         super.init(frame: frame, isPreview: isPreview)
-        os_log("start skyline init")
         
         if self.log == nil {
             self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         }
+        os_log("start skyline init", log: self.log!)
         
         self.animationTimeInterval = TimeInterval(0.1)
         
