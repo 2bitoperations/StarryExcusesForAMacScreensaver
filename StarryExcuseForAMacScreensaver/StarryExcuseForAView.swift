@@ -14,7 +14,6 @@ import os
 import CoreGraphics
 
 class StarryExcuseForAView: ScreenSaverView {
-    // MARK: - Private Properties (Alphabetical)
     private lazy var configSheetController: StarryConfigSheetController = StarryConfigSheetController(windowNibName: "StarryExcusesConfigSheet")
     private var currentContext: CGContext?
     private var defaultsManager = StarryDefaultsManager()
@@ -26,7 +25,6 @@ class StarryExcuseForAView: ScreenSaverView {
     private var skylineRenderer: SkylineCoreRenderer?
     private var traceEnabled: Bool
 
-    // MARK: - Initialization & Deinitialization
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
         super.init(frame: frame, isPreview: isPreview)
@@ -50,7 +48,6 @@ class StarryExcuseForAView: ScreenSaverView {
         deallocateResources()
     }
 
-    // MARK: - Public Computed Properties (Overrides - Alphabetical)
     public override var configureSheet: NSWindow? {
         get {
             configSheetController.setView(view: self)
@@ -62,7 +59,6 @@ class StarryExcuseForAView: ScreenSaverView {
         get { return true }
     }
     
-    // MARK: - Public Methods (Overrides - Alphabetical)
     override open func animateOneFrame() {
         guard let context = self.currentContext else {
             os_log("context not present, can't animate one", log: self.log!, type: .fault)
@@ -125,7 +121,6 @@ class StarryExcuseForAView: ScreenSaverView {
         super.stopAnimation()
     }
 
-    // MARK: - Public Methods (Alphabetical)
     func screenshot() -> CGImage {
         let windows = CGWindowListCopyWindowInfo(CGWindowListOption.optionOnScreenOnly, kCGNullWindowID) as! [[String: Any]]
         let loginwindow = windows.first(where: { (element) -> Bool in
@@ -141,7 +136,6 @@ class StarryExcuseForAView: ScreenSaverView {
         self.skylineRenderer = nil
     }
 
-    // MARK: - Objective-C Exposed Methods (Alphabetical)
     @objc func willStopHandler(_ aNotification: Notification) {
         if (!isPreview) {
             os_log("willStop received, not a preview, exiting.", log: self.log!)
@@ -149,7 +143,6 @@ class StarryExcuseForAView: ScreenSaverView {
         }
     }
 
-    // MARK: - Private Methods (Alphabetical)
     private func clearScreen(contextOpt: CGContext?) {
         guard let context = contextOpt else {
             os_log("context not present, can't clear", log: self.log!, type: .fault)
