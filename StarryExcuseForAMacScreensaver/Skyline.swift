@@ -10,6 +10,7 @@
 
 import Foundation
 import os
+import CoreGraphics
 
 enum StateError: Error {
     case ConstraintViolation(msg: String)
@@ -32,6 +33,9 @@ class Skyline {
     let createdAt: NSDate
     let clearAfterDuration: TimeInterval
     let traceEnabled: Bool
+    
+    // Moon
+    private let moon: Moon?
     
     init(screenXMax: Int,
          screenYMax: Int,
@@ -104,6 +108,12 @@ class Skyline {
         }
         
         self.flasherPosition = getFlasherPosition()
+        
+        // Initialize moon
+        self.moon = Moon(screenWidth: screenXMax,
+                         screenHeight: screenYMax,
+                         buildingMaxHeight: self.buildingMaxHeight,
+                         log: log)
     }
     
     static func getWeightedRandomHeight(maxHeight: Int) -> Int {
@@ -265,5 +275,11 @@ class Skyline {
             self.flasherOnAt = NSDate()
             return flasherPosition
         }
+    }
+    
+    // MARK: - Moon accessors
+    
+    func getMoon() -> Moon? {
+        return moon
     }
 }

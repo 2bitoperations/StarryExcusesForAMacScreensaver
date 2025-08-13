@@ -15,6 +15,7 @@
  		3EAA860322795E3C009F5745 /* Skyline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA860222795E3C009F5745 /* Skyline.swift */; };
  		3EAA860522795E4C009F5745 /* Points.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA860422795E4C009F5745 /* Points.swift */; };
  		3EAA86072279605D009F5745 /* SkylineCoreRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA86062279605D009F5745 /* SkylineCoreRenderer.swift */; };
+ 		A1B2C3D40000000100000001 /* Moon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D30000000100000001 /* Moon.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
  		3EAA860222795E3C009F5745 /* Skyline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skyline.swift; sourceTree = "<group>"; };
  		3EAA860422795E4C009F5745 /* Points.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Points.swift; sourceTree = "<group>"; };
  		3EAA86062279605D009F5745 /* SkylineCoreRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkylineCoreRenderer.swift; sourceTree = "<group>"; };
+ 		A1B2C3D30000000100000001 /* Moon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Moon.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +71,7 @@
  				3EAA86062279605D009F5745 /* SkylineCoreRenderer.swift */,
  				3E597E0E227BA8780092CA49 /* StarryConfigSheetController.swift */,
  				3E597E10227BAE390092CA49 /* StarryDefaultsManager.swift */,
+ 				A1B2C3D30000000100000001 /* Moon.swift */,
  			);
  			path = StarryExcuseForAMacScreensaver;
  			sourceTree = "<group>";
@@ -161,6 +164,7 @@
  				3E597E12227BD9C70092CA49 /* StarryDefaultsManager.swift in Sources */,
  				3E597E0F227BA8780092CA49 /* StarryConfigSheetController.swift in Sources */,
  				3EAA86072279605D009F5745 /* SkylineCoreRenderer.swift in Sources */,
+ 				A1B2C3D40000000100000001 /* Moon.swift in Sources */,
  			);
  			runOnlyForDeploymentPostprocessing = 0;
  		};

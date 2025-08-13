@@ -11,6 +11,7 @@
 import Foundation
 import os
 import ScreenSaver
+import CoreGraphics
 
 class SkylineCoreRenderer {
     let skyline: Skyline
@@ -28,7 +29,8 @@ class SkylineCoreRenderer {
         if (traceEnabled) {
             os_log("drawing single frame", log: self.log, type: .debug)
         }
-        //drawTestLine(context: context)
+        // Order: moon, stars, buildings, flasher
+        drawMoon(context: context)
         drawStars(context: context)
         drawBuildings(context: context)
         drawFlasher(context: context)
@@ -61,6 +63,52 @@ class SkylineCoreRenderer {
         }
         
         self.drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
+    }
+    
+    // MARK: - Moon Rendering
+    
+    func drawMoon(context: CGContext) {
+        guard let moon = skyline.getMoon() else { return }
+        let center = moon.currentCenter()
+        let r = CGFloat(moon.radius)
+        let fraction = moon.illuminatedFraction
+        
+        let lightGray = CGColor(gray: 0.85, alpha: 1.0)
+        let outlineGray = CGColor(gray: 0.6, alpha: 0.7)
+        context.saveGState()
+        
+        if fraction <= Moon.newMoonThreshold {
+            // Faint outline only
+            context.setStrokeColor(outlineGray)
+            context.setLineWidth(1.0)
+            context.addEllipse(in: CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r))
+            context.strokePath()
+            context.restoreGState()
+            return
+        }
+        
+        // Draw full illuminated base disc
+        context.setFillColor(lightGray)
+        let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
+        context.addEllipse(in: moonRect)
+        context.fillPath()
+        
+        if fraction >= Moon.fullMoonThreshold {
+            context.restoreGState()
+            return
+        }
+        
+        // Draw dark (shadow) disc to "punch out" correct phase
+        let d = CGFloat(moon.shadowCenterOffset)
+        let offsetSign: CGFloat = moon.waxing ? -1.0 : 1.0
+        let shadowCenterX = center.x + offsetSign * d
+        let shadowRect = CGRect(x: shadowCenterX - r, y: center.y - r, width: 2*r, height: 2*r)
+        
+        context.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
+        context.addEllipse(in: shadowRect)
+        context.fillPath()
+        
+        context.restoreGState()
     }
     
     func convertColor(color: Color) -> CGColor {
