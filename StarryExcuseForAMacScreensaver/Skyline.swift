@@ -50,7 +50,8 @@ class Skyline {
          flasherPeriod: TimeInterval = TimeInterval(2.0),
          log: OSLog,
          clearAfterDuration: TimeInterval = TimeInterval(120),
-         traceEnabled: Bool = false) throws {
+         traceEnabled: Bool = false,
+         moonTraversalSeconds: Double = 3600.0) throws {
         self.log = log
         var buildingWorkingList = [Building]()
         self.width = screenXMax
@@ -111,7 +112,8 @@ class Skyline {
         self.moon = Moon(screenWidth: screenXMax,
                          screenHeight: screenYMax,
                          buildingMaxHeight: self.buildingMaxHeight,
-                         log: log)
+                         log: log,
+                         traversalSeconds: moonTraversalSeconds)
         
         // Now safe to compute flasher position
         self.flasherPosition = getFlasherPosition()
@@ -258,15 +260,10 @@ class Skyline {
             return nil
         }
         
-        // the flasher is "on" if it has been less than one-half of a flasher period
-        // since the last time we turned on the flasher
         if (abs(self.flasherOnAt.timeIntervalSinceNow) < (self.flasherPeriod / 2)) {
             return flasherPosition
-        // the flasher is "off" it has been between one-half and one flasher period
-        // since the last time we turned on the flasher
         } else if (abs(self.flasherOnAt.timeIntervalSinceNow) < self.flasherPeriod) {
             return Point(xPos: flasherPosition.xPos, yPos: flasherPosition.yPos, color: Color(red: 0.0, green: 0.0, blue: 0.0))
-        // more than one flasher period since the last time we turned "on" the flasher? turn it on again, remember time.
         } else {
             if (traceEnabled) {
                 os_log("flasher reset",

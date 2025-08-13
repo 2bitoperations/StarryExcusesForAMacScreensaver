@@ -61,4 +61,21 @@ class StarryDefaultsManager {
             }
         }
     }
+    
+    // Moon traversal duration (minutes to cross screen). 1 .. 720 (12 hours). Default 60.
+    var moonTraversalMinutes: Int {
+        set(newValue) {
+            let clamped = max(1, min(720, newValue))
+            self.defaults.set(clamped, forKey: "MoonTraversalMinutes")
+            defaults.synchronize()
+        }
+        get {
+            let storedValue = self.defaults.integer(forKey: "MoonTraversalMinutes")
+            if storedValue >= 1 && storedValue <= 720 {
+                return storedValue
+            } else {
+                return 60
+            }
+        }
+    }
 }

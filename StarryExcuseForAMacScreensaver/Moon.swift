@@ -3,26 +3,24 @@ import CoreGraphics
 import os
 
 // Represents the moon, its phase (at Austin, TX local midnight of current day),
-// and traversal parameters for a 1-hour arc animation across the screen.
+// and traversal parameters for an arc animation across the screen whose duration
+// (full traversal) is configurable in minutes (default 60).
 //
 // Rendering approach (see SkylineCoreRenderer):
-// The visible illuminated portion is produced (currently) with an orthographic-style
-// elliptical terminator.
+// Orthographic-style ellipse terminator (no outline stroke; the two filled regions
+// define the moon including full/new phases).
 //
 // Direction logic:
-//  - We no longer randomize the horizontal travel direction.
 //  - If the reference latitude is >= 0 (northern hemisphere or equator) the moon
 //    moves left -> right.
 //  - If latitude < 0 (southern hemisphere) it moves right -> left.
-//  - For now the reference location is Austin, TX, USA (latitude ~ 30.2672).
-//    This will be made configurable later.
 struct Moon {
-    // Static / configuration-ish (will make configurable later)
+    // Static / configuration-ish (will be made user-configurable later)
     static let synodicMonthDays: Double = 29.530588853
-    static let referenceLatitude: Double = 30.2672 // Austin, TX (positive => northern hemisphere)
+    static let referenceLatitude: Double = 30.2672 // Austin, TX
     
     static let newMoonEpoch: Date = {
-        // Known New Moon: 2000-01-06 18:14:00 UTC (approx) often used as epoch.
+        // Known New Moon: 2000-01-06 18:14:00 UTC (approx)
         var comps = DateComponents()
         comps.year = 2000
         comps.month = 1
@@ -38,7 +36,7 @@ struct Moon {
     let radius: Int
     let arcAmplitude: Double
     let arcBaseY: Double
-    let hourCycleSeconds: Double = 3600.0
+    let traversalSeconds: Double       // full pass duration
     let screenWidth: Int
     let screenHeight: Int
     
@@ -51,21 +49,23 @@ struct Moon {
          buildingMaxHeight: Int,
          log: OSLog,
          minRadius: Int = 15,
-         maxRadius: Int = 60) {
+         maxRadius: Int = 60,
+         traversalSeconds: Double = 3600.0) {
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
+        self.traversalSeconds = traversalSeconds
         
-        // Direction based on hemisphere (reference latitude)
+        // Direction based on hemisphere
         self.movingLeftToRight = Moon.referenceLatitude >= 0.0
         
-        // Radius selection (bounded, deterministic range)
+        // Radius selection
         let maxRLimitFromScreen = Int(0.12 * Double(min(screenWidth, screenHeight)))
         let allowedMaxR = min(maxRadius, maxRLimitFromScreen)
         let minR = minRadius
         let chosenRadiusRangeUpper = max(minR, allowedMaxR)
         self.radius = Int.random(in: minR...chosenRadiusRangeUpper)
         
-        // Arc base Y (above buildings)
+        // Arc base Y
         let minBaseUnclamped = buildingMaxHeight + self.radius + 10
         let minBase = max(minBaseUnclamped, self.radius + 10)
         let maxBaseCandidate = minBase + Int(0.10 * Double(screenHeight))
@@ -74,30 +74,30 @@ struct Moon {
         let chosenBase = (baseUpper >= minBase) ? Int.random(in: minBase...baseUpper) : minBase
         self.arcBaseY = Double(chosenBase)
         
-        // Arc amplitude (limit so apex stays on screen)
+        // Arc amplitude
         let verticalHeadroom = Double(screenHeight - self.radius) - self.arcBaseY - 10.0
         let suggested = 0.15 * Double(screenHeight)
         let minAmplitude = 20.0
         let amplitudePreClamp = max(minAmplitude, suggested)
         self.arcAmplitude = min(amplitudePreClamp, max(0.0, verticalHeadroom))
         
-        // Phase at Austin local midnight
+        // Phase
         let phaseDate = Moon.midnightInAustin()
         let (fraction, waxingFlag) = Moon.computePhase(on: phaseDate)
         self.illuminatedFraction = fraction
         self.waxing = waxingFlag
         
-        // Logging (kept simple)
-        os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@",
+        os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@ duration=%.0fs",
                log: log,
                type: .info,
                self.radius,
                self.illuminatedFraction,
                self.waxing ? "true" : "false",
-               self.movingLeftToRight ? "L->R" : "R->L")
+               self.movingLeftToRight ? "L->R" : "R->L",
+               self.traversalSeconds)
     }
     
-    // Compute current center position based on real local time mapped to a repeating hour cycle.
+    // Current center position based on real local time mapped into traversal period.
     func currentCenter(now: Date = Date()) -> CGPoint {
         let calendar = Calendar(identifier: .gregorian)
         let localTZ = TimeZone.current
@@ -106,8 +106,8 @@ struct Moon {
         let minuteSeconds = Double((comps.minute ?? 0) * 60)
         let secondSeconds = Double(comps.second ?? 0)
         let totalSeconds = hourSeconds + minuteSeconds + secondSeconds
-        let loopSeconds = totalSeconds.truncatingRemainder(dividingBy: hourCycleSeconds)
-        let progress = loopSeconds / hourCycleSeconds  // 0 -> 1 over an hour
+        let loopSeconds = totalSeconds.truncatingRemainder(dividingBy: traversalSeconds)
+        let progress = loopSeconds / traversalSeconds  // 0 -> 1 over configured period
         
         let usableWidth = Double(screenWidth - 2 * radius)
         let baseX = Double(radius)

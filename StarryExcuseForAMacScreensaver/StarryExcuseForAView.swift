@@ -166,13 +166,15 @@ class StarryExcuseForAView: ScreenSaverView {
 
     fileprivate func initSkyline(xMax: Int, yMax: Int) {
         do {
+            let traversalMinutes = defaultsManager.moonTraversalMinutes
             self.skyline = try Skyline(screenXMax: xMax,
                                        screenYMax: yMax,
                                        buildingHeightPercentMax: self.defaultsManager.buildingHeight,
                                        starsPerUpdate: self.defaultsManager.starsPerUpdate,
                                        log: self.log!,
                                        clearAfterDuration: TimeInterval(self.defaultsManager.secsBetweenClears),
-                                       traceEnabled: traceEnabled)
+                                       traceEnabled: traceEnabled,
+                                       moonTraversalSeconds: Double(traversalMinutes) * 60.0)
             self.skylineRenderer = SkylineCoreRenderer(skyline: self.skyline!, log: self.log!, traceEnabled: self.traceEnabled)
         } catch {
             let msg = "\(error)"
