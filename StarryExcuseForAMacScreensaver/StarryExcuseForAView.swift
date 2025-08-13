@@ -12,6 +12,7 @@ import ScreenSaver
 import Foundation
 import os
 import CoreGraphics
+import ScreenCaptureKit
 
 class StarryExcuseForAView: ScreenSaverView {
     private lazy var configSheetController: StarryConfigSheetController = StarryConfigSheetController(windowNibName: "StarryExcusesConfigSheet")
@@ -93,7 +94,22 @@ class StarryExcuseForAView: ScreenSaverView {
     }
 
     override func startAnimation() {
-        let image = screenshot()
+        super.startAnimation()
+        Task {
+            await self.setupAnimation()
+        }
+    }
+
+    override func stopAnimation() {
+        super.stopAnimation()
+    }
+
+    private func setupAnimation() async {
+        guard let image = await screenshot() else {
+            os_log("Failed to get screenshot", log: self.log!, type: .error)
+            return
+        }
+        
         let context = CGContext(data: nil, width: Int(frame.width), height: Int(frame.height), bitsPerComponent: image.bitsPerComponent, bytesPerRow: image.bytesPerRow, space: image.colorSpace!, bitmapInfo: image.alphaInfo.rawValue)!
         self.size = CGSize.init(width: context.width, height: context.height)
         self.currentContext = context
@@ -108,27 +124,39 @@ class StarryExcuseForAView: ScreenSaverView {
         
         self.image = context.makeImage()!
         
-        self.imageView = NSImageView(frame: NSRect(origin: CGPoint.init(), size: self.size!))
-        self.imageView?.image = NSImage(cgImage: image, size: self.size!)
-        addSubview(imageView!)
-        os_log("leaving startAnimation %d %d", log: self.log!,
+        await MainActor.run {
+            self.imageView = NSImageView(frame: NSRect(origin: CGPoint.init(), size: self.size!))
+            self.imageView?.image = NSImage(cgImage: image, size: self.size!)
+            addSubview(imageView!)
+        }
+        os_log("leaving setupAnimation %d %d", log: self.log!,
                context.width, context.height)
-        super.startAnimation()
+    }
+
+    func screenshot() async -> CGImage? {
+        guard let display = self.window?.screen?.displayID else {
+            os_log("Could not get display from screen", log: self.log!, type: .error)
+            return nil
+        }
         
-    }
-
-    override func stopAnimation() {
-        super.stopAnimation()
-    }
-
-    func screenshot() -> CGImage {
-        let windows = CGWindowListCopyWindowInfo(CGWindowListOption.optionOnScreenOnly, kCGNullWindowID) as! [[String: Any]]
-        let loginwindow = windows.first(where: { (element) -> Bool in
-            return element[kCGWindowOwnerName as String] as! String == "loginwindow"
-        })
-        let loginwindowID = (loginwindow != nil) ? CGWindowID(loginwindow![kCGWindowNumber as String] as! Int) : kCGNullWindowID
-        return CGWindowListCreateImage(CGDisplayBounds(self.window?.screen?.deviceDescription[NSDeviceDescriptionKey(rawValue: "NSScreenNumber")] as! CGDirectDisplayID),
-                                       CGWindowListOption.optionOnScreenBelowWindow, loginwindowID, CGWindowImageOption.nominalResolution)!
+        let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard let displayToCapture = content?.displays.first(where: { $0.displayID == display }) else {
+            os_log("Could not find display to capture", log: self.log!, type: .error)
+            return nil
+        }
+        
+        let filter = SCContentFilter(display: displayToCapture, excludingWindows: [])
+        let config = SCStreamConfiguration()
+        config.width = displayToCapture.width
+        config.height = displayToCapture.height
+        config.showsCursor = false
+        
+        do {
+            return try await SCScreenshotManager.captureScreenshot(contentFilter: filter, configuration: config)
+        } catch {
+            os_log("Error capturing screenshot: %{public}@", log: self.log!, type: .error, error.localizedDescription)
+            return nil
+        }
     }
 
     func settingsChanged() {
