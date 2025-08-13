@@ -109,6 +109,7 @@ class StarryExcuseForAView: ScreenSaverView {
             os_log("Failed to get screenshot", log: self.log!, type: .error)
             return
         }
+        os_log("Past screenshot", log: self.log!, type: .error)
         
         let context = CGContext(data: nil, width: Int(frame.width), height: Int(frame.height), bitsPerComponent: image.bitsPerComponent, bytesPerRow: image.bytesPerRow, space: image.colorSpace!, bitmapInfo: image.alphaInfo.rawValue)!
         self.size = CGSize.init(width: context.width, height: context.height)
@@ -134,14 +135,16 @@ class StarryExcuseForAView: ScreenSaverView {
     }
 
     func screenshot() async -> CGImage? {
+        os_log("Fetching display id", log: self.log!, type: .error)
         guard let displayID = self.window?.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
             os_log("Could not get display ID from screen", log: self.log!, type: .error)
             return nil
         }
+        os_log("Identified display ID %s", log: self.log!, type: .error, displayID)
         
         let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let displayToCapture = content?.displays.first(where: { $0.displayID == displayID }) else {
-            os_log("Could not find display to capture", log: self.log!, type: .error)
+            os_log("Could not find display to capture - looking for id %s", log: self.log!, type: .error, displayID)
             return nil
         }
         
