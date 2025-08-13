@@ -105,18 +105,13 @@ class StarryExcuseForAView: ScreenSaverView {
     }
 
     private func setupAnimation() async {
-        guard let image = await screenshot() else {
-            os_log("Failed to get screenshot", log: self.log!, type: .error)
-            return
-        }
-        os_log("Past screenshot", log: self.log!, type: .error)
-        
-        let context = CGContext(data: nil, width: Int(frame.width), height: Int(frame.height), bitsPerComponent: image.bitsPerComponent, bytesPerRow: image.bytesPerRow, space: image.colorSpace!, bitmapInfo: image.alphaInfo.rawValue)!
+        os_log("starting setupAnimation", log: self.log!, type: .info)
+        let context = CGContext(data: nil, width: Int(frame.width), height: Int(frame.height), bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue).rawValue)!
         self.size = CGSize.init(width: context.width, height: context.height)
         self.currentContext = context
+        os_log("context created", log: self.log!, type: .info)
         
         context.interpolationQuality = .high
-        context.draw(image, in: CGRect(x: 0, y: 0, width: Int(frame.width), height: Int(frame.height)))
         
         if (self.skyline == nil) {
             clearScreen(contextOpt: context)
@@ -124,38 +119,15 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         self.image = context.makeImage()!
+        os_log("image created", log: self.log!, type: .info)
         
         await MainActor.run {
             self.imageView = NSImageView(frame: NSRect(origin: CGPoint.init(), size: self.size!))
-            self.imageView?.image = NSImage(cgImage: image, size: self.size!)
+            self.imageView?.image = NSImage(cgImage: image!, size: self.size!)
             addSubview(imageView!)
         }
-        os_log("leaving setupAnimation %d %d", log: self.log!,
+        os_log("leaving setupAnimation %d %d", log: self.log!, type: .info,
                context.width, context.height)
-    }
-
-    func screenshot() async -> CGImage? {
-        os_log("Fetching display id", log: self.log!, type: .error)
-        let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        
-        guard let window = self.window,
-              let displayToCapture = content?.displays.first(where: { $0.frame.contains(window.frame) }) else {
-            os_log("Could not find display to capture", log: self.log!, type: .error)
-            return nil
-        }
-        
-        let filter = SCContentFilter(display: displayToCapture, excludingWindows: [])
-        let config = SCStreamConfiguration()
-        config.width = displayToCapture.width
-        config.height = displayToCapture.height
-        config.showsCursor = false
-        
-        do {
-            return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-        } catch {
-            os_log("Error capturing screenshot: %{public}@", log: self.log!, type: .error, error.localizedDescription)
-            return nil
-        }
     }
 
     func settingsChanged() {
