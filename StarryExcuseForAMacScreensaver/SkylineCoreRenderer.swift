@@ -173,21 +173,12 @@ class SkylineCoreRenderer {
         context.clip()
         
         // Determine which side rectangle to use.
-        // For crescents (isDarkRegion == false):
-        //   illuminated side = lightOnRight ? right half : left half
-        // For gibbous dark overlay (isDarkRegion == true):
-        //   dark side = opposite of illuminated side.
         let illuminatedRightSide = lightOnRight
         let targetRightSide = isDarkRegion ? !illuminatedRightSide : illuminatedRightSide
         
         let r = circleRect.width / 2.0
         let centerX = circleRect.midX
-        let rectX: CGFloat
-        if targetRightSide {
-            rectX = centerX
-        } else {
-            rectX = centerX - r
-        }
+        let rectX: CGFloat = targetRightSide ? centerX : centerX - r
         let sideRect = CGRect(x: rectX,
                               y: circleRect.minY,
                               width: r,
@@ -200,8 +191,8 @@ class SkylineCoreRenderer {
         
         context.addPath(path)
         context.setFillColor(fillColor)
-        context.setFillRule(.evenOdd)
-        context.fillPath()
+        // Use .eoFill drawing mode for even-odd rule
+        context.drawPath(using: .eoFill)
         
         context.restoreGState()
     }
