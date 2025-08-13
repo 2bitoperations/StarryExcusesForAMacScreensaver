@@ -4,6 +4,11 @@ import os
 
 // Represents the moon, its phase (at Austin, TX local midnight of current day),
 // and traversal parameters for a 1-hour arc animation across the screen.
+//
+// NOTE: Rendering no longer relies on overlapping circle area math;
+// the renderer now uses a vertical chord approximation to create a
+// visually familiar phase silhouette. We keep the illuminatedFraction
+// and waxing state only.
 struct Moon {
     // Static / configuration-ish (will make configurable later)
     static let synodicMonthDays: Double = 29.530588853
@@ -31,12 +36,6 @@ struct Moon {
     // Phase
     let illuminatedFraction: Double   // 0.0 new ... 1.0 full
     let waxing: Bool
-    let shadowCenterOffset: Double    // distance between centers of illuminated base disc and dark (shadow) disc
-    // (0 == fully dark, 2r == fully illuminated)
-    
-    // Faint outline threshold
-    static let newMoonThreshold: Double = 0.02
-    static let fullMoonThreshold: Double = 0.98
     
     init(screenWidth: Int,
          screenHeight: Int,
@@ -79,28 +78,12 @@ struct Moon {
         self.illuminatedFraction = fraction
         self.waxing = waxingFlag
         
-        // Shadow center offset
-        let desiredShadowOffset: Double
-        if fraction <= Moon.newMoonThreshold {
-            desiredShadowOffset = 0.0
-        } else if fraction >= Moon.fullMoonThreshold {
-            desiredShadowOffset = Double(2 * self.radius)
-        } else {
-            // Break complex call into steps to aid compiler
-            let f = fraction
-            let r = Double(self.radius)
-            let solved = Moon.solveShadowOffset(forFraction: f, radius: r)
-            desiredShadowOffset = solved
-        }
-        self.shadowCenterOffset = desiredShadowOffset
-        
-        // Logging (kept simple to avoid complex interpolation)
+        // Logging (kept simple)
         os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@",
                log: log, type: .info,
                self.radius, self.illuminatedFraction, self.waxing ? "true" : "false")
-        os_log("Moon offset=%.2f dir=%{public}@",
-               log: log, type: .info,
-               self.shadowCenterOffset, self.movingLeftToRight ? "L->R" : "R->L")
+        os_log("Moon dir=%{public}@", log: log, type: .info,
+               self.movingLeftToRight ? "L->R" : "R->L")
     }
     
     // Compute current center position based on real local time mapped to a repeating hour cycle.
@@ -154,7 +137,7 @@ struct Moon {
         let rawAge = daysSinceEpoch.truncatingRemainder(dividingBy: synodicMonthDays)
         let normalizedAge = rawAge < 0 ? rawAge + synodicMonthDays : rawAge
         
-        // Smaller sub-expressions for compiler friendliness
+        // fraction = (1 - cos θ)/2 with θ progressing 0..π from new to full
         let cyclePortion = normalizedAge / synodicMonthDays
         let phaseAngle = 2.0 * Double.pi * cyclePortion
         let cosine = cos(phaseAngle)
@@ -163,39 +146,5 @@ struct Moon {
         let waxing = normalizedAge < (synodicMonthDays / 2.0)
         let fraction = min(max(rawFraction, 0.0), 1.0)
         return (fraction, waxing)
-    }
-    
-    // Solve distance d between centers (0...2r) so that overlap area gives illuminated fraction f
-    // Illuminated fraction f = 1 - overlap/(π r²)
-    // Binary search for d.
-    private static func solveShadowOffset(forFraction f: Double, radius r: Double) -> Double {
-        let targetOverlapArea = (1.0 - f) * Double.pi * r * r
-        var low = 0.0
-        var high = 2.0 * r
-        for _ in 0..<40 {
-            let mid = 0.5 * (low + high)
-            let overlap = circleOverlapArea(r: r, d: mid)
-            if overlap > targetOverlapArea {
-                low = mid
-            } else {
-                high = mid
-            }
-        }
-        return 0.5 * (low + high)
-    }
-    
-    // Area of overlap between two circles of equal radius r separated by distance d (0 <= d <= 2r)
-    private static func circleOverlapArea(r: Double, d: Double) -> Double {
-        if d <= 0 { return Double.pi * r * r }
-        if d >= 2 * r { return 0.0 }
-        // Break into smaller intermediate values
-        let halfChordRatio = d / (2.0 * r)
-        let angleComponent = acos(halfChordRatio)
-        let part1 = 2.0 * r * r * angleComponent
-        let underRoot = max(0.0, 4.0 * r * r - d * d)
-        let rootTerm = sqrt(underRoot)
-        let part2 = 0.5 * d * rootTerm
-        let area = part1 - part2
-        return area
     }
 }
