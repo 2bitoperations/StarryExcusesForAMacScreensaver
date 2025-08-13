@@ -1,4 +1,5 @@
 //
+//
 //  SkylineCoreRenderer.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -64,15 +65,23 @@ class SkylineCoreRenderer {
         self.drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
     }
     
-    // MARK: - Moon Rendering (curved terminator via overlapping circle)
+    // MARK: - Moon Rendering (orthographic projection with elliptical terminator)
     //
-    // We draw a full light disc, then overlay a dark disc of the same radius
-    // horizontally offset based on illuminated fraction:
-    //   offset d = 2 * r * f   (f in [0,1])
-    // Waxing: dark disc shifted left  (illumination on right)
-    // Waning: dark disc shifted right (illumination on left)
-    // This produces a circular (curved) terminator with correct qualitative shape.
-    // Always stroke limb after fills. Stars are underneath (drawn earlier).
+    // We approximate an orthographic view of a sun‑lit sphere:
+    //  - The lunar limb is a circle of radius r.
+    //  - The day/night terminator projects to an ellipse centered on the disc.
+    //  - Major (vertical) axis: 2r. Minor (horizontal) axis: 2r * |cos θ|.
+    //    Where cos θ = 1 - 2f and f is illuminatedFraction in [0,1].
+    //    (Because f = (1 - cos θ)/2 => cos θ = 1 - 2f.)
+    //  - For f < 0.5 (crescent): illuminated region is the portion of the circle
+    //    OUTSIDE the ellipse on the illuminated side.
+    //  - For f > 0.5 (gibbous): dark region is the portion of the circle
+    //    OUTSIDE the ellipse on the dark side.
+    // We construct these shapes using an even‑odd fill combining the ellipse
+    // with a side rectangle, under a clip of the lunar circle, avoiding
+    // gradients for a crisp 80's monochrome feel.
+    //
+    // Thresholds avoid degenerate geometry near new/full.
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon() else { return }
         let center = moon.currentCenter()
@@ -83,40 +92,125 @@ class SkylineCoreRenderer {
         let darkGray  = CGColor(gray: 0.08, alpha: 1.0)
         let outlineGray = CGColor(gray: 0.6, alpha: 1.0)
         
-        context.saveGState()
+        // Tolerances for pure new/full handling
+        let newThreshold: CGFloat = 0.005
+        let fullThreshold: CGFloat = 0.995
         
+        context.saveGState()
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         
-        // If there is any illumination, start with full light disc
-        if f > 0.0 {
+        if f <= newThreshold {
+            // Nearly new: dark disc + outline
+            context.setFillColor(darkGray)
+            context.addEllipse(in: moonRect)
+            context.fillPath()
+            strokeLimb(context: context, rect: moonRect, outline: outlineGray)
+            context.restoreGState()
+            return
+        } else if f >= fullThreshold {
+            // Nearly full: light disc + outline
             context.setFillColor(lightGray)
             context.addEllipse(in: moonRect)
             context.fillPath()
-        } else {
-            // Pure new moon: fill dark disc (will get outline below)
+            strokeLimb(context: context, rect: moonRect, outline: outlineGray)
+            context.restoreGState()
+            return
+        }
+        
+        // Compute cosine of phase angle
+        let cosTheta = 1.0 - 2.0 * f  // matches f = (1 - cosθ)/2
+        let minorScale = abs(cosTheta) // in [0,1]
+        let ellipseWidth = max(0.0001, 2.0 * r * minorScale)
+        let ellipseHeight = 2.0 * r   // vertical major axis
+        let ellipseRect = CGRect(x: center.x - ellipseWidth / 2.0,
+                                 y: center.y - r,
+                                 width: ellipseWidth,
+                                 height: ellipseHeight)
+        
+        if f < 0.5 {
+            // Crescent: start with dark disc, add illuminated region (outside ellipse)
             context.setFillColor(darkGray)
             context.addEllipse(in: moonRect)
             context.fillPath()
-        }
-        
-        // If not full, overlay dark disc to carve the shadow portion
-        if f < 1.0 {
-            let d = 2.0 * r * f   // simple proportional offset
-            let offsetSign: CGFloat = moon.waxing ? -1.0 : 1.0
-            let shadowCenterX = center.x + offsetSign * d
-            let shadowRect = CGRect(x: shadowCenterX - r, y: center.y - r, width: 2*r, height: 2*r)
-            context.setFillColor(darkGray)
-            context.addEllipse(in: shadowRect)
+            
+            drawOutsideEllipseSide(context: context,
+                                   circleRect: moonRect,
+                                   ellipseRect: ellipseRect,
+                                   fillColor: lightGray,
+                                   lightOnRight: moon.waxing)
+        } else {
+            // Gibbous: start with full light disc, add small dark region (outside ellipse)
+            context.setFillColor(lightGray)
+            context.addEllipse(in: moonRect)
             context.fillPath()
+            
+            drawOutsideEllipseSide(context: context,
+                                   circleRect: moonRect,
+                                   ellipseRect: ellipseRect,
+                                   fillColor: darkGray,
+                                   lightOnRight: moon.waxing,
+                                   isDarkRegion: true)
         }
         
-        // Stroke lunar limb
-        context.setStrokeColor(outlineGray)
-        context.setLineWidth(1.0)
-        context.addEllipse(in: moonRect)
-        context.strokePath()
+        // Outline
+        strokeLimb(context: context, rect: moonRect, outline: outlineGray)
+        context.restoreGState()
+    }
+    
+    // Draw region of the circle that lies outside the ellipse on one side.
+    // Uses even-odd fill: ellipse + side rectangle clipped to circle.
+    // lightOnRight indicates where illumination resides.
+    // If isDarkRegion is true, we are adding shadow for gibbous phases (opposite side).
+    private func drawOutsideEllipseSide(context: CGContext,
+                                        circleRect: CGRect,
+                                        ellipseRect: CGRect,
+                                        fillColor: CGColor,
+                                        lightOnRight: Bool,
+                                        isDarkRegion: Bool = false) {
+        context.saveGState()
+        // Clip to the lunar disc boundary.
+        context.addEllipse(in: circleRect)
+        context.clip()
+        
+        // Determine which side rectangle to use.
+        // For crescents (isDarkRegion == false):
+        //   illuminated side = lightOnRight ? right half : left half
+        // For gibbous dark overlay (isDarkRegion == true):
+        //   dark side = opposite of illuminated side.
+        let illuminatedRightSide = lightOnRight
+        let targetRightSide = isDarkRegion ? !illuminatedRightSide : illuminatedRightSide
+        
+        let r = circleRect.width / 2.0
+        let centerX = circleRect.midX
+        let rectX: CGFloat
+        if targetRightSide {
+            rectX = centerX
+        } else {
+            rectX = centerX - r
+        }
+        let sideRect = CGRect(x: rectX,
+                              y: circleRect.minY,
+                              width: r,
+                              height: circleRect.height)
+        
+        // Build even-odd path: ellipse + side rectangle
+        let path = CGMutablePath()
+        path.addEllipse(in: ellipseRect)
+        path.addRect(sideRect)
+        
+        context.addPath(path)
+        context.setFillColor(fillColor)
+        context.setFillRule(.evenOdd)
+        context.fillPath()
         
         context.restoreGState()
+    }
+    
+    private func strokeLimb(context: CGContext, rect: CGRect, outline: CGColor) {
+        context.setStrokeColor(outline)
+        context.setLineWidth(1.0)
+        context.addEllipse(in: rect)
+        context.strokePath()
     }
     
     func convertColor(color: Color) -> CGColor {
