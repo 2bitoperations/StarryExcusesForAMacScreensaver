@@ -12,7 +12,6 @@ import ScreenSaver
 import Foundation
 import os
 import CoreGraphics
-import ScreenCaptureKit
 
 class StarryExcuseForAView: ScreenSaverView {
     private lazy var configSheetController: StarryConfigSheetController = StarryConfigSheetController(windowNibName: "StarryExcusesConfigSheet")
