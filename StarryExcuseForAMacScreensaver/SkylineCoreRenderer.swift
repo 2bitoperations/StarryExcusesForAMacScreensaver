@@ -24,24 +24,13 @@ class SkylineCoreRenderer {
     private var lastMoonRect: CGRect?
     
     // MARK: - Moon Debug / Instrumentation Flags
-    
-    // Toggle master moon debug instrumentation.
-    // Set to false to disable all added logging / overlays.
-    private let debugMoon = true
-    
-    // Log geometry every N frames (set to 1 to log every frame).
-    private let debugMoonLogEveryNFrames = 30
-    
-    // Draw diagnostic overlays (ellipse outline, half-plane boundary, center line).
-    private let debugMoonDrawOverlays = true
-    
-    // Disable antialiasing during crescent/gibbous overlay construction (helps isolate seam issues).
+    // Set these to true only if troubleshooting; defaults chosen for clean output.
+    private let debugMoon = false                // master toggle for logging
+    private let debugMoonLogEveryNFrames = 60    // log cadence
+    private let debugMoonDrawOverlays = false    // draw geometry overlays (ellipse, center line)
     private let debugDisableAAOverlayPhase = false
+    private let debugDrawFinalEllipseOutline = false
     
-    // Draw an outline for the carved (terminator) ellipse AFTER operations to see final shape.
-    private let debugDrawFinalEllipseOutline = true
-    
-    // Keep a frame counter to coordinate periodic logging.
     private var frameCounter: Int = 0
     
     init(skyline: Skyline, log: OSLog, traceEnabled: Bool) {
@@ -54,7 +43,7 @@ class SkylineCoreRenderer {
         if (traceEnabled) {
             os_log("drawing single frame", log: self.log, type: .debug)
         }
-        frameCounter &+= 1 // wraps on overflow
+        frameCounter &+= 1
         // Stars first so the moon & buildings overwrite them (no star over the moon).
         drawStars(context: context)
         drawMoon(context: context)
@@ -84,21 +73,18 @@ class SkylineCoreRenderer {
     }
     
     func drawFlasher(context: CGContext) {
-        guard let flasher = skyline.getFlasher() else {
-            return
-        }
+        guard let flasher = skyline.getFlasher() else { return }
         self.drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
     }
     
     // MARK: - Moon Rendering (orthographic-inspired terminator)
     //
-    // Debug instrumentation added to investigate vertical seam (dark center line):
-    //  - Periodic logging of geometric parameters.
-    //  - Optional removal of antialiasing during overlay phase.
-    //  - Diagnostic overlays: ellipse outline, half-plane rectangle boundary, center line.
-    //
-    // Improvement already present:
-    //  - Minimum ellipse width clamp (>= 2 px) to reduce sub-pixel flicker.
+    // Seam fix:
+    // Previous method (fill half-plane + carve ellipse) overdrew at the vertical
+    // center line, causing a persistent or flickering dark chord. Replaced with a
+    // single even-odd fill constructing only the desired sliver (crescent or
+    // gibbous shadow) using: Path = Ellipse + SideRectangle, fill with .eoFill
+    // under a clip to the lunar disc.
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon() else { return }
         let center = moon.currentCenter()
@@ -109,15 +95,14 @@ class SkylineCoreRenderer {
         let darkGray  = CGColor(gray: 0.08, alpha: 1.0)
         let outlineGray = CGColor(gray: 0.6, alpha: 1.0)
         
-        // Tolerances for pure new/full handling
+        // Thresholds for pure new/full handling
         let newThreshold: CGFloat = 0.005
         let fullThreshold: CGFloat = 0.995
         
-        // Erase previous moon (if any) to prevent trail.
+        // Erase previous moon (if any) to prevent trail artifacts.
         if let prev = lastMoonRect {
             context.saveGState()
             context.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
-            // Slight inflate for antialiased edges.
             context.fill(prev.insetBy(dx: -1, dy: -1))
             context.restoreGState()
         }
@@ -143,11 +128,11 @@ class SkylineCoreRenderer {
             return
         }
         
-        // cosθ = 1 - 2f (θ in [0, π])
+        // Phase geometry
         let cosTheta = 1.0 - 2.0 * f
-        let minorScale = abs(cosTheta) // ellipse semi-minor / radius
+        let minorScale = abs(cosTheta)
         let rawEllipseWidth = 2.0 * r * minorScale
-        let ellipseWidth = max(2.0, rawEllipseWidth) // clamp
+        let ellipseWidth = max(2.0, rawEllipseWidth) // clamp min width
         let ellipseHeight = 2.0 * r
         let ellipseRect = CGRect(x: center.x - ellipseWidth / 2.0,
                                  y: center.y - r,
@@ -173,43 +158,37 @@ class SkylineCoreRenderer {
                    center.x)
         }
         
-        // Base disc
-        if isCrescent {
-            context.setFillColor(darkGray)
-        } else {
-            context.setFillColor(lightGray)
-        }
+        // Base disc (dark for crescent, light for gibbous)
+        context.setFillColor(isCrescent ? darkGray : lightGray)
         context.addEllipse(in: moonRect)
         context.fillPath()
         
-        // Overlay (crescent or gibbous shadow)
         if debugDisableAAOverlayPhase {
             context.saveGState()
             context.setAllowsAntialiasing(false)
             context.setShouldAntialias(false)
         }
         
+        // Draw sliver (crescent light or gibbous dark) using single even-odd fill.
         if isCrescent {
-            addCrescentOverlay(context: context,
-                               moonRect: moonRect,
-                               ellipseRect: ellipseRect,
-                               overlayColor: lightGray,
-                               baseColor: darkGray,
-                               lightOnRight: lightOnRight)
+            drawSliver(context: context,
+                       moonRect: moonRect,
+                       ellipseRect: ellipseRect,
+                       fillColor: lightGray,
+                       onRightSide: lightOnRight)
         } else {
-            addGibbousShadow(context: context,
-                             moonRect: moonRect,
-                             ellipseRect: ellipseRect,
-                             overlayColor: darkGray,
-                             baseColor: lightGray,
-                             lightOnRight: lightOnRight)
+            // gibbous dark sliver on dark side (opposite illuminated side)
+            drawSliver(context: context,
+                       moonRect: moonRect,
+                       ellipseRect: ellipseRect,
+                       fillColor: darkGray,
+                       onRightSide: !lightOnRight)
         }
         
         if debugDisableAAOverlayPhase {
-            context.restoreGState() // restores antialiasing state
+            context.restoreGState()
         }
         
-        // Diagnostic overlays
         if debugMoon && debugMoonDrawOverlays {
             drawMoonDebugOverlays(context: context,
                                   moonRect: moonRect,
@@ -220,96 +199,41 @@ class SkylineCoreRenderer {
         
         strokeLimb(context: context, rect: moonRect, outline: outlineGray)
         context.restoreGState()
-        
         lastMoonRect = moonRect
     }
     
-    // Crescent overlay (f < 0.5):
-    // Fill illuminated side half-plane, carve interior ellipse back to base color.
-    private func addCrescentOverlay(context: CGContext,
-                                    moonRect: CGRect,
-                                    ellipseRect: CGRect,
-                                    overlayColor: CGColor,
-                                    baseColor: CGColor,
-                                    lightOnRight: Bool) {
+    // Draw the crescent or gibbous shadow sliver on the specified side using even-odd rule.
+    // onRightSide: true means the sliver is on the right half of the disc.
+    private func drawSliver(context: CGContext,
+                            moonRect: CGRect,
+                            ellipseRect: CGRect,
+                            fillColor: CGColor,
+                            onRightSide: Bool) {
         context.saveGState()
+        // Clip to lunar disc
         context.addEllipse(in: moonRect)
         context.clip()
         
         let r = moonRect.width / 2.0
         let centerX = moonRect.midX
-        let targetRightSide = lightOnRight
-        // Slightly expand halfRect by 0.5 px across the center to promote overlap (reduces seam risk).
-        let halfRect: CGRect
-        if targetRightSide {
-            halfRect = CGRect(x: centerX - 0.5,
-                              y: moonRect.minY,
-                              width: r + 0.5,
-                              height: moonRect.height)
-        } else {
-            halfRect = CGRect(x: centerX - r - 0.5,
-                              y: moonRect.minY,
-                              width: r + 0.5,
-                              height: moonRect.height)
-        }
-        context.clip(to: halfRect)
         
-        // Fill illuminated side
-        context.setFillColor(overlayColor)
-        context.fill(halfRect)
+        // Side rectangle (no sub-pixel offsets needed)
+        let sideRect: CGRect = onRightSide
+            ? CGRect(x: centerX, y: moonRect.minY, width: r, height: moonRect.height)
+            : CGRect(x: centerX - r, y: moonRect.minY, width: r, height: moonRect.height)
         
-        // Carve interior ellipse to restore base (dark)
-        context.setFillColor(baseColor)
-        context.addEllipse(in: ellipseRect)
-        context.fillPath()
+        // Even-odd path: ellipse + side rect -> fill outside ellipse but inside side rect
+        let path = CGMutablePath()
+        path.addEllipse(in: ellipseRect)
+        path.addRect(sideRect)
         
+        context.addPath(path)
+        context.setFillColor(fillColor)
+        context.drawPath(using: .eoFill)
         context.restoreGState()
     }
     
-    // Gibbous shadow (f > 0.5):
-    // Fill dark side half-plane, carve interior ellipse back to base light color,
-    // leaving outer sliver dark.
-    private func addGibbousShadow(context: CGContext,
-                                  moonRect: CGRect,
-                                  ellipseRect: CGRect,
-                                  overlayColor: CGColor,
-                                  baseColor: CGColor,
-                                  lightOnRight: Bool) {
-        context.saveGState()
-        context.addEllipse(in: moonRect)
-        context.clip()
-        
-        let r = moonRect.width / 2.0
-        let centerX = moonRect.midX
-        let darkRightSide = !lightOnRight
-        let halfRect: CGRect
-        if darkRightSide {
-            halfRect = CGRect(x: centerX - 0.5,
-                              y: moonRect.minY,
-                              width: r + 0.5,
-                              height: moonRect.height)
-        } else {
-            halfRect = CGRect(x: centerX - r - 0.5,
-                              y: moonRect.minY,
-                              width: r + 0.5,
-                              height: moonRect.height)
-        }
-        context.clip(to: halfRect)
-        
-        // Fill dark side
-        context.setFillColor(overlayColor)
-        context.fill(halfRect)
-        
-        // Carve interior ellipse back to light
-        context.setFillColor(baseColor)
-        context.addEllipse(in: ellipseRect)
-        context.fillPath()
-        
-        context.restoreGState()
-    }
-    
-    // Draw diagnostics: ellipse outline, half-plane boundary line, center line,
-    // and optionally ellipse final outline after carving.
+    // Optional debug overlays
     private func drawMoonDebugOverlays(context: CGContext,
                                        moonRect: CGRect,
                                        ellipseRect: CGRect,
@@ -319,8 +243,9 @@ class SkylineCoreRenderer {
         context.setLineWidth(1.0)
         context.setShouldAntialias(true)
         
-        // Center vertical line (cyan)
         let centerX = moonRect.midX
+        
+        // Center line (cyan)
         let centerLine = CGMutablePath()
         centerLine.move(to: CGPoint(x: centerX, y: moonRect.minY))
         centerLine.addLine(to: CGPoint(x: centerX, y: moonRect.maxY))
@@ -328,38 +253,24 @@ class SkylineCoreRenderer {
         context.setStrokeColor(CGColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 0.6))
         context.strokePath()
         
-        // Half-plane boundary (drawn slightly thicker in magenta)
-        context.setLineWidth(1.0)
-        if isCrescent {
-            // Illuminated side
-            let right = lightOnRight
-            let boundaryX = right ? centerX - 0.5 : centerX - 0.5
-            let hp = CGMutablePath()
-            hp.move(to: CGPoint(x: boundaryX, y: moonRect.minY))
-            hp.addLine(to: CGPoint(x: boundaryX, y: moonRect.maxY))
-            context.addPath(hp)
-            context.setStrokeColor(CGColor(red: 1.0, green: 0.0, blue: 1.0, alpha: 0.6))
-            context.strokePath()
-        } else {
-            // Dark side
-            let darkRight = !lightOnRight
-            let boundaryX = darkRight ? centerX - 0.5 : centerX - 0.5
-            let hp = CGMutablePath()
-            hp.move(to: CGPoint(x: boundaryX, y: moonRect.minY))
-            hp.addLine(to: CGPoint(x: boundaryX, y: moonRect.maxY))
-            context.addPath(hp)
-            context.setStrokeColor(CGColor(red: 1.0, green: 0.0, blue: 1.0, alpha: 0.6))
-            context.strokePath()
-        }
+        // Side rectangle boundary (magenta) for active sliver side
+        let sliverOnRight = isCrescent ? lightOnRight : !lightOnRight
+        let boundaryX = sliverOnRight ? centerX : centerX
+        let hp = CGMutablePath()
+        hp.move(to: CGPoint(x: boundaryX, y: moonRect.minY))
+        hp.addLine(to: CGPoint(x: boundaryX, y: moonRect.maxY))
+        context.addPath(hp)
+        context.setStrokeColor(CGColor(red: 1.0, green: 0.0, blue: 1.0, alpha: 0.6))
+        context.strokePath()
         
         // Terminator ellipse outline (yellow)
         context.addEllipse(in: ellipseRect)
         context.setStrokeColor(CGColor(red: 1.0, green: 1.0, blue: 0.0, alpha: 0.8))
         context.strokePath()
         
-        // Final ellipse outline (optional separate color)
+        // Final ellipse outline (optional)
         if debugDrawFinalEllipseOutline {
-            context.addEllipse(in: ellipseRect.insetBy(dx: 0.0, dy: 0.0))
+            context.addEllipse(in: ellipseRect)
             context.setStrokeColor(CGColor(red: 0.0, green: 1.0, blue: 0.0, alpha: 0.4))
             context.strokePath()
         }
