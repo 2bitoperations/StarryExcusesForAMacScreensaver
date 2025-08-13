@@ -20,6 +20,9 @@ class SkylineCoreRenderer {
     let starSize = 1
     let traceEnabled: Bool
     
+    // Track previous moon bounds so we can erase it and avoid a trail.
+    private var lastMoonRect: CGRect?
+    
     init(skyline: Skyline, log: OSLog, traceEnabled: Bool) {
         self.skyline = skyline
         self.log = log
@@ -81,7 +84,9 @@ class SkylineCoreRenderer {
     // with a side rectangle, under a clip of the lunar circle, avoiding
     // gradients for a crisp 80's monochrome feel.
     //
-    // Thresholds avoid degenerate geometry near new/full.
+    // Trail removal:
+    //   Before drawing the new moon each frame, we fill the previous moon's bounding
+    //   rectangle with black to erase the prior moon (preventing a trail artifact).
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon() else { return }
         let center = moon.currentCenter()
@@ -96,6 +101,15 @@ class SkylineCoreRenderer {
         let newThreshold: CGFloat = 0.005
         let fullThreshold: CGFloat = 0.995
         
+        // Erase previous moon (if any) to prevent trail.
+        if let prev = lastMoonRect {
+            context.saveGState()
+            context.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
+            // Slightly inflate to cover antialiased edges.
+            context.fill(prev.insetBy(dx: -1, dy: -1))
+            context.restoreGState()
+        }
+        
         context.saveGState()
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         
@@ -106,6 +120,7 @@ class SkylineCoreRenderer {
             context.fillPath()
             strokeLimb(context: context, rect: moonRect, outline: outlineGray)
             context.restoreGState()
+            lastMoonRect = moonRect
             return
         } else if f >= fullThreshold {
             // Nearly full: light disc + outline
@@ -114,6 +129,7 @@ class SkylineCoreRenderer {
             context.fillPath()
             strokeLimb(context: context, rect: moonRect, outline: outlineGray)
             context.restoreGState()
+            lastMoonRect = moonRect
             return
         }
         
@@ -155,6 +171,9 @@ class SkylineCoreRenderer {
         // Outline
         strokeLimb(context: context, rect: moonRect, outline: outlineGray)
         context.restoreGState()
+        
+        // Update last drawn rect
+        lastMoonRect = moonRect
     }
     
     // Draw region of the circle that lies outside the ellipse on one side.
