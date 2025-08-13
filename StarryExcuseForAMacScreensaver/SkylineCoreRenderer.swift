@@ -71,11 +71,13 @@ class SkylineCoreRenderer {
         let newThreshold: CGFloat = 0.005
         let fullThreshold: CGFloat = 0.995
         
-        // Erase last moon rect (slightly expanded)
+        // Erase last moon area with a circular (elliptical) clear instead of a square to avoid box artifacts
         if let prev = lastMoonRect {
             context.saveGState()
+            let clearRect = prev.insetBy(dx: -1, dy: -1)
             context.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
-            context.fill(prev.insetBy(dx: -1, dy: -1))
+            context.addEllipse(in: clearRect)
+            context.fillPath()
             context.restoreGState()
         }
         
