@@ -1,10 +1,8 @@
 import Cocoa
 import CoreGraphics
 
-// Lightweight preview renderer for the configuration sheet.
-// Renders: background, some random stars, simple building silhouettes, and the moon
-// with current configuration (approximation only). We keep the logic aligned
-// with SkylineCoreRenderer so that edge smoothness and brightness behavior match.
+// Configuration sheet preview renderer.
+// Updated to mirror main renderer's single-pass lens clipping to remove light outline at terminator.
 class MoonPreviewView: NSView {
     
     private struct Star {
@@ -49,7 +47,6 @@ class MoonPreviewView: NSView {
     }
     
     private func generateStars() {
-        // deterministic seed
         let width = bounds.width
         let height = bounds.height
         let count = 80
@@ -112,15 +109,16 @@ class MoonPreviewView: NSView {
         ctx.saveGState()
         ctx.setShouldAntialias(true)
         ctx.setAllowsAntialiasing(true)
-        ctx.interpolationQuality = .none // if we later move to a shared texture
+        ctx.interpolationQuality = .none
         
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         
-        func fillNoise(brightness: CGFloat) {
+        func fillNoise(brightness: CGFloat, clipCircle: Bool = true) {
             ctx.saveGState()
-            ctx.addEllipse(in: moonRect)
-            ctx.clip()
-            // soft noise (higher granularity than original coarse blocks)
+            if clipCircle {
+                ctx.addEllipse(in: moonRect)
+                ctx.clip()
+            }
             let block = max(1, Int(r / 10))
             let cols = Int((2*r) / CGFloat(block)) + 1
             let rows = cols
@@ -140,12 +138,10 @@ class MoonPreviewView: NSView {
         
         if f <= newT {
             fillNoise(brightness: dark)
-            drawOutline(ctx, rect: moonRect)
             ctx.restoreGState()
             return
         } else if f >= fullT {
             fillNoise(brightness: bright)
-            drawOutline(ctx, rect: moonRect)
             ctx.restoreGState()
             return
         }
@@ -155,61 +151,54 @@ class MoonPreviewView: NSView {
         let ellipseWidth = max(0.5, 2.0 * r * minorScale)
         let ellipseRect = CGRect(x: center.x - ellipseWidth/2.0, y: center.y - r, width: ellipseWidth, height: 2*r)
         let crescent = f < 0.5
+        let lightOnRight = waxing
         
-        // Base
-        fillNoise(brightness: crescent ? dark : bright)
+        // Dark base
+        fillNoise(brightness: dark)
         
-        // Phase overlay
-        ctx.saveGState()
-        ctx.addEllipse(in: moonRect)
-        ctx.clip()
         let overlap: CGFloat = 1.0
         let centerX = center.x
-        if crescent {
-            let sideRect: CGRect = waxing
-                ? CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
-                : CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
-            ctx.saveGState()
+        let rightSideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
+        let leftSideRect  = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
+        
+        func clipLens(sideRect: CGRect) {
             ctx.clip(to: sideRect)
-            fillNoise(brightness: bright)
-            ctx.restoreGState()
-            // Carve dark ellipse
+            let path = CGMutablePath()
+            path.addEllipse(in: ellipseRect)
+            path.addRect(moonRect)
+            ctx.addPath(path)
+            ctx.eoClip()
+        }
+        
+        if crescent {
+            // Bright lens only
             ctx.saveGState()
-            ctx.addEllipse(in: ellipseRect)
+            ctx.addEllipse(in: moonRect)
             ctx.clip()
-            fillNoise(brightness: dark)
+            if lightOnRight {
+                clipLens(sideRect: rightSideRect)
+            } else {
+                clipLens(sideRect: leftSideRect)
+            }
+            fillNoise(brightness: bright, clipCircle: false)
             ctx.restoreGState()
         } else {
-            let sideRect: CGRect = waxing
-                ? CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height) // dark left
-                : CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height) // dark right
+            // Gibbous: bright disc then dark lens
+            fillNoise(brightness: bright) // bright full disc
             ctx.saveGState()
-            ctx.clip(to: sideRect)
-            fillNoise(brightness: dark)
-            ctx.restoreGState()
-            // Interior bright
-            ctx.saveGState()
-            ctx.addEllipse(in: ellipseRect)
+            ctx.addEllipse(in: moonRect)
             ctx.clip()
-            fillNoise(brightness: bright)
+            if lightOnRight {
+                // dark left lens
+                clipLens(sideRect: leftSideRect)
+            } else {
+                // dark right lens
+                clipLens(sideRect: rightSideRect)
+            }
+            fillNoise(brightness: dark, clipCircle: false)
             ctx.restoreGState()
         }
-        ctx.restoreGState()
         
-        // Outline
-        drawOutline(ctx, rect: moonRect)
-        
-        ctx.restoreGState()
-    }
-    
-    private func drawOutline(_ ctx: CGContext, rect: CGRect) {
-        ctx.saveGState()
-        ctx.setShouldAntialias(true)
-        ctx.setAllowsAntialiasing(true)
-        ctx.setLineWidth(1.0)
-        ctx.setStrokeColor(CGColor(gray: 1.0, alpha: 0.08))
-        ctx.addEllipse(in: rect.insetBy(dx: 0.5, dy: 0.5))
-        ctx.strokePath()
         ctx.restoreGState()
     }
 }
