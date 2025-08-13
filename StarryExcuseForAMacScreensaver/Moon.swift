@@ -49,20 +49,24 @@ struct Moon {
         
         // Random orientation & radius
         self.movingLeftToRight = Bool.random()
-        let maxR = min(maxRadius, Int(0.12 * Double(min(screenWidth, screenHeight))))
+        let maxRDerived = Int(0.12 * Double(min(screenWidth, screenHeight)))
+        let maxR = min(maxRadius, maxRDerived)
         let minR = minRadius
-        self.radius = Int.random(in: minR...max( minR, maxR ))
+        self.radius = Int.random(in: minR...max(minR, maxR))
         
         // Arc amplitude & base placement (ensure stays fully on screen)
         // Base Y just above buildings (buildingMaxHeight) plus a small random extra.
         let minBase = max(buildingMaxHeight + self.radius + 10, self.radius + 10)
-        let maxBase = minBase + Int(0.10 * Double(screenHeight))
-        self.arcBaseY = Double(Int.random(in: minBase...min(maxBase, screenHeight - self.radius - 10)))
+        let maxBaseCandidate = minBase + Int(0.10 * Double(screenHeight))
+        let maxBaseLimit = screenHeight - self.radius - 10
+        let actualMaxBase = min(maxBaseCandidate, maxBaseLimit)
+        self.arcBaseY = Double(Int.random(in: minBase...actualMaxBase))
         
         // Amplitude chosen so that apex stays within screen.
         let maxPossibleAmplitude = Double(screenHeight - self.radius) - self.arcBaseY - 10.0
         let suggestedAmplitudeRange = max(20.0, 0.15 * Double(screenHeight))
-        self.arcAmplitude = min(max(20.0, suggestedAmplitudeRange), maxPossibleAmplitude)
+        let amplitude = min(max(20.0, suggestedAmplitudeRange), maxPossibleAmplitude)
+        self.arcAmplitude = amplitude
         
         // Phase at Austin local midnight
         let phaseDate = Moon.midnightInAustin()
@@ -81,14 +85,11 @@ struct Moon {
             self.shadowCenterOffset = Moon.solveShadowOffset(forFraction: fraction, radius: Double(self.radius))
         }
         
-        os_log("Moon initialized: r=%{public}d fraction=%{public}.3f waxing=%{public}@ offset=%{public}.2f leftToRight=%{public}@",
-               log: log,
-               type: .info,
-               self.radius,
-               self.illuminatedFraction,
-               String(self.waxing),
-               self.shadowCenterOffset,
-               String(self.movingLeftToRight))
+        // Split logging into simpler statements to help compiler type-check quickly
+        os_log("Moon initialized r=%{public}d fraction=%.3f waxing=%{public}@", log: log, type: .info,
+               self.radius, self.illuminatedFraction, String(self.waxing))
+        os_log("Moon offset=%.2f direction=%{public}@", log: log, type: .info,
+               self.shadowCenterOffset, self.movingLeftToRight ? "L->R" : "R->L")
     }
     
     // Compute current center position based on real local time mapped to a repeating hour cycle.
@@ -98,11 +99,12 @@ struct Moon {
         let comps = calendar.dateComponents(in: localTZ, from: now)
         let seconds = Double((comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0))
         let progress = (seconds.truncatingRemainder(dividingBy: hourCycleSeconds)) / hourCycleSeconds // 0 -> 1 over hour
+        let horizontalSpan = Double(screenWidth - 2 * radius)
         let x: Double
         if movingLeftToRight {
-            x = progress * Double(screenWidth - 2 * radius) + Double(radius)
+            x = progress * horizontalSpan + Double(radius)
         } else {
-            x = (1.0 - progress) * Double(screenWidth - 2 * radius) + Double(radius)
+            x = (1.0 - progress) * horizontalSpan + Double(radius)
         }
         let y = arcBaseY + arcAmplitude * sin(Double.pi * progress)
         return CGPoint(x: x, y: y)
@@ -135,11 +137,18 @@ struct Moon {
         let jd = julianDay(from: date)
         let epochJD = julianDay(from: newMoonEpoch)
         let daysSinceEpoch = jd - epochJD
-        let age = daysSinceEpoch.truncatingRemainder(dividingBy: synodicMonthDays)
-        let normalizedAge = age < 0 ? age + synodicMonthDays : age
-        let fraction = 0.5 * (1 - cos(2 * Double.pi * (normalizedAge / synodicMonthDays)))
-        let waxing = normalizedAge < (synodicMonthDays / 2)
-        return (min(max(fraction, 0.0), 1.0), waxing)
+        let ageRaw = daysSinceEpoch.truncatingRemainder(dividingBy: synodicMonthDays)
+        let normalizedAge = ageRaw < 0 ? ageRaw + synodicMonthDays : ageRaw
+        
+        // Break complex expression into smaller parts
+        let cyclePortion = normalizedAge / synodicMonthDays
+        let phaseAngle = 2.0 * Double.pi * cyclePortion
+        let cosPhase = cos(phaseAngle)
+        let fraction = 0.5 * (1.0 - cosPhase)
+        
+        let waxing = normalizedAge < (synodicMonthDays / 2.0)
+        let clamped = min(max(fraction, 0.0), 1.0)
+        return (clamped, waxing)
     }
     
     // Solve distance d between centers (0...2r) so that overlap area gives illuminated fraction f
@@ -165,8 +174,11 @@ struct Moon {
     private static func circleOverlapArea(r: Double, d: Double) -> Double {
         if d <= 0 { return Double.pi * r * r }
         if d >= 2 * r { return 0.0 }
-        let part1 = 2 * r * r * acos(d / (2 * r))
-        let part2 = 0.5 * d * sqrt(4 * r * r - d * d)
+        let term = d / (2.0 * r)
+        let acosTerm = acos(term)
+        let part1 = 2.0 * r * r * acosTerm
+        let sqrtTerm = sqrt(max(0.0, 4.0 * r * r - d * d))
+        let part2 = 0.5 * d * sqrtTerm
         return part1 - part2
     }
 }
