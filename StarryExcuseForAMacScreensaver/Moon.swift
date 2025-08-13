@@ -2,49 +2,30 @@ import Foundation
 import CoreGraphics
 import os
 
-// Represents the moon, its phase (at Austin, TX local midnight of current day),
-// and traversal parameters for an arc animation across the screen whose duration
-// (full traversal) is configurable in minutes (default 60).
-//
-// Rendering approach (see SkylineCoreRenderer):
-// Orthographic-style ellipse terminator; visible moon is defined only by
-// light/dark textured regions (no outline stroke).
-//
-// Direction logic:
-//  - If the reference latitude is >= 0 (northern hemisphere or equator) the moon
-//    moves left -> right.
-//  - If latitude < 0 (southern hemisphere) it moves right -> left.
+// Represents the moon, its phase, and traversal across the screen.
+// Incorporates configurable traversal duration and radius range (from defaults).
 struct Moon {
-    // Static / configuration-ish (will be made user-configurable later)
     static let synodicMonthDays: Double = 29.530588853
     static let referenceLatitude: Double = 30.2672 // Austin, TX
     
     static let newMoonEpoch: Date = {
-        // Known New Moon: 2000-01-06 18:14:00 UTC (approx)
         var comps = DateComponents()
-        comps.year = 2000
-        comps.month = 1
-        comps.day = 6
-        comps.hour = 18
-        comps.minute = 14
+        comps.year = 2000; comps.month = 1; comps.day = 6
+        comps.hour = 18; comps.minute = 14
         comps.timeZone = TimeZone(secondsFromGMT: 0)
         return Calendar(identifier: .gregorian).date(from: comps)!
     }()
     
-    // Traversal parameters
     let movingLeftToRight: Bool
     let radius: Int
     let arcAmplitude: Double
     let arcBaseY: Double
-    let traversalSeconds: Double       // full pass duration
+    let traversalSeconds: Double
     let screenWidth: Int
     let screenHeight: Int
     
-    // Phase
-    let illuminatedFraction: Double   // 0.0 new ... 1.0 full
+    let illuminatedFraction: Double
     let waxing: Bool
-    
-    // Precomputed texture (low-res pixelated moon image scaled to diameter)
     let textureImage: CGImage?
     
     init(screenWidth: Int,
@@ -57,18 +38,14 @@ struct Moon {
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         self.traversalSeconds = traversalSeconds
-        
-        // Direction based on hemisphere
         self.movingLeftToRight = Moon.referenceLatitude >= 0.0
         
-        // Radius selection
-        let maxRLimitFromScreen = Int(0.12 * Double(min(screenWidth, screenHeight)))
-        let allowedMaxR = min(maxRadius, maxRLimitFromScreen)
-        let minR = minRadius
-        let chosenRadiusRangeUpper = max(minR, allowedMaxR)
-        self.radius = Int.random(in: minR...chosenRadiusRangeUpper)
+        let boundedMin = max(5, min(1000, minRadius))
+        let boundedMax = max(boundedMin, min(1200, maxRadius))
+        let maxRLimitFromScreen = Int(0.2 * Double(min(screenWidth, screenHeight)))
+        let allowedMaxR = min(boundedMax, maxRLimitFromScreen)
+        self.radius = Int.random(in: boundedMin...allowedMaxR)
         
-        // Arc base Y
         let minBaseUnclamped = buildingMaxHeight + self.radius + 10
         let minBase = max(minBaseUnclamped, self.radius + 10)
         let maxBaseCandidate = minBase + Int(0.10 * Double(screenHeight))
@@ -77,25 +54,20 @@ struct Moon {
         let chosenBase = (baseUpper >= minBase) ? Int.random(in: minBase...baseUpper) : minBase
         self.arcBaseY = Double(chosenBase)
         
-        // Arc amplitude
         let verticalHeadroom = Double(screenHeight - self.radius) - self.arcBaseY - 10.0
         let suggested = 0.15 * Double(screenHeight)
-        let minAmplitude = 20.0
-        let amplitudePreClamp = max(minAmplitude, suggested)
-        self.arcAmplitude = min(amplitudePreClamp, max(0.0, verticalHeadroom))
+        let minAmp = 20.0
+        self.arcAmplitude = min(max(minAmp, suggested), max(0.0, verticalHeadroom))
         
-        // Phase
         let phaseDate = Moon.midnightInAustin()
         let (fraction, waxingFlag) = Moon.computePhase(on: phaseDate)
         self.illuminatedFraction = fraction
         self.waxing = waxingFlag
         
-        // Texture
         self.textureImage = MoonTexture.createMoonTexture(diameter: self.radius * 2)
         
-        os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@ duration=%.0fs",
-               log: log,
-               type: .info,
+        os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@ dur=%.0fs",
+               log: log, type: .info,
                self.radius,
                self.illuminatedFraction,
                self.waxing ? "true" : "false",
@@ -103,65 +75,45 @@ struct Moon {
                self.traversalSeconds)
     }
     
-    // Current center position based on real local time mapped into traversal period.
     func currentCenter(now: Date = Date()) -> CGPoint {
-        let calendar = Calendar(identifier: .gregorian)
-        let localTZ = TimeZone.current
-        let comps = calendar.dateComponents(in: localTZ, from: now)
-        let hourSeconds = Double((comps.hour ?? 0) * 3600)
-        let minuteSeconds = Double((comps.minute ?? 0) * 60)
-        let secondSeconds = Double(comps.second ?? 0)
-        let totalSeconds = hourSeconds + minuteSeconds + secondSeconds
-        let loopSeconds = totalSeconds.truncatingRemainder(dividingBy: traversalSeconds)
-        let progress = loopSeconds / traversalSeconds  // 0 -> 1 over configured period
-        
+        let cal = Calendar(identifier: .gregorian)
+        let tz = TimeZone.current
+        let comps = cal.dateComponents(in: tz, from: now)
+        let seconds = Double((comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0))
+        let loop = seconds.truncatingRemainder(dividingBy: traversalSeconds)
+        let progress = loop / traversalSeconds
         let usableWidth = Double(screenWidth - 2 * radius)
         let baseX = Double(radius)
-        let x: Double = movingLeftToRight
-            ? (progress * usableWidth + baseX)
-            : ((1.0 - progress) * usableWidth + baseX)
-        
-        let angle = Double.pi * progress
-        let verticalOffset = arcAmplitude * sin(angle)
-        let y = arcBaseY + verticalOffset
+        let x = movingLeftToRight ? (progress * usableWidth + baseX)
+                                  : ((1.0 - progress) * usableWidth + baseX)
+        let y = arcBaseY + arcAmplitude * sin(Double.pi * progress)
         return CGPoint(x: x, y: y)
     }
     
-    // MARK: - Phase calculations
-    
     private static func midnightInAustin(reference: Date = Date()) -> Date {
-        let tz = TimeZone(identifier: "America/Chicago")! // Austin, TX
+        let tz = TimeZone(identifier: "America/Chicago")!
         let cal = Calendar(identifier: .gregorian)
         var comps = cal.dateComponents(in: tz, from: reference)
-        comps.hour = 0
-        comps.minute = 0
-        comps.second = 0
-        comps.nanosecond = 0
+        comps.hour = 0; comps.minute = 0; comps.second = 0; comps.nanosecond = 0
         comps.timeZone = tz
         return cal.date(from: comps)!
     }
     
     private static func julianDay(from date: Date) -> Double {
         let timeInterval = date.timeIntervalSince1970
-        let daysSince1970 = timeInterval / 86400.0
-        return 2440587.5 + daysSince1970
+        return 2440587.5 + timeInterval / 86400.0
     }
     
     private static func computePhase(on date: Date) -> (Double, Bool) {
         let jd = julianDay(from: date)
         let epochJD = julianDay(from: newMoonEpoch)
-        let daysSinceEpoch = jd - epochJD
-        let rawAge = daysSinceEpoch.truncatingRemainder(dividingBy: synodicMonthDays)
-        let normalizedAge = rawAge < 0 ? rawAge + synodicMonthDays : rawAge
-        
-        // fraction = (1 - cos θ)/2 with θ progressing 0..π from new to full
-        let cyclePortion = normalizedAge / synodicMonthDays
+        let days = jd - epochJD
+        let ageRaw = days.truncatingRemainder(dividingBy: synodicMonthDays)
+        let age = ageRaw < 0 ? ageRaw + synodicMonthDays : ageRaw
+        let cyclePortion = age / synodicMonthDays
         let phaseAngle = 2.0 * Double.pi * cyclePortion
-        let cosine = cos(phaseAngle)
-        let rawFraction = 0.5 * (1.0 - cosine)
-        
-        let waxing = normalizedAge < (synodicMonthDays / 2.0)
-        let fraction = min(max(rawFraction, 0.0), 1.0)
-        return (fraction, waxing)
+        let fraction = 0.5 * (1.0 - cos(phaseAngle))
+        let waxing = age < (synodicMonthDays / 2.0)
+        return (min(max(fraction, 0.0), 1.0), waxing)
     }
 }

@@ -3,9 +3,6 @@
 //  StarryExcusesForAMacScreensaver
 //
 //  Created by Andrew Malota on 2019-04-29
-//  forked from Marcus Kida's work https://github.com/kimar/DeveloperExcuses
-//  port of Evan Green's implementation for Windows https://github.com/evangreen/starryn
-//  released under the MIT license
 //
 
 import Foundation
@@ -17,7 +14,6 @@ enum StateError: Error {
 }
 
 class Skyline {
-    // list of buildings on the screen, sorted by startX coordinate
     let buildings: [Building]
     let width: Int
     let height: Int
@@ -34,8 +30,11 @@ class Skyline {
     let clearAfterDuration: TimeInterval
     let traceEnabled: Bool
     
-    // Moon
     private let moon: Moon?
+    let moonBrightBrightness: Double
+    let moonDarkBrightness: Double
+    let moonMinRadius: Int
+    let moonMaxRadius: Int
     
     init(screenXMax: Int,
          screenYMax: Int,
@@ -47,11 +46,15 @@ class Skyline {
          buildingLightsPerUpdate: Int = 15,
          buildingColor: Color = Color(red: 0.972, green: 0.945, blue: 0.012),
          flasherRadius: Int = 4,
-         flasherPeriod: TimeInterval = TimeInterval(2.0),
+         flasherPeriod: TimeInterval = 2.0,
          log: OSLog,
-         clearAfterDuration: TimeInterval = TimeInterval(120),
+         clearAfterDuration: TimeInterval = 120,
          traceEnabled: Bool = false,
-         moonTraversalSeconds: Double = 3600.0) throws {
+         moonTraversalSeconds: Double = 3600.0,
+         moonMinRadius: Int = 15,
+         moonMaxRadius: Int = 60,
+         moonBrightBrightness: Double = 1.0,
+         moonDarkBrightness: Double = 0.15) throws {
         self.log = log
         var buildingWorkingList = [Building]()
         self.width = screenXMax
@@ -67,217 +70,122 @@ class Skyline {
         self.createdAt = NSDate()
         self.clearAfterDuration = clearAfterDuration
         self.traceEnabled = traceEnabled
+        self.moonBrightBrightness = moonBrightBrightness
+        self.moonDarkBrightness = moonDarkBrightness
+        self.moonMinRadius = moonMinRadius
+        self.moonMaxRadius = moonMaxRadius
         
         os_log("invoking skyline init, screen %{PUBLIC}dx%{PUBLIC}d", log: log, type: .info, screenXMax, screenYMax)
-        
-        os_log("found %{PUBLIC}d styles",
-               log: log,
-               type: .debug,
-               styles.count)
+        os_log("found %{PUBLIC}d styles", log: log, type: .debug, styles.count)
         
         for buildingZIndex in 0...buildingCount {
-            // pick a style
             let style = styles[Int.random(in: 0...styles.count - 1)]
-            
-            // squaring the building height evidently yeilds better looking
-            // skylines
             let height = Skyline.getWeightedRandomHeight(maxHeight: buildingMaxHeight)
-            
             let buildingXStart = Int.random(in: 0...screenXMax - 1)
-            let buildingWidth = min(Int.random(in: buildingWidthMin...buildingWidthMax-1), screenXMax - buildingXStart)
-            
+            let buildingWidth = min(Int.random(in: buildingWidthMin...buildingWidthMax - 1), screenXMax - buildingXStart)
             let building = try Building(width: buildingWidth,
-                                    height: height,
-                                    startX: buildingXStart,
-                                    startY: 0,
-                                    zCoordinate: buildingZIndex,
-                                    style: style)
+                                        height: height,
+                                        startX: buildingXStart,
+                                        startY: 0,
+                                        zCoordinate: buildingZIndex,
+                                        style: style)
             buildingWorkingList.append(building)
         }
         
-        buildings = buildingWorkingList.sorted(by: { (a:Building, b:Building) -> Bool in
-            return a.startX < b.startX
-        })
+        buildings = buildingWorkingList.sorted { a, b in a.startX < b.startX }
         
-        for building in buildings {
+        for b in buildings {
             os_log("created building at %{public}d, width %{public}d, height %{public}d",
-                   log: log,
-                   type: .info,
-                   building.startX,
-                   building.width,
-                   building.height)
+                   log: log, type: .info, b.startX, b.width, b.height)
         }
         
-        // Initialize moon BEFORE calling any instance methods that reference self
         self.moon = Moon(screenWidth: screenXMax,
                          screenHeight: screenYMax,
                          buildingMaxHeight: self.buildingMaxHeight,
                          log: log,
+                         minRadius: moonMinRadius,
+                         maxRadius: moonMaxRadius,
                          traversalSeconds: moonTraversalSeconds)
         
-        // Now safe to compute flasher position
         self.flasherPosition = getFlasherPosition()
     }
     
     static func getWeightedRandomHeight(maxHeight: Int) -> Int {
-        let weightedHeightPercentage = pow(Double.random(in: 0.01...1),2)
-        return max(1, Int(weightedHeightPercentage * Double(maxHeight)))
+        let weighted = pow(Double.random(in: 0.01...1), 2)
+        return max(1, Int(weighted * Double(maxHeight)))
     }
     
     func shouldClearNow() -> Bool {
-        return (abs(self.createdAt.timeIntervalSinceNow) > self.clearAfterDuration)
+        return abs(self.createdAt.timeIntervalSinceNow) > self.clearAfterDuration
     }
     
     func getSingleStar() -> Point {
-        var screenYPos: Int
-        var screenXPos: Int
-        var triesBeforeNoCollision = 0;
-        
+        var y: Int
+        var x: Int
         repeat {
-            triesBeforeNoCollision += 1
-            screenYPos = Skyline.getWeightedRandomHeight(maxHeight: self.height)
-            screenXPos = Int.random(in: 0...self.width)
-        } while (getBuildingAtPoint(screenXPos: screenXPos, screenYPos: screenYPos) != nil)
+            y = Skyline.getWeightedRandomHeight(maxHeight: self.height)
+            x = Int.random(in: 0...self.width)
+        } while getBuildingAtPoint(screenXPos: x, screenYPos: y) != nil
         let color = Color(red: Double.random(in: 0.0...0.5),
                           green: Double.random(in: 0.0...0.5),
                           blue: Double.random(in: 0.0...1))
-        if (traceEnabled) {
-            os_log("returning single star at %{public}dx%{public}d, color r:%{public}f, g:%{public}f, b:%{public}f, tries %{public}d",
-                   log: log,
-                   type: .info,
-                   screenXPos,
-                   screenYPos,
-                   color.red,
-                   color.green,
-                   color.blue,
-                   triesBeforeNoCollision)
-        }
-        return Point(xPos: screenXPos,
-                     yPos: screenYPos,
-                     color: color)
+        return Point(xPos: x, yPos: y, color: color)
     }
     
     func getSingleBuildingPoint() -> Point {
-        var screenYPos = 0
-        var screenXPos = 0
+        var y = 0
+        var x = 0
         var buildingAtPos: Building?
         var lightOn = false
-        var tries = 0;
-        
-        while (buildingAtPos == nil || !lightOn) {
-            tries += 1
-            
-            screenXPos = Int.random(in: 0...self.width-1)
-            screenYPos = Int.random(in: 0...self.height-1)
-            buildingAtPos = getBuildingAtPoint(screenXPos: screenXPos,
-                                               screenYPos: screenYPos)
-            if (buildingAtPos != nil) {
-                lightOn = (buildingAtPos?.isLightOn(screenXPos: screenXPos, screenYPos: screenYPos))!
+        while buildingAtPos == nil || !lightOn {
+            x = Int.random(in: 0...self.width - 1)
+            y = Int.random(in: 0...self.height - 1)
+            buildingAtPos = getBuildingAtPoint(screenXPos: x, screenYPos: y)
+            if let b = buildingAtPos {
+                lightOn = b.isLightOn(screenXPos: x, screenYPos: y)
             }
         }
-        
-        
-        if (traceEnabled) {
-            os_log("returning light at %{public}dx%{public}d after %{public}d tries",
-                   log: log,
-                   type: .debug,
-                   screenXPos,
-                   screenYPos,
-                   tries)
-        }
-        return Point(xPos: screenXPos,
-                     yPos: screenYPos,
-                     color: buildingColor)
+        return Point(xPos: x, yPos: y, color: buildingColor)
     }
     
     func getBuildingAtPoint(screenXPos: Int, screenYPos: Int) -> Building? {
-        var frontBuilding: Building?
-        for building in self.buildings {
-            
-            // The buildings are sorted by X coordinate. If this building starts
-            // to the right of the pixel in question, none of the rest intersect.
-            if building.startX > screenXPos {
-                break
-            }
-            
-            // Is the pixel inside this building?
-            if building.isPixelInsideBuilding(screenXPos: screenXPos,
-                                              screenYPos: screenYPos) {
-                // and is this building the current frontmost building?
-                if let oldLeader = frontBuilding {
-                    if (building.zCoordinate > oldLeader.zCoordinate) {
-                        frontBuilding = building
-                    }
+        var front: Building?
+        for b in buildings {
+            if b.startX > screenXPos { break }
+            if b.isPixelInsideBuilding(screenXPos: screenXPos, screenYPos: screenYPos) {
+                if let f = front {
+                    if b.zCoordinate > f.zCoordinate { front = b }
                 } else {
-                    frontBuilding = building
+                    front = b
                 }
             }
         }
-        
-        return frontBuilding
+        return front
     }
     
     func getTallestBuilding() -> Building? {
-        var currentTallest: Building?
-        for building in buildings {
-            if (currentTallest == nil || building.height > currentTallest!.height) {
-                currentTallest = building
-            }
-        }
-        
-        return currentTallest
+        buildings.max { $0.height < $1.height }
     }
     
     private func getFlasherPosition() -> Point? {
-        // find the tallest building
-        let tallestBuilding = getTallestBuilding()
-        guard let building = tallestBuilding else {
-            os_log("flasher not enabled, no buildings.",
-                   log: log,
-                   type: .fault)
-            return nil
-        }
-        
-        let flasherXLoc = building.startX + (building.width / 2)
-        let flasherYLoc = building.startY + building.height + flasherRadius
-        
-        os_log("flasher enabled at %{public}dx%{public}d r=%{public}d",
-               log: log,
-               type: .info,
-               flasherXLoc,
-               flasherYLoc,
-               flasherRadius)
-        
-        return Point(xPos: flasherXLoc, yPos: flasherYLoc, color: Color(red: 1.0, green: 0.0, blue: 0.0))
+        guard let building = getTallestBuilding() else { return nil }
+        let fx = building.startX + (building.width / 2)
+        let fy = building.startY + building.height + flasherRadius
+        return Point(xPos: fx, yPos: fy, color: Color(red: 1.0, green: 0.0, blue: 0.0))
     }
     
     func getFlasher() -> Point? {
-        guard let flasherPosition = self.flasherPosition else {
-            return nil
-        }
-        
-        if (self.flasherPeriod <= 0) {
-            return nil
-        }
-        
-        if (abs(self.flasherOnAt.timeIntervalSinceNow) < (self.flasherPeriod / 2)) {
+        guard let flasherPosition = flasherPosition else { return nil }
+        if flasherPeriod <= 0 { return nil }
+        if abs(flasherOnAt.timeIntervalSinceNow) < flasherPeriod / 2 {
             return flasherPosition
-        } else if (abs(self.flasherOnAt.timeIntervalSinceNow) < self.flasherPeriod) {
-            return Point(xPos: flasherPosition.xPos, yPos: flasherPosition.yPos, color: Color(red: 0.0, green: 0.0, blue: 0.0))
+        } else if abs(flasherOnAt.timeIntervalSinceNow) < flasherPeriod {
+            return Point(xPos: flasherPosition.xPos, yPos: flasherPosition.yPos, color: Color(red: 0, green: 0, blue: 0))
         } else {
-            if (traceEnabled) {
-                os_log("flasher reset",
-                       log: log,
-                       type: .debug)
-            }
-            self.flasherOnAt = NSDate()
+            flasherOnAt = NSDate()
             return flasherPosition
         }
     }
     
-    // MARK: - Moon accessors
-    
-    func getMoon() -> Moon? {
-        return moon
-    }
+    func getMoon() -> Moon? { moon }
 }
