@@ -122,19 +122,17 @@ class SkylineCoreRenderer {
         let centerX = moonRect.midX
         
         // For waxing: bright on right when crescent; dark on left when gibbous
-        // Determine which sideRect we'll use to build a lens on that side
         let rightSideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
         let leftSideRect  = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
         
         // Lens builder: returns a clip representing (sideRect minus ellipse) intersect circle
         func clipLens(sideRect: CGRect) {
-            // Already inside outer circle clip performed below
             context.clip(to: sideRect)
             let path = CGMutablePath()
             path.addEllipse(in: ellipseRect)
             path.addRect(moonRect) // large rect to create difference (rect - ellipse) via even-odd
             context.addPath(path)
-            context.eoClip()
+            context.clip(using: .evenOdd)
         }
         
         if isCrescent {
@@ -150,8 +148,7 @@ class SkylineCoreRenderer {
             drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: false)
             context.restoreGState()
         } else {
-            // Gibbous: Need bright area = full disc minus dark lens on the "dark" side.
-            // Easier: draw bright disc, then dark lens ON TOP (single dark pass) using lens clip to avoid double boundary.
+            // Gibbous: bright disc then dark lens
             context.saveGState()
             drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: true)
             // Dark lens
@@ -159,10 +156,8 @@ class SkylineCoreRenderer {
             context.addEllipse(in: moonRect)
             context.clip()
             if lightOnRight {
-                // dark left
                 clipLens(sideRect: leftSideRect)
             } else {
-                // dark right
                 clipLens(sideRect: rightSideRect)
             }
             drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: false)
@@ -180,9 +175,9 @@ class SkylineCoreRenderer {
                              brightness: CGFloat,
                              clipToCircle: Bool) {
         context.saveGState()
-        context.setShouldAntialias(true)            // keep edge smooth for any clipping
+        context.setShouldAntialias(true)
         context.setAllowsAntialiasing(true)
-        context.interpolationQuality = .none        // nearest-neighbor sampling for crater texture
+        context.interpolationQuality = .none
         if clipToCircle {
             context.addEllipse(in: rect)
             context.clip()
