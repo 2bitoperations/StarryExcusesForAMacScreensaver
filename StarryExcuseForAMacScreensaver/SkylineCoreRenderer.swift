@@ -29,6 +29,9 @@ class SkylineCoreRenderer {
     
     private var frameCounter: Int = 0
     
+    // Dark region brightness factor (applied to texture)
+    private let darkBrightness: CGFloat = 0.15
+    
     init(skyline: Skyline, log: OSLog, traceEnabled: Bool) {
         self.skyline = skyline
         self.log = log
@@ -74,18 +77,17 @@ class SkylineCoreRenderer {
         self.drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
     }
     
-    // MARK: - Moon Rendering (no outline)
+    // MARK: - Moon Rendering (textured, no outline)
     //
-    // We intentionally do NOT stroke the limb; the visible moon is defined
-    // only by its light and dark regions (even for full / new phases).
+    // Uses low-res grayscale texture (nearest neighbor) scaled to moon diameter.
+    // Light / dark regions rendered via drawing texture at full brightness
+    // and/or darkened (overlay black with alpha) for shadowed portion.
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon() else { return }
+        guard let texture = moon.textureImage else { return }
         let center = moon.currentCenter()
         let r = CGFloat(moon.radius)
         let f = CGFloat(max(0.0, min(1.0, moon.illuminatedFraction)))
-        
-        let lightGray = CGColor(gray: 0.85, alpha: 1.0)
-        let darkGray  = CGColor(gray: 0.08, alpha: 1.0)
         
         let newThreshold: CGFloat = 0.005
         let fullThreshold: CGFloat = 0.995
@@ -99,21 +101,18 @@ class SkylineCoreRenderer {
         }
         
         context.saveGState()
+        context.interpolationQuality = .none // preserve pixelated texture
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         
         if f <= newThreshold {
-            // New moon (dark disc only)
-            context.setFillColor(darkGray)
-            context.addEllipse(in: moonRect)
-            context.fillPath()
+            // Entire disc dark
+            drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: true)
             context.restoreGState()
             lastMoonRect = moonRect
             return
         } else if f >= fullThreshold {
-            // Full moon (light disc only)
-            context.setFillColor(lightGray)
-            context.addEllipse(in: moonRect)
-            context.fillPath()
+            // Entire disc bright
+            drawTexture(context: context, image: texture, in: moonRect, brightness: 1.0, clipToCircle: true)
             context.restoreGState()
             lastMoonRect = moonRect
             return
@@ -144,14 +143,13 @@ class SkylineCoreRenderer {
                    ellipseWidth)
         }
         
-        // Base disc
-        let baseColor = isCrescent ? darkGray : lightGray
-        context.setFillColor(baseColor)
-        context.addEllipse(in: moonRect)
-        context.fillPath()
+        // Base disc texture (dark for crescent, bright for gibbous)
+        let baseBrightness: CGFloat = isCrescent ? darkBrightness : 1.0
+        drawTexture(context: context, image: texture, in: moonRect, brightness: baseBrightness, clipToCircle: true)
         
-        // Overlay half-plane with overlap then carve ellipse
+        // Overlay half-plane with opposite brightness and carve ellipse interior
         context.saveGState()
+        // Clip to lunar disc first
         context.addEllipse(in: moonRect)
         context.clip()
         
@@ -159,38 +157,75 @@ class SkylineCoreRenderer {
         let centerX = moonRect.midX
         let sideRect: CGRect
         if isCrescent {
-            // Add light on illuminated side
-            let overlayColor = lightGray
+            // Add bright on illuminated side
             if lightOnRight {
                 sideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
             } else {
                 sideRect = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
             }
-            context.setFillColor(overlayColor)
-            context.fill(sideRect)
-            // Carve interior ellipse back to dark
-            context.setFillColor(baseColor)
+            // Brighten sideRect area
+            context.saveGState()
+            context.clip(to: sideRect)
+            drawTexture(context: context, image: texture, in: moonRect, brightness: 1.0, clipToCircle: false)
+            context.restoreGState()
+            
+            // Carve ellipse interior back to dark brightness
+            context.saveGState()
             context.addEllipse(in: ellipseRect)
-            context.fillPath()
+            context.clip()
+            drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: false)
+            context.restoreGState()
         } else {
-            // Gibbous: dark on dark side (opposite illuminated side)
-            let overlayColor = darkGray
+            // Gibbous: darken dark side
             if lightOnRight { // dark on left
                 sideRect = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
             } else { // dark on right
                 sideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
             }
-            context.setFillColor(overlayColor)
-            context.fill(sideRect)
-            // Carve interior ellipse back to light
-            context.setFillColor(baseColor)
+            // Darken sideRect
+            context.saveGState()
+            context.clip(to: sideRect)
+            drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: false)
+            context.restoreGState()
+            
+            // Carve ellipse interior back to bright
+            context.saveGState()
             context.addEllipse(in: ellipseRect)
-            context.fillPath()
+            context.clip()
+            drawTexture(context: context, image: texture, in: moonRect, brightness: 1.0, clipToCircle: false)
+            context.restoreGState()
         }
-        context.restoreGState()
+        context.restoreGState() // end overlay ops
         
         context.restoreGState()
         lastMoonRect = moonRect
+    }
+    
+    // Draw the grayscale texture scaled into rect with brightness factor.
+    // If clipToCircle is true, clips to a circle matching rect first.
+    private func drawTexture(context: CGContext,
+                             image: CGImage,
+                             in rect: CGRect,
+                             brightness: CGFloat,
+                             clipToCircle: Bool) {
+        context.saveGState()
+        context.interpolationQuality = .none
+        if clipToCircle {
+            context.addEllipse(in: rect)
+            context.clip()
+        }
+        context.draw(image, in: rect)
+        if brightness < 0.999 {
+            // Darken by overlaying black with alpha = 1 - brightness
+            let alpha = min(1.0, max(0.0, 1.0 - brightness))
+            if alpha > 0 {
+                context.setFillColor(CGColor(gray: 0.0, alpha: alpha))
+                context.fill(rect)
+            }
+        } else if brightness > 1.0 {
+            // (Not used, but could implement brighten via screen blend)
+        }
+        context.restoreGState()
     }
     
     func convertColor(color: Color) -> CGColor {

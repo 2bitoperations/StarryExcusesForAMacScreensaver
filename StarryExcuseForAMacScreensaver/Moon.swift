@@ -7,8 +7,8 @@ import os
 // (full traversal) is configurable in minutes (default 60).
 //
 // Rendering approach (see SkylineCoreRenderer):
-// Orthographic-style ellipse terminator (no outline stroke; the two filled regions
-// define the moon including full/new phases).
+// Orthographic-style ellipse terminator; visible moon is defined only by
+// light/dark textured regions (no outline stroke).
 //
 // Direction logic:
 //  - If the reference latitude is >= 0 (northern hemisphere or equator) the moon
@@ -43,6 +43,9 @@ struct Moon {
     // Phase
     let illuminatedFraction: Double   // 0.0 new ... 1.0 full
     let waxing: Bool
+    
+    // Precomputed texture (low-res pixelated moon image scaled to diameter)
+    let textureImage: CGImage?
     
     init(screenWidth: Int,
          screenHeight: Int,
@@ -86,6 +89,9 @@ struct Moon {
         let (fraction, waxingFlag) = Moon.computePhase(on: phaseDate)
         self.illuminatedFraction = fraction
         self.waxing = waxingFlag
+        
+        // Texture
+        self.textureImage = MoonTexture.createMoonTexture(diameter: self.radius * 2)
         
         os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@ duration=%.0fs",
                log: log,
