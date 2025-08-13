@@ -167,7 +167,8 @@ class MoonPreviewView: NSView {
             path.addEllipse(in: ellipseRect)
             path.addRect(moonRect)
             ctx.addPath(path)
-            ctx.eoClip()
+            // Use even-odd rule to subtract ellipse from sideRect
+            ctx.clip(using: .evenOdd)
         }
         
         if crescent {
