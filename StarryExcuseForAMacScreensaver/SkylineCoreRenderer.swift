@@ -62,8 +62,10 @@ class SkylineCoreRenderer {
     }
     
     // MARK: - Moon Rendering (textured, anti-aliased edge, nearest-neighbor internal sampling)
-    // Updated to eliminate light outline along the terminator by using single-pass lens
-    // clipping (even-odd) rather than overlapping bright/dark passes at the boundary.
+    // Adjusted to REMOVE thin light outline on the dark side by eliminating overlap between
+    // bright and dark passes for crescent phases. For crescents we now draw ONLY the bright
+    // lens over a previously cleared (black) area. For gibbous phases we draw the bright disc
+    // first, then a single dark lens overlay (no dual-edge stacking).
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon(), let texture = moon.textureImage else { return }
         let center = moon.currentCenter()
@@ -92,7 +94,7 @@ class SkylineCoreRenderer {
         
         // Simple phases: new or full shortcuts (single pass -> no outlines)
         if f <= newThreshold {
-            drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: true)
+            // New: nothing (optional faint dark moon) - we skip drawing to keep sky clean.
             context.restoreGState(); lastMoonRect = moonRect; return
         } else if f >= fullThreshold {
             drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: true)
@@ -114,29 +116,23 @@ class SkylineCoreRenderer {
                    frameCounter, f, lightOnRight ? "true" : "false", cosTheta, ellipseWidth)
         }
         
-        // Draw dark base first over full disc
-        drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: true)
-        
-        // Build lens (crescent) clipping region ONCE for whichever side needs highlighting
         let overlap: CGFloat = 1.0
         let centerX = moonRect.midX
-        
-        // For waxing: bright on right when crescent; dark on left when gibbous
         let rightSideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
         let leftSideRect  = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
         
-        // Lens builder: returns a clip representing (sideRect minus ellipse) intersect circle
+        // Lens builder: creates clip region for lens on chosen side (sideRect - ellipse) ∩ circle
         func clipLens(sideRect: CGRect) {
             context.clip(to: sideRect)
             let path = CGMutablePath()
             path.addEllipse(in: ellipseRect)
-            path.addRect(moonRect) // large rect to create difference (rect - ellipse) via even-odd
+            path.addRect(moonRect) // large rect for even-odd subtraction
             context.addPath(path)
             context.clip(using: .evenOdd)
         }
         
         if isCrescent {
-            // Bright lens only
+            // CRESCENT: draw ONLY the bright lens. No dark base pass -> eliminates light rim.
             context.saveGState()
             context.addEllipse(in: moonRect)
             context.clip()
@@ -148,20 +144,19 @@ class SkylineCoreRenderer {
             drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: false)
             context.restoreGState()
         } else {
-            // Gibbous: bright disc then dark lens
-            context.saveGState()
+            // GIBBOUS: draw full bright disc, then overlay dark lens (single overlap).
             drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: true)
-            // Dark lens
             context.saveGState()
             context.addEllipse(in: moonRect)
             context.clip()
             if lightOnRight {
+                // Dark left lens
                 clipLens(sideRect: leftSideRect)
             } else {
+                // Dark right lens
                 clipLens(sideRect: rightSideRect)
             }
             drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: false)
-            context.restoreGState()
             context.restoreGState()
         }
         

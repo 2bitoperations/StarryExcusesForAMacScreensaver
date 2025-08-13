@@ -2,7 +2,7 @@ import Cocoa
 import CoreGraphics
 
 // Configuration sheet preview renderer.
-// Updated to mirror main renderer's single-pass lens clipping to remove light outline at terminator.
+// Updated to mirror main renderer's lens-only approach for crescents to remove light outline.
 class MoonPreviewView: NSView {
     
     private struct Star {
@@ -137,7 +137,7 @@ class MoonPreviewView: NSView {
         }
         
         if f <= newT {
-            fillNoise(brightness: dark)
+            // New moon: leave area dark (no drawing).
             ctx.restoreGState()
             return
         } else if f >= fullT {
@@ -153,9 +153,6 @@ class MoonPreviewView: NSView {
         let crescent = f < 0.5
         let lightOnRight = waxing
         
-        // Dark base
-        fillNoise(brightness: dark)
-        
         let overlap: CGFloat = 1.0
         let centerX = center.x
         let rightSideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
@@ -167,12 +164,11 @@ class MoonPreviewView: NSView {
             path.addEllipse(in: ellipseRect)
             path.addRect(moonRect)
             ctx.addPath(path)
-            // Use even-odd rule to subtract ellipse from sideRect
             ctx.clip(using: .evenOdd)
         }
         
         if crescent {
-            // Bright lens only
+            // Bright lens only; dark side stays black (avoids bright outline).
             ctx.saveGState()
             ctx.addEllipse(in: moonRect)
             ctx.clip()
@@ -184,16 +180,15 @@ class MoonPreviewView: NSView {
             fillNoise(brightness: bright, clipCircle: false)
             ctx.restoreGState()
         } else {
-            // Gibbous: bright disc then dark lens
-            fillNoise(brightness: bright) // bright full disc
+            // Bright full disc
+            fillNoise(brightness: bright)
+            // Dark lens overlay
             ctx.saveGState()
             ctx.addEllipse(in: moonRect)
             ctx.clip()
             if lightOnRight {
-                // dark left lens
                 clipLens(sideRect: leftSideRect)
             } else {
-                // dark right lens
                 clipLens(sideRect: rightSideRect)
             }
             fillNoise(brightness: dark, clipCircle: false)
