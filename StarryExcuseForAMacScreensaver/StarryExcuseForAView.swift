@@ -152,7 +152,8 @@ class StarryExcuseForAView: ScreenSaverView {
         config.showsCursor = false
         
         do {
-            return try await SCShareableContent.capture(filter: filter, configuration: config)
+            let image = try await SCShareableContent.capture(filter: filter, configuration: config)
+            return image
         } catch {
             os_log("Error capturing screenshot: %{public}@", log: self.log!, type: .error, error.localizedDescription)
             return nil
