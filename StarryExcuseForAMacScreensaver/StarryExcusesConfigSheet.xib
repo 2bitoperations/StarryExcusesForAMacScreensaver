@@ -31,10 +31,10 @@
                         <rect key="frame" x="0.0" y="0.0" width="319" height="270"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <stackView distribution="fill" orientation="horizontal" alignment="top" horizontalStackHuggingPriority="249.99998474121094" verticalStackHuggingPriority="249.99998474121094" ambiguous="YES" detachesHiddenViews="YES" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
+                            <stackView distribution="fill" orientation="horizontal" alignment="top" horizontalStackHuggingPriority="249.99998474121094" verticalStackHuggingPriority="249.99998474121094" detachesHiddenViews="YES" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
                                 <rect key="frame" x="0.0" y="91" width="208" height="179"/>
                                 <subviews>
-                                    <textField identifier="StarsPerUpdateDabel" focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Rih-ed-DK9">
+                                    <textField identifier="StarsPerUpdateDabel" focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="Rih-ed-DK9">
                                         <rect key="frame" x="-2" y="163" width="108" height="16"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Stars Per Update" id="zUj-o7-ksX">
                                             <font key="font" usesAppearanceFont="YES"/>
@@ -42,7 +42,7 @@
                                             <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                                         </textFieldCell>
                                     </textField>
-                                    <textField identifier="StarsPerUpdate" focusRingType="none" verticalHuggingPriority="750" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="IjJ-g5-V0M">
+                                    <textField identifier="StarsPerUpdate" focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="IjJ-g5-V0M">
                                         <rect key="frame" x="112" y="158" width="96" height="21"/>
                                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" state="on" borderStyle="bezel" title="StarsPerUpdateInput" placeholderString="120" drawsBackground="YES" id="9WR-VQ-vtH">
                                             <numberFormatter key="formatter" formatterBehavior="default10_4" numberStyle="decimal" minimumIntegerDigits="1" maximumIntegerDigits="2000000000" maximumFractionDigits="3" id="Hx4-eq-smd"/>
@@ -61,10 +61,10 @@
                                     <real value="3.4028234663852886e+38"/>
                                 </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="top" horizontalStackHuggingPriority="249.99998474121094" verticalStackHuggingPriority="249.99998474121094" ambiguous="YES" detachesHiddenViews="YES" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
+                            <stackView distribution="fill" orientation="horizontal" alignment="top" horizontalStackHuggingPriority="249.99998474121094" verticalStackHuggingPriority="249.99998474121094" detachesHiddenViews="YES" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
                                 <rect key="frame" x="0.0" y="60" width="255" height="21"/>
                                 <subviews>
-                                    <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="h3L-pH-175">
+                                    <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="h3L-pH-175">
                                         <rect key="frame" x="-2" y="5" width="155" height="16"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Seconds Between Clears" id="9ZG-YA-dxa">
                                             <font key="font" usesAppearanceFont="YES"/>
@@ -72,7 +72,7 @@
                                             <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                                         </textFieldCell>
                                     </textField>
-                                    <textField focusRingType="none" verticalHuggingPriority="750" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="CG8-TJ-hHM">
+                                    <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="CG8-TJ-hHM">
                                         <rect key="frame" x="159" y="0.0" width="96" height="21"/>
                                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" title="SecsBetweenClears" drawsBackground="YES" id="tUV-bq-piy">
                                             <font key="font" usesAppearanceFont="YES"/>
@@ -81,6 +81,9 @@
                                         </textFieldCell>
                                     </textField>
                                 </subviews>
+                                <constraints>
+                                    <constraint firstAttribute="bottom" secondItem="CG8-TJ-hHM" secondAttribute="bottom" id="h2L-Uu-oj3"/>
+                                </constraints>
                                 <visibilityPriorities>
                                     <integer value="1000"/>
                                     <integer value="1000"/>
@@ -139,6 +142,10 @@
                                 </buttonCell>
                             </button>
                         </subviews>
+                        <constraints>
+                            <constraint firstAttribute="trailing" secondItem="prf-z8-ln5" secondAttribute="trailing" constant="111" id="Xr9-yb-O2X"/>
+                            <constraint firstAttribute="trailing" secondItem="ozG-gR-er8" secondAttribute="trailing" constant="64" id="XzN-3A-yoV"/>
+                        </constraints>
                         <visibilityPriorities>
                             <integer value="1000"/>
                             <integer value="1000"/>
