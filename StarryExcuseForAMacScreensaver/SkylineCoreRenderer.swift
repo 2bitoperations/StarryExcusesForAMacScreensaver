@@ -68,25 +68,32 @@ class SkylineCoreRenderer {
         self.drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
     }
     
-    // MARK: - Moon Rendering (orthographic projection with elliptical terminator)
+    // MARK: - Moon Rendering (orthographic-inspired terminator)
     //
-    // We approximate an orthographic view of a sun‑lit sphere:
-    //  - The lunar limb is a circle of radius r.
-    //  - The day/night terminator projects to an ellipse centered on the disc.
-    //  - Major (vertical) axis: 2r. Minor (horizontal) axis: 2r * |cos θ|.
-    //    Where cos θ = 1 - 2f and f is illuminatedFraction in [0,1].
-    //    (Because f = (1 - cos θ)/2 => cos θ = 1 - 2f.)
-    //  - For f < 0.5 (crescent): illuminated region is the portion of the circle
-    //    OUTSIDE the ellipse on the illuminated side.
-    //  - For f > 0.5 (gibbous): dark region is the portion of the circle
-    //    OUTSIDE the ellipse on the dark side.
-    // We construct these shapes using an even‑odd fill combining the ellipse
-    // with a side rectangle, under a clip of the lunar circle, avoiding
-    // gradients for a crisp 80's monochrome feel.
+    // Previous implementation used an even-odd fill of (ellipse + side rectangle).
+    // That occasionally produced an unwanted second dark band because the
+    // "outside ellipse" region on the chosen side could become disjoint
+    // (especially for large ellipse widths near full / new).
+    //
+    // New approach eliminates even-odd path ambiguity:
+    //  1. (Optional threshold) Draw full dark or full light disc for near new/full.
+    //  2. For general phases, always start with a base disc:
+    //       - f < 0.5: start dark; add illuminated crescent.
+    //       - f > 0.5: start light; add dark sliver.
+    //  3. To add the crescent/sliver we:
+    //       - Clip to the circle.
+    //       - Further clip to the half-plane (left or right half of disc) for the target side.
+    //       - Fill the entire half-plane with the desired overlay color.
+    //       - Draw the terminator ellipse again inside that clip with the base color to "carve back"
+    //         the interior of the ellipse. This leaves only the outside-of-ellipse region on that
+    //         side as the overlay (crescent or gibbous shadow) with no mirrored artifacts.
+    //  4. Stroke outer limb.
+    //
+    // This yields a single clean bright/dark division without residual artifacts.
     //
     // Trail removal:
-    //   Before drawing the new moon each frame, we fill the previous moon's bounding
-    //   rectangle with black to erase the prior moon (preventing a trail artifact).
+    //   Before drawing the new moon each frame, fill the previous moon's bounding
+    //   rectangle with black to erase the prior moon (preventing trail artifacts).
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon() else { return }
         let center = moon.currentCenter()
@@ -105,7 +112,7 @@ class SkylineCoreRenderer {
         if let prev = lastMoonRect {
             context.saveGState()
             context.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
-            // Slightly inflate to cover antialiased edges.
+            // Slight inflate for antialiased edges.
             context.fill(prev.insetBy(dx: -1, dy: -1))
             context.restoreGState()
         }
@@ -133,85 +140,105 @@ class SkylineCoreRenderer {
             return
         }
         
-        // Compute cosine of phase angle
-        let cosTheta = 1.0 - 2.0 * f  // matches f = (1 - cosθ)/2
-        let minorScale = abs(cosTheta) // in [0,1]
+        // cosθ = 1 - 2f (θ in [0, π])
+        let cosTheta = 1.0 - 2.0 * f
+        let minorScale = abs(cosTheta) // ellipse semi-minor / radius
         let ellipseWidth = max(0.0001, 2.0 * r * minorScale)
-        let ellipseHeight = 2.0 * r   // vertical major axis
+        let ellipseHeight = 2.0 * r
         let ellipseRect = CGRect(x: center.x - ellipseWidth / 2.0,
                                  y: center.y - r,
                                  width: ellipseWidth,
                                  height: ellipseHeight)
         
         if f < 0.5 {
-            // Crescent: start with dark disc, add illuminated region (outside ellipse)
+            // Waxing or waning crescent: start with dark disc
             context.setFillColor(darkGray)
             context.addEllipse(in: moonRect)
             context.fillPath()
             
-            drawOutsideEllipseSide(context: context,
-                                   circleRect: moonRect,
-                                   ellipseRect: ellipseRect,
-                                   fillColor: lightGray,
-                                   lightOnRight: moon.waxing)
+            // Add illuminated crescent on illuminated side
+            addTerminatorOverlay(context: context,
+                                 moonRect: moonRect,
+                                 ellipseRect: ellipseRect,
+                                 overlayColor: lightGray,
+                                 baseColor: darkGray,
+                                 lightOnRight: moon.waxing,
+                                 addingLight: true)
         } else {
-            // Gibbous: start with full light disc, add small dark region (outside ellipse)
+            // Gibbous: start with light disc
             context.setFillColor(lightGray)
             context.addEllipse(in: moonRect)
             context.fillPath()
             
-            drawOutsideEllipseSide(context: context,
-                                   circleRect: moonRect,
-                                   ellipseRect: ellipseRect,
-                                   fillColor: darkGray,
-                                   lightOnRight: moon.waxing,
-                                   isDarkRegion: true)
+            // Add dark sliver on dark side
+            addTerminatorOverlay(context: context,
+                                 moonRect: moonRect,
+                                 ellipseRect: ellipseRect,
+                                 overlayColor: darkGray,
+                                 baseColor: lightGray,
+                                 lightOnRight: moon.waxing,
+                                 addingLight: false)
         }
         
-        // Outline
         strokeLimb(context: context, rect: moonRect, outline: outlineGray)
         context.restoreGState()
         
-        // Update last drawn rect
         lastMoonRect = moonRect
     }
     
-    // Draw region of the circle that lies outside the ellipse on one side.
-    // Uses even-odd fill: ellipse + side rectangle clipped to circle.
-    // lightOnRight indicates where illumination resides.
-    // If isDarkRegion is true, we are adding shadow for gibbous phases (opposite side).
-    private func drawOutsideEllipseSide(context: CGContext,
-                                        circleRect: CGRect,
-                                        ellipseRect: CGRect,
-                                        fillColor: CGColor,
-                                        lightOnRight: Bool,
-                                        isDarkRegion: Bool = false) {
+    // Adds the crescent or gibbous shadow overlay without using even-odd,
+    // preventing mirrored artifacts:
+    //
+    // Sequence:
+    //   Clip to circle.
+    //   Clip to target half-plane (illuminated side if addingLight, else dark side).
+    //   Fill that half with overlayColor.
+    //   Draw ellipse with baseColor to "erase" inside of ellipse, leaving only
+    //   the outside-of-ellipse part of the half-plane as the crescent/sliver.
+    private func addTerminatorOverlay(context: CGContext,
+                                      moonRect: CGRect,
+                                      ellipseRect: CGRect,
+                                      overlayColor: CGColor,
+                                      baseColor: CGColor,
+                                      lightOnRight: Bool,
+                                      addingLight: Bool) {
         context.saveGState()
-        // Clip to the lunar disc boundary.
-        context.addEllipse(in: circleRect)
+        // Clip to circle.
+        context.addEllipse(in: moonRect)
         context.clip()
         
-        // Determine which side rectangle to use.
+        let r = moonRect.width / 2.0
+        let centerX = moonRect.midX
+        
+        // Determine which half-plane we will operate on.
+        // If adding light, target illuminated side. Otherwise target dark side.
         let illuminatedRightSide = lightOnRight
-        let targetRightSide = isDarkRegion ? !illuminatedRightSide : illuminatedRightSide
+        let targetRightSide = addingLight ? illuminatedRightSide : !illuminatedRightSide
         
-        let r = circleRect.width / 2.0
-        let centerX = circleRect.midX
-        let rectX: CGFloat = targetRightSide ? centerX : centerX - r
-        let sideRect = CGRect(x: rectX,
-                              y: circleRect.minY,
-                              width: r,
-                              height: circleRect.height)
+        let halfRect: CGRect
+        if targetRightSide {
+            halfRect = CGRect(x: centerX,
+                               y: moonRect.minY,
+                               width: r,
+                               height: moonRect.height)
+        } else {
+            halfRect = CGRect(x: centerX - r,
+                               y: moonRect.minY,
+                               width: r,
+                               height: moonRect.height)
+        }
         
-        // Build even-odd path: ellipse + side rectangle
-        let path = CGMutablePath()
-        path.addEllipse(in: ellipseRect)
-        path.addRect(sideRect)
+        // Clip to half-plane
+        context.clip(to: halfRect)
         
-        context.addPath(path)
-        context.setFillColor(fillColor)
-        // Use .eoFill drawing mode for even-odd rule
-        context.drawPath(using: .eoFill)
+        // Fill entire half-plane with overlay color
+        context.setFillColor(overlayColor)
+        context.fill(halfRect)
+        
+        // Carve back inside ellipse with the base color to leave only outside-of-ellipse overlay
+        context.setFillColor(baseColor)
+        context.addEllipse(in: ellipseRect)
+        context.fillPath()
         
         context.restoreGState()
     }
