@@ -20,11 +20,17 @@ enum MoonTexture {
                                         bitmapInfo: CGImageAlphaInfo.none.rawValue) else {
             return baseImage
         }
+        // We want crater detail sampled with nearest neighbor (blocky texture),
+        // but the final circular outline will be anti-aliased by the vector clip in the renderer.
         scaledCtx.interpolationQuality = .none
         scaledCtx.draw(baseImage, in: CGRect(x: 0, y: 0, width: diameter, height: diameter))
         return scaledCtx.makeImage()
     }
     
+    // NOTE: We deliberately do NOT encode the circular silhouette in the texture anymore.
+    // Previously a hard cutoff (setting brightness=0 outside r) caused jagged edges when
+    // scaled with nearest-neighbor. Now we keep continuous data everywhere and rely on
+    // a clipped, anti-aliased vector circle to define the moon boundary cleanly.
     private static func generateAlbedoMap(size: Int) -> [UInt8] {
         var buffer = [UInt8](repeating: 0, count: size * size)
         let maria: [(Double, Double, Double, Double)] = [
@@ -44,6 +50,7 @@ enum MoonTexture {
                 let dx = nx - 0.5
                 let dy = ny - 0.5
                 let r2 = dx*dx + dy*dy
+                // Soft radial falloff just for a subtle limb darkening; no hard edge.
                 let radial = min(1.0, sqrt(r2) / 0.5)
                 var brightness = 0.88 - 0.10 * radial
                 for (mx, my, radius, depth) in maria {
@@ -60,7 +67,7 @@ enum MoonTexture {
                 if craterSeed > 0.995 {
                     brightness += 0.12
                 }
-                if r2 > 0.25 { brightness = 0.0 }
+                // No abrupt zeroing outside circle: remove former if r2 > 0.25 { brightness = 0 }
                 brightness = min(max(brightness, 0.05), 1.0)
                 let val = 25 + Int(brightness * 215.0)
                 buffer[y * size + x] = UInt8(val)

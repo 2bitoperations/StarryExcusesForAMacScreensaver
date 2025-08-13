@@ -61,7 +61,7 @@ class SkylineCoreRenderer {
         drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
     }
     
-    // MARK: - Moon Rendering (textured, no outline)
+    // MARK: - Moon Rendering (textured, anti-aliased edge, nearest-neighbor internal sampling)
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon(), let texture = moon.textureImage else { return }
         let center = moon.currentCenter()
@@ -71,6 +71,7 @@ class SkylineCoreRenderer {
         let newThreshold: CGFloat = 0.005
         let fullThreshold: CGFloat = 0.995
         
+        // Erase last moon rect (slightly expanded)
         if let prev = lastMoonRect {
             context.saveGState()
             context.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
@@ -79,17 +80,24 @@ class SkylineCoreRenderer {
         }
         
         context.saveGState()
-        context.interpolationQuality = .none
+        context.setShouldAntialias(true)
+        context.setAllowsAntialiasing(true)
+        context.interpolationQuality = .none   // nearest-neighbor for texture itself
+        
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         
+        // Simple phases: new or full shortcuts
         if f <= newThreshold {
             drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: true)
+            drawMoonOutline(context: context, rect: moonRect)
             context.restoreGState(); lastMoonRect = moonRect; return
         } else if f >= fullThreshold {
             drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: true)
+            drawMoonOutline(context: context, rect: moonRect)
             context.restoreGState(); lastMoonRect = moonRect; return
         }
         
+        // Phase geometry
         let cosTheta = 1.0 - 2.0 * f
         let minorScale = abs(cosTheta)
         let rawEllipseWidth = 2.0 * r * minorScale
@@ -107,6 +115,7 @@ class SkylineCoreRenderer {
         let baseBrightness = isCrescent ? darkBrightness : brightBrightness
         drawTexture(context: context, image: texture, in: moonRect, brightness: baseBrightness, clipToCircle: true)
         
+        // Overlay bright/dark portions with additional clipping
         context.saveGState()
         context.addEllipse(in: moonRect)
         context.clip()
@@ -120,12 +129,12 @@ class SkylineCoreRenderer {
             } else {
                 sideRect = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
             }
-            // Brighten side
+            // Bright side
             context.saveGState()
             context.clip(to: sideRect)
             drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: false)
             context.restoreGState()
-            // Carve interior back to dark
+            // Dark carve
             context.saveGState()
             context.addEllipse(in: ellipseRect)
             context.clip()
@@ -137,21 +146,39 @@ class SkylineCoreRenderer {
             } else { // dark right
                 sideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
             }
+            // Dark sliver
             context.saveGState()
             context.clip(to: sideRect)
             drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: false)
             context.restoreGState()
-            // Carve interior back to bright
+            // Bright interior
             context.saveGState()
             context.addEllipse(in: ellipseRect)
             context.clip()
             drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: false)
             context.restoreGState()
         }
-        context.restoreGState()
+        context.restoreGState() // phase overlay clipping
+        
+        // Final subtle outline for smooth anti-aliased limb
+        drawMoonOutline(context: context, rect: moonRect)
         
         context.restoreGState()
         lastMoonRect = moonRect
+    }
+    
+    private func drawMoonOutline(context: CGContext, rect: CGRect) {
+        context.saveGState()
+        context.setShouldAntialias(true)
+        context.setAllowsAntialiasing(true)
+        context.setLineWidth(1.0)
+        // Slight inner inset to center the stroke over the edge
+        let insetRect = rect.insetBy(dx: 0.5, dy: 0.5)
+        // A very subtle light stroke (can tweak alpha)
+        context.setStrokeColor(CGColor(gray: 1.0, alpha: 0.08))
+        context.addEllipse(in: insetRect)
+        context.strokePath()
+        context.restoreGState()
     }
     
     private func drawTexture(context: CGContext,
@@ -160,7 +187,9 @@ class SkylineCoreRenderer {
                              brightness: CGFloat,
                              clipToCircle: Bool) {
         context.saveGState()
-        context.interpolationQuality = .none
+        context.setShouldAntialias(true)            // keep edge smooth for any clipping
+        context.setAllowsAntialiasing(true)
+        context.interpolationQuality = .none        // nearest-neighbor sampling for crater texture
         if clipToCircle {
             context.addEllipse(in: rect)
             context.clip()
@@ -173,7 +202,7 @@ class SkylineCoreRenderer {
                 context.fill(rect)
             }
         } else if brightness > 1.0 {
-            // Optional brighten not implemented
+            // (Optional) brighten path could be implemented here with a screen blend.
         }
         context.restoreGState()
     }

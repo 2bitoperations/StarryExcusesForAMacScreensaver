@@ -2,8 +2,9 @@ import Cocoa
 import CoreGraphics
 
 // Lightweight preview renderer for the configuration sheet.
-// Renders: background, some random stars, a few building silhouettes, and the moon
-// with current configuration (approximation only).
+// Renders: background, some random stars, simple building silhouettes, and the moon
+// with current configuration (approximation only). We keep the logic aligned
+// with SkylineCoreRenderer so that edge smoothness and brightness behavior match.
 class MoonPreviewView: NSView {
     
     private struct Star {
@@ -102,98 +103,113 @@ class MoonPreviewView: NSView {
         let r = CGFloat(previewMoonRadius)
         let center = CGPoint(x: bounds.width * 0.65, y: bounds.height * 0.6)
         let f = CGFloat(max(0.0, min(1.0, phaseFraction)))
-        let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
-        
-        // Full/new thresholds
         let newT: CGFloat = 0.005
         let fullT: CGFloat = 0.995
         
         let bright = CGFloat(brightBrightness)
         let dark = CGFloat(darkBrightness)
         
-        ctx.interpolationQuality = .none
+        ctx.saveGState()
+        ctx.setShouldAntialias(true)
+        ctx.setAllowsAntialiasing(true)
+        ctx.interpolationQuality = .none // if we later move to a shared texture
         
-        // Simple textured-like fill via noise (avoid duplicating full texture code)
-        func fillDisc(brightness: CGFloat) {
+        let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
+        
+        func fillNoise(brightness: CGFloat) {
             ctx.saveGState()
             ctx.addEllipse(in: moonRect)
             ctx.clip()
-            // coarse blocks
-            let block = max(2, Int(r / 8))
-            for y in stride(from: Int(moonRect.minY), to: Int(moonRect.maxY), by: block) {
-                for x in stride(from: Int(moonRect.minX), to: Int(moonRect.maxX), by: block) {
-                    let hash = (x * 73856093) ^ (y * 19349663)
-                    let v = CGFloat((hash & 255)) / 255.0
+            // soft noise (higher granularity than original coarse blocks)
+            let block = max(1, Int(r / 10))
+            let cols = Int((2*r) / CGFloat(block)) + 1
+            let rows = cols
+            for row in 0..<rows {
+                for col in 0..<cols {
+                    let px = Int(moonRect.minX) + col * block
+                    let py = Int(moonRect.minY) + row * block
+                    let hash = (px * 73856093) ^ (py * 19349663)
+                    let v = CGFloat(hash & 255) / 255.0
                     let adj = brightness * (0.85 + 0.3 * (v - 0.5))
                     ctx.setFillColor(CGColor(gray: max(0, min(1, adj)), alpha: 1.0))
-                    ctx.fill(CGRect(x: x, y: y, width: block, height: block))
+                    ctx.fill(CGRect(x: px, y: py, width: block, height: block))
                 }
             }
             ctx.restoreGState()
         }
         
         if f <= newT {
-            fillDisc(brightness: dark)
+            fillNoise(brightness: dark)
+            drawOutline(ctx, rect: moonRect)
+            ctx.restoreGState()
             return
         } else if f >= fullT {
-            fillDisc(brightness: bright)
+            fillNoise(brightness: bright)
+            drawOutline(ctx, rect: moonRect)
+            ctx.restoreGState()
             return
         }
         
-        // Phase geometry
         let cosTheta = 1.0 - 2.0 * f
         let minorScale = abs(cosTheta)
         let ellipseWidth = max(0.5, 2.0 * r * minorScale)
         let ellipseRect = CGRect(x: center.x - ellipseWidth/2.0, y: center.y - r, width: ellipseWidth, height: 2*r)
         let crescent = f < 0.5
         
-        // Base disc
-        fillDisc(brightness: crescent ? dark : bright)
+        // Base
+        fillNoise(brightness: crescent ? dark : bright)
         
-        // Overlay logic
+        // Phase overlay
         ctx.saveGState()
         ctx.addEllipse(in: moonRect)
         ctx.clip()
         let overlap: CGFloat = 1.0
         let centerX = center.x
         if crescent {
-            // Add bright side then carve ellipse interior back dark
-            let sideRect: CGRect
-            if waxing {
-                sideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
-            } else {
-                sideRect = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
-            }
+            let sideRect: CGRect = waxing
+                ? CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
+                : CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
             ctx.saveGState()
             ctx.clip(to: sideRect)
-            fillDisc(brightness: bright)
+            fillNoise(brightness: bright)
             ctx.restoreGState()
-            // Carve
+            // Carve dark ellipse
             ctx.saveGState()
             ctx.addEllipse(in: ellipseRect)
             ctx.clip()
-            fillDisc(brightness: dark)
+            fillNoise(brightness: dark)
             ctx.restoreGState()
         } else {
-            // Gibbous – dark outer sliver
-            let sideRect: CGRect
-            if waxing {
-                // dark left
-                sideRect = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
-            } else {
-                sideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
-            }
+            let sideRect: CGRect = waxing
+                ? CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height) // dark left
+                : CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height) // dark right
             ctx.saveGState()
             ctx.clip(to: sideRect)
-            fillDisc(brightness: dark)
+            fillNoise(brightness: dark)
             ctx.restoreGState()
-            // Carve
+            // Interior bright
             ctx.saveGState()
             ctx.addEllipse(in: ellipseRect)
             ctx.clip()
-            fillDisc(brightness: bright)
+            fillNoise(brightness: bright)
             ctx.restoreGState()
         }
+        ctx.restoreGState()
+        
+        // Outline
+        drawOutline(ctx, rect: moonRect)
+        
+        ctx.restoreGState()
+    }
+    
+    private func drawOutline(_ ctx: CGContext, rect: CGRect) {
+        ctx.saveGState()
+        ctx.setShouldAntialias(true)
+        ctx.setAllowsAntialiasing(true)
+        ctx.setLineWidth(1.0)
+        ctx.setStrokeColor(CGColor(gray: 1.0, alpha: 0.08))
+        ctx.addEllipse(in: rect.insetBy(dx: 0.5, dy: 0.5))
+        ctx.strokePath()
         ctx.restoreGState()
     }
 }
