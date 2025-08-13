@@ -73,18 +73,19 @@ class SkylineCoreRenderer {
     }
     
     func drawFlasher(context: CGContext) {
-        guard let flasher = skyline.getFlasher() else { return }
+        guard let flasher = skyline.getFlasher() else {
+            return
+        }
         self.drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
     }
     
     // MARK: - Moon Rendering (orthographic-inspired terminator)
     //
-    // Seam fix:
-    // Previous method (fill half-plane + carve ellipse) overdrew at the vertical
-    // center line, causing a persistent or flickering dark chord. Replaced with a
-    // single even-odd fill constructing only the desired sliver (crescent or
-    // gibbous shadow) using: Path = Ellipse + SideRectangle, fill with .eoFill
-    // under a clip to the lunar disc.
+    // Seam / artifact fix:
+    // Restrict the sliver side rectangle to start at the ellipse boundary
+    // (centerX ± ellipseWidth/2) instead of the moon's center line. This
+    // prevents the even-odd fill from producing an additional unintended
+    // interior band.
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon() else { return }
         let center = moon.currentCenter()
@@ -169,11 +170,12 @@ class SkylineCoreRenderer {
             context.setShouldAntialias(false)
         }
         
-        // Draw sliver (crescent light or gibbous dark) using single even-odd fill.
+        // Draw sliver (crescent light or gibbous dark) using restricted side rectangle.
         if isCrescent {
             drawSliver(context: context,
                        moonRect: moonRect,
                        ellipseRect: ellipseRect,
+                       ellipseWidth: ellipseWidth,
                        fillColor: lightGray,
                        onRightSide: lightOnRight)
         } else {
@@ -181,6 +183,7 @@ class SkylineCoreRenderer {
             drawSliver(context: context,
                        moonRect: moonRect,
                        ellipseRect: ellipseRect,
+                       ellipseWidth: ellipseWidth,
                        fillColor: darkGray,
                        onRightSide: !lightOnRight)
         }
@@ -203,10 +206,12 @@ class SkylineCoreRenderer {
     }
     
     // Draw the crescent or gibbous shadow sliver on the specified side using even-odd rule.
-    // onRightSide: true means the sliver is on the right half of the disc.
+    // onRightSide: true means the sliver is on the right limb of the disc.
+    // The side rectangle begins at the ellipse boundary to avoid interior artifacts.
     private func drawSliver(context: CGContext,
                             moonRect: CGRect,
                             ellipseRect: CGRect,
+                            ellipseWidth: CGFloat,
                             fillColor: CGColor,
                             onRightSide: Bool) {
         context.saveGState()
@@ -216,13 +221,32 @@ class SkylineCoreRenderer {
         
         let r = moonRect.width / 2.0
         let centerX = moonRect.midX
+        let halfEllipse = ellipseWidth / 2.0
         
-        // Side rectangle (no sub-pixel offsets needed)
-        let sideRect: CGRect = onRightSide
-            ? CGRect(x: centerX, y: moonRect.minY, width: r, height: moonRect.height)
-            : CGRect(x: centerX - r, y: moonRect.minY, width: r, height: moonRect.height)
+        // Side rectangle restricted to region beyond ellipse boundary.
+        let sideRect: CGRect
+        if onRightSide {
+            // Start at ellipse boundary on right
+            let startX = centerX + halfEllipse
+            let width = (centerX + r) - startX
+            if width <= 0 {
+                context.restoreGState()
+                return
+            }
+            sideRect = CGRect(x: startX, y: moonRect.minY, width: width, height: moonRect.height)
+        } else {
+            // Left side
+            let startX = centerX - r
+            let endX = centerX - halfEllipse
+            let width = endX - startX
+            if width <= 0 {
+                context.restoreGState()
+                return
+            }
+            sideRect = CGRect(x: startX, y: moonRect.minY, width: width, height: moonRect.height)
+        }
         
-        // Even-odd path: ellipse + side rect -> fill outside ellipse but inside side rect
+        // Even-odd path: ellipse + narrow limb rectangle -> outside ellipse but only limb region
         let path = CGMutablePath()
         path.addEllipse(in: ellipseRect)
         path.addRect(sideRect)
@@ -253,22 +277,11 @@ class SkylineCoreRenderer {
         context.setStrokeColor(CGColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 0.6))
         context.strokePath()
         
-        // Side rectangle boundary (magenta) for active sliver side
-        let sliverOnRight = isCrescent ? lightOnRight : !lightOnRight
-        let boundaryX = sliverOnRight ? centerX : centerX
-        let hp = CGMutablePath()
-        hp.move(to: CGPoint(x: boundaryX, y: moonRect.minY))
-        hp.addLine(to: CGPoint(x: boundaryX, y: moonRect.maxY))
-        context.addPath(hp)
-        context.setStrokeColor(CGColor(red: 1.0, green: 0.0, blue: 1.0, alpha: 0.6))
-        context.strokePath()
-        
         // Terminator ellipse outline (yellow)
         context.addEllipse(in: ellipseRect)
         context.setStrokeColor(CGColor(red: 1.0, green: 1.0, blue: 0.0, alpha: 0.8))
         context.strokePath()
         
-        // Final ellipse outline (optional)
         if debugDrawFinalEllipseOutline {
             context.addEllipse(in: ellipseRect)
             context.setStrokeColor(CGColor(red: 0.0, green: 1.0, blue: 0.0, alpha: 0.4))
