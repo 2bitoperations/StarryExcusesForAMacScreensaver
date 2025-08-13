@@ -29,8 +29,7 @@ class SkylineCoreRenderer {
         if (traceEnabled) {
             os_log("drawing single frame", log: self.log, type: .debug)
         }
-        // Order updated so stars NEVER draw over the moon:
-        // stars, moon, buildings, flasher
+        // Stars first so the moon & buildings overwrite them (no star over the moon).
         drawStars(context: context)
         drawMoon(context: context)
         drawBuildings(context: context)
@@ -62,76 +61,56 @@ class SkylineCoreRenderer {
         guard let flasher = skyline.getFlasher() else {
             return
         }
-        
         self.drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
     }
     
-    // MARK: - Moon Rendering (vertical chord approximation)
+    // MARK: - Moon Rendering (curved terminator via overlapping circle)
     //
-    // We render a more "optical" looking phase silhouette while accepting
-    // some area inaccuracy:
-    // 1. Fill entire disc with near-black dark side color.
-    // 2. Compute a vertical chord position and fill the illuminated segment
-    //    with light gray. The chord is straight at half phase and moves
-    //    toward the limb for crescents/gibbous, matching the classic
-    //    80's monochrome style.
-    // 3. Always stroke the full lunar limb.
-    //
-    // Stars are drawn BEFORE the moon, so none appear on top of either
-    // illuminated or dark portions.
+    // We draw a full light disc, then overlay a dark disc of the same radius
+    // horizontally offset based on illuminated fraction:
+    //   offset d = 2 * r * f   (f in [0,1])
+    // Waxing: dark disc shifted left  (illumination on right)
+    // Waning: dark disc shifted right (illumination on left)
+    // This produces a circular (curved) terminator with correct qualitative shape.
+    // Always stroke limb after fills. Stars are underneath (drawn earlier).
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon() else { return }
         let center = moon.currentCenter()
         let r = CGFloat(moon.radius)
-        let f = max(0.0, min(1.0, moon.illuminatedFraction))
+        let f = CGFloat(max(0.0, min(1.0, moon.illuminatedFraction)))
         
-        let darkGray = CGColor(gray: 0.08, alpha: 1.0)     // almost-black
         let lightGray = CGColor(gray: 0.85, alpha: 1.0)
+        let darkGray  = CGColor(gray: 0.08, alpha: 1.0)
         let outlineGray = CGColor(gray: 0.6, alpha: 1.0)
         
         context.saveGState()
         
-        // Full disc (dark side base)
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
-        context.setFillColor(darkGray)
-        context.addEllipse(in: moonRect)
-        context.fillPath()
         
-        // Illuminated segment
-        if f > 0.0005 { // draw only if some illumination
-            context.saveGState()
-            // Clip to the moon circle so we only fill inside limb
+        // If there is any illumination, start with full light disc
+        if f > 0.0 {
+            context.setFillColor(lightGray)
             context.addEllipse(in: moonRect)
-            context.clip()
-            
-            // Compute vertical chord boundaries.
-            // We map fraction to linear width for simplicity (visual > area accuracy).
-            // width = 2r * f
-            let fullDiameter = 2.0 * r
-            let litWidth = CGFloat(f) * fullDiameter
-            if moon.waxing {
-                // Waxing: light on the right
-                let xStart = center.x + r - litWidth
-                let litRect = CGRect(x: xStart,
-                                     y: center.y - r,
-                                     width: litWidth,
-                                     height: fullDiameter)
-                context.setFillColor(lightGray)
-                context.fill(litRect)
-            } else {
-                // Waning: light on the left
-                let xEnd = center.x - r + litWidth
-                let litRect = CGRect(x: center.x - r,
-                                     y: center.y - r,
-                                     width: litWidth,
-                                     height: fullDiameter)
-                context.setFillColor(lightGray)
-                context.fill(litRect)
-            }
-            context.restoreGState()
+            context.fillPath()
+        } else {
+            // Pure new moon: fill dark disc (will get outline below)
+            context.setFillColor(darkGray)
+            context.addEllipse(in: moonRect)
+            context.fillPath()
         }
         
-        // Always stroke the outer limb
+        // If not full, overlay dark disc to carve the shadow portion
+        if f < 1.0 {
+            let d = 2.0 * r * f   // simple proportional offset
+            let offsetSign: CGFloat = moon.waxing ? -1.0 : 1.0
+            let shadowCenterX = center.x + offsetSign * d
+            let shadowRect = CGRect(x: shadowCenterX - r, y: center.y - r, width: 2*r, height: 2*r)
+            context.setFillColor(darkGray)
+            context.addEllipse(in: shadowRect)
+            context.fillPath()
+        }
+        
+        // Stroke lunar limb
         context.setStrokeColor(outlineGray)
         context.setLineWidth(1.0)
         context.addEllipse(in: moonRect)

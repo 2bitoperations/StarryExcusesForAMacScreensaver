@@ -5,10 +5,14 @@ import os
 // Represents the moon, its phase (at Austin, TX local midnight of current day),
 // and traversal parameters for a 1-hour arc animation across the screen.
 //
-// NOTE: Rendering no longer relies on overlapping circle area math;
-// the renderer now uses a vertical chord approximation to create a
-// visually familiar phase silhouette. We keep the illuminatedFraction
-// and waxing state only.
+// Rendering approach (see SkylineCoreRenderer):
+// The visible illuminated portion is produced by drawing a full light disc,
+// then overlaying a dark disc of the same radius whose center is horizontally
+// offset by d = 2 * r * f (f = illuminatedFraction). For waxing phases the
+// dark disc is shifted left (illumination on the right); for waning phases
+// it is shifted right. This yields a curved (circular) terminator silhouette
+// typical of simple classic lunar phase renderers, sacrificing exact area
+// accuracy for a clean 80's monochrome look with correct curvature.
 struct Moon {
     // Static / configuration-ish (will make configurable later)
     static let synodicMonthDays: Double = 29.530588853
@@ -72,9 +76,7 @@ struct Moon {
         
         // Phase at Austin local midnight
         let phaseDate = Moon.midnightInAustin()
-        let phaseResult = Moon.computePhase(on: phaseDate)
-        let fraction = phaseResult.0
-        let waxingFlag = phaseResult.1
+        let (fraction, waxingFlag) = Moon.computePhase(on: phaseDate)
         self.illuminatedFraction = fraction
         self.waxing = waxingFlag
         
