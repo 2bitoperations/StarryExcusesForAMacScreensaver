@@ -51,9 +51,7 @@
                                     </textField>
                                     <textField identifier="StarsPerUpdate" translatesAutoresizingMaskIntoConstraints="NO" id="IjJ-g5-V0M">
                                         <rect key="frame" x="140" y="4" width="80" height="22"/>
-                                        <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" borderStyle="bezel" title="120" id="9WR-VQ-vtH">
-                                            <numberFormatter key="formatter" numberStyle="decimal" id="Hx4-eq-smd"/>
-                                        </textFieldCell>
+                                        <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" borderStyle="bezel" title="120" id="9WR-VQ-vtH"/>
                                     </textField>
                                 </subviews>
                             </stackView>
