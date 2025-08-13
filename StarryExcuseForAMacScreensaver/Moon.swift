@@ -6,16 +6,21 @@ import os
 // and traversal parameters for a 1-hour arc animation across the screen.
 //
 // Rendering approach (see SkylineCoreRenderer):
-// The visible illuminated portion is produced by drawing a full light disc,
-// then overlaying a dark disc of the same radius whose center is horizontally
-// offset by d = 2 * r * f (f = illuminatedFraction). For waxing phases the
-// dark disc is shifted left (illumination on the right); for waning phases
-// it is shifted right. This yields a curved (circular) terminator silhouette
-// typical of simple classic lunar phase renderers, sacrificing exact area
-// accuracy for a clean 80's monochrome look with correct curvature.
+// The visible illuminated portion is produced (currently) with an orthographic-style
+// elliptical terminator.
+//
+// Direction logic:
+//  - We no longer randomize the horizontal travel direction.
+//  - If the reference latitude is >= 0 (northern hemisphere or equator) the moon
+//    moves left -> right.
+//  - If latitude < 0 (southern hemisphere) it moves right -> left.
+//  - For now the reference location is Austin, TX, USA (latitude ~ 30.2672).
+//    This will be made configurable later.
 struct Moon {
     // Static / configuration-ish (will make configurable later)
     static let synodicMonthDays: Double = 29.530588853
+    static let referenceLatitude: Double = 30.2672 // Austin, TX (positive => northern hemisphere)
+    
     static let newMoonEpoch: Date = {
         // Known New Moon: 2000-01-06 18:14:00 UTC (approx) often used as epoch.
         var comps = DateComponents()
@@ -50,8 +55,10 @@ struct Moon {
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         
-        // Random orientation & radius
-        self.movingLeftToRight = Bool.random()
+        // Direction based on hemisphere (reference latitude)
+        self.movingLeftToRight = Moon.referenceLatitude >= 0.0
+        
+        // Radius selection (bounded, deterministic range)
         let maxRLimitFromScreen = Int(0.12 * Double(min(screenWidth, screenHeight)))
         let allowedMaxR = min(maxRadius, maxRLimitFromScreen)
         let minR = minRadius
@@ -81,10 +88,12 @@ struct Moon {
         self.waxing = waxingFlag
         
         // Logging (kept simple)
-        os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@",
-               log: log, type: .info,
-               self.radius, self.illuminatedFraction, self.waxing ? "true" : "false")
-        os_log("Moon dir=%{public}@", log: log, type: .info,
+        os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@",
+               log: log,
+               type: .info,
+               self.radius,
+               self.illuminatedFraction,
+               self.waxing ? "true" : "false",
                self.movingLeftToRight ? "L->R" : "R->L")
     }
     

@@ -70,30 +70,10 @@ class SkylineCoreRenderer {
     
     // MARK: - Moon Rendering (orthographic-inspired terminator)
     //
-    // Previous implementation used an even-odd fill of (ellipse + side rectangle).
-    // That occasionally produced an unwanted second dark band because the
-    // "outside ellipse" region on the chosen side could become disjoint
-    // (especially for large ellipse widths near full / new).
-    //
-    // New approach eliminates even-odd path ambiguity:
-    //  1. (Optional threshold) Draw full dark or full light disc for near new/full.
-    //  2. For general phases, always start with a base disc:
-    //       - f < 0.5: start dark; add illuminated crescent.
-    //       - f > 0.5: start light; add dark sliver.
-    //  3. To add the crescent/sliver we:
-    //       - Clip to the circle.
-    //       - Further clip to the half-plane (left or right half of disc) for the target side.
-    //       - Fill the entire half-plane with the desired overlay color.
-    //       - Draw the terminator ellipse again inside that clip with the base color to "carve back"
-    //         the interior of the ellipse. This leaves only the outside-of-ellipse region on that
-    //         side as the overlay (crescent or gibbous shadow) with no mirrored artifacts.
-    //  4. Stroke outer limb.
-    //
-    // This yields a single clean bright/dark division without residual artifacts.
-    //
-    // Trail removal:
-    //   Before drawing the new moon each frame, fill the previous moon's bounding
-    //   rectangle with black to erase the prior moon (preventing trail artifacts).
+    // Improvement:
+    //  - Mitigate flickering narrow vertical chord by enforcing a minimum ellipse width (>= 2px),
+    //    preventing sub-pixel degeneracy when the phase is near first/last quarter.
+    //  - Direction now deterministic (handled in Moon.swift).
     func drawMoon(context: CGContext) {
         guard let moon = skyline.getMoon() else { return }
         let center = moon.currentCenter()
@@ -143,7 +123,9 @@ class SkylineCoreRenderer {
         // cosθ = 1 - 2f (θ in [0, π])
         let cosTheta = 1.0 - 2.0 * f
         let minorScale = abs(cosTheta) // ellipse semi-minor / radius
-        let ellipseWidth = max(0.0001, 2.0 * r * minorScale)
+        // Enforce a minimum ellipse width (2px) to suppress sub-pixel flicker.
+        let rawEllipseWidth = 2.0 * r * minorScale
+        let ellipseWidth = max(2.0, rawEllipseWidth)
         let ellipseHeight = 2.0 * r
         let ellipseRect = CGRect(x: center.x - ellipseWidth / 2.0,
                                  y: center.y - r,
@@ -151,33 +133,31 @@ class SkylineCoreRenderer {
                                  height: ellipseHeight)
         
         if f < 0.5 {
-            // Waxing or waning crescent: start with dark disc
+            // Crescent: start with dark disc
             context.setFillColor(darkGray)
             context.addEllipse(in: moonRect)
             context.fillPath()
             
-            // Add illuminated crescent on illuminated side
-            addTerminatorOverlay(context: context,
-                                 moonRect: moonRect,
-                                 ellipseRect: ellipseRect,
-                                 overlayColor: lightGray,
-                                 baseColor: darkGray,
-                                 lightOnRight: moon.waxing,
-                                 addingLight: true)
+            // Add illuminated crescent outside ellipse on illuminated side
+            addCrescentOverlay(context: context,
+                               moonRect: moonRect,
+                               ellipseRect: ellipseRect,
+                               overlayColor: lightGray,
+                               baseColor: darkGray,
+                               lightOnRight: moon.waxing)
         } else {
             // Gibbous: start with light disc
             context.setFillColor(lightGray)
             context.addEllipse(in: moonRect)
             context.fillPath()
             
-            // Add dark sliver on dark side
-            addTerminatorOverlay(context: context,
-                                 moonRect: moonRect,
-                                 ellipseRect: ellipseRect,
-                                 overlayColor: darkGray,
-                                 baseColor: lightGray,
-                                 lightOnRight: moon.waxing,
-                                 addingLight: false)
+            // Add dark sliver outside ellipse on dark side (current approximation).
+            addGibbousShadow(context: context,
+                             moonRect: moonRect,
+                             ellipseRect: ellipseRect,
+                             overlayColor: darkGray,
+                             baseColor: lightGray,
+                             lightOnRight: moon.waxing)
         }
         
         strokeLimb(context: context, rect: moonRect, outline: outlineGray)
@@ -186,56 +166,68 @@ class SkylineCoreRenderer {
         lastMoonRect = moonRect
     }
     
-    // Adds the crescent or gibbous shadow overlay without using even-odd,
-    // preventing mirrored artifacts:
-    //
-    // Sequence:
-    //   Clip to circle.
-    //   Clip to target half-plane (illuminated side if addingLight, else dark side).
-    //   Fill that half with overlayColor.
-    //   Draw ellipse with baseColor to "erase" inside of ellipse, leaving only
-    //   the outside-of-ellipse part of the half-plane as the crescent/sliver.
-    private func addTerminatorOverlay(context: CGContext,
-                                      moonRect: CGRect,
-                                      ellipseRect: CGRect,
-                                      overlayColor: CGColor,
-                                      baseColor: CGColor,
-                                      lightOnRight: Bool,
-                                      addingLight: Bool) {
+    // Crescent overlay (f < 0.5):
+    // Fill illuminated side half-plane, carve interior ellipse back to base color.
+    private func addCrescentOverlay(context: CGContext,
+                                    moonRect: CGRect,
+                                    ellipseRect: CGRect,
+                                    overlayColor: CGColor,
+                                    baseColor: CGColor,
+                                    lightOnRight: Bool) {
         context.saveGState()
-        // Clip to circle.
         context.addEllipse(in: moonRect)
         context.clip()
         
         let r = moonRect.width / 2.0
         let centerX = moonRect.midX
-        
-        // Determine which half-plane we will operate on.
-        // If adding light, target illuminated side. Otherwise target dark side.
-        let illuminatedRightSide = lightOnRight
-        let targetRightSide = addingLight ? illuminatedRightSide : !illuminatedRightSide
-        
-        let halfRect: CGRect
-        if targetRightSide {
-            halfRect = CGRect(x: centerX,
-                               y: moonRect.minY,
-                               width: r,
-                               height: moonRect.height)
-        } else {
-            halfRect = CGRect(x: centerX - r,
-                               y: moonRect.minY,
-                               width: r,
-                               height: moonRect.height)
-        }
-        
-        // Clip to half-plane
+        // Illumination side
+        let targetRightSide = lightOnRight
+        let halfRect = CGRect(x: targetRightSide ? centerX : centerX - r,
+                              y: moonRect.minY,
+                              width: r,
+                              height: moonRect.height)
         context.clip(to: halfRect)
         
-        // Fill entire half-plane with overlay color
+        // Fill illuminated side
         context.setFillColor(overlayColor)
         context.fill(halfRect)
         
-        // Carve back inside ellipse with the base color to leave only outside-of-ellipse overlay
+        // Carve interior ellipse to restore base (dark)
+        context.setFillColor(baseColor)
+        context.addEllipse(in: ellipseRect)
+        context.fillPath()
+        
+        context.restoreGState()
+    }
+    
+    // Gibbous shadow (f > 0.5):
+    // Fill dark side half-plane, carve interior ellipse back to base light color,
+    // leaving outer sliver dark. (Approximation consistent with crescent method.)
+    private func addGibbousShadow(context: CGContext,
+                                  moonRect: CGRect,
+                                  ellipseRect: CGRect,
+                                  overlayColor: CGColor,
+                                  baseColor: CGColor,
+                                  lightOnRight: Bool) {
+        context.saveGState()
+        context.addEllipse(in: moonRect)
+        context.clip()
+        
+        let r = moonRect.width / 2.0
+        let centerX = moonRect.midX
+        // Dark side is opposite illuminated side
+        let darkRightSide = !lightOnRight
+        let halfRect = CGRect(x: darkRightSide ? centerX : centerX - r,
+                              y: moonRect.minY,
+                              width: r,
+                              height: moonRect.height)
+        context.clip(to: halfRect)
+        
+        // Fill dark side
+        context.setFillColor(overlayColor)
+        context.fill(halfRect)
+        
+        // Carve interior ellipse back to light
         context.setFillColor(baseColor)
         context.addEllipse(in: ellipseRect)
         context.fillPath()
