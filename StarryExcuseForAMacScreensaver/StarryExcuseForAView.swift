@@ -105,11 +105,11 @@ class StarryExcuseForAView: ScreenSaverView {
     }
 
     private func setupAnimation() async {
-        os_log("starting setupAnimation", log: self.log!, type: .info)
+        os_log("starting setupAnimation", log: self.log!)
         let context = CGContext(data: nil, width: Int(frame.width), height: Int(frame.height), bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue).rawValue)!
         self.size = CGSize.init(width: context.width, height: context.height)
         self.currentContext = context
-        os_log("context created", log: self.log!, type: .info)
+        os_log("context created", log: self.log!)
         
         context.interpolationQuality = .high
         
@@ -119,14 +119,14 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         self.image = context.makeImage()!
-        os_log("image created", log: self.log!, type: .info)
+        os_log("image created", log: self.log!)
         
         await MainActor.run {
             self.imageView = NSImageView(frame: NSRect(origin: CGPoint.init(), size: self.size!))
             self.imageView?.image = NSImage(cgImage: image!, size: self.size!)
             addSubview(imageView!)
         }
-        os_log("leaving setupAnimation %d %d", log: self.log!, type: .info,
+        os_log("leaving setupAnimation %d %d", log: self.log!,
                context.width, context.height)
     }
 
