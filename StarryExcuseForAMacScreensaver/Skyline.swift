@@ -107,13 +107,14 @@ class Skyline {
                    building.height)
         }
         
-        self.flasherPosition = getFlasherPosition()
-        
-        // Initialize moon
+        // Initialize moon BEFORE calling any instance methods that reference self
         self.moon = Moon(screenWidth: screenXMax,
                          screenHeight: screenYMax,
                          buildingMaxHeight: self.buildingMaxHeight,
                          log: log)
+        
+        // Now safe to compute flasher position
+        self.flasherPosition = getFlasherPosition()
     }
     
     static func getWeightedRandomHeight(maxHeight: Int) -> Int {
