@@ -40,12 +40,14 @@ struct Moon {
         self.traversalSeconds = traversalSeconds
         self.movingLeftToRight = Moon.referenceLatitude >= 0.0
         
+        // Radius selection with safe bounds
         let boundedMin = max(5, min(1000, minRadius))
         let boundedMax = max(boundedMin, min(1200, maxRadius))
         let maxRLimitFromScreen = Int(0.2 * Double(min(screenWidth, screenHeight)))
         let allowedMaxR = min(boundedMax, maxRLimitFromScreen)
         self.radius = Int.random(in: boundedMin...allowedMaxR)
         
+        // Base Y for the traversal arc (ensures it is above buildings and inside screen)
         let minBaseUnclamped = buildingMaxHeight + self.radius + 10
         let minBase = max(minBaseUnclamped, self.radius + 10)
         let maxBaseCandidate = minBase + Int(0.10 * Double(screenHeight))
@@ -54,38 +56,53 @@ struct Moon {
         let chosenBase = (baseUpper >= minBase) ? Int.random(in: minBase...baseUpper) : minBase
         self.arcBaseY = Double(chosenBase)
         
+        // Arc amplitude (ensure some vertical motion, but stay within headroom)
         let verticalHeadroom = Double(screenHeight - self.radius) - self.arcBaseY - 10.0
         let suggested = 0.15 * Double(screenHeight)
         let minAmp = 20.0
         self.arcAmplitude = min(max(minAmp, suggested), max(0.0, verticalHeadroom))
         
+        // Phase & waxing
         let phaseDate = Moon.midnightInAustin()
         let (fraction, waxingFlag) = Moon.computePhase(on: phaseDate)
         self.illuminatedFraction = fraction
         self.waxing = waxingFlag
         
+        // Texture
         self.textureImage = MoonTexture.createMoonTexture(diameter: self.radius * 2)
         
+        // Break complex os_log argument building into simpler pieces (prevents type-check explosion)
+        let waxingStr: String = self.waxing ? "true" : "false"
+        let direction: String = self.movingLeftToRight ? "L->R" : "R->L"
+        let dur: Double = self.traversalSeconds
         os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@ dur=%.0fs",
-               log: log, type: .info,
+               log: log,
+               type: .info,
                self.radius,
                self.illuminatedFraction,
-               self.waxing ? "true" : "false",
-               self.movingLeftToRight ? "L->R" : "R->L",
-               self.traversalSeconds)
+               waxingStr,
+               direction,
+               dur)
     }
     
     func currentCenter(now: Date = Date()) -> CGPoint {
         let cal = Calendar(identifier: .gregorian)
         let tz = TimeZone.current
         let comps = cal.dateComponents(in: tz, from: now)
-        let seconds = Double((comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0))
-        let loop = seconds.truncatingRemainder(dividingBy: traversalSeconds)
+        let h = comps.hour ?? 0
+        let m = comps.minute ?? 0
+        let s = comps.second ?? 0
+        let totalSeconds = Double(h * 3600 + m * 60 + s)
+        let loop = totalSeconds.truncatingRemainder(dividingBy: traversalSeconds)
         let progress = loop / traversalSeconds
         let usableWidth = Double(screenWidth - 2 * radius)
         let baseX = Double(radius)
-        let x = movingLeftToRight ? (progress * usableWidth + baseX)
-                                  : ((1.0 - progress) * usableWidth + baseX)
+        let x: Double
+        if movingLeftToRight {
+            x = progress * usableWidth + baseX
+        } else {
+            x = (1.0 - progress) * usableWidth + baseX
+        }
         let y = arcBaseY + arcAmplitude * sin(Double.pi * progress)
         return CGPoint(x: x, y: y)
     }
