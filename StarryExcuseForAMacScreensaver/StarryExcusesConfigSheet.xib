@@ -21,6 +21,7 @@
                 <outlet property="moonPreviewView" destination="PREVIEW-VIEW" id="PREVIEW-VIEW-ID"/>
                 <outlet property="moonTraversalMinutes" destination="MTR-lb-Min" id="OvU-d4-dwH"/>
                 <outlet property="pauseToggleButton" destination="BTN-PAUSE" id="PAUSE-BTN-OUTLET"/>
+                <outlet property="saveCloseButton" destination="irw-GB-QPa" id="SAVE-BTN-OUTLET"/>
                 <outlet property="secsBetweenClears" destination="CG8-TJ-hHM" id="5Fh-T7-gR5"/>
                 <outlet property="starsPerUpdate" destination="IjJ-g5-V0M" id="abn-RS-3YH"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>

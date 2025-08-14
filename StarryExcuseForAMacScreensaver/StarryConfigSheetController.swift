@@ -38,6 +38,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     // Pause/Resume toggle button outlet (to update its title)
     @IBOutlet weak var pauseToggleButton: NSButton!
     
+    // Save & Close button (enable/disable based on validation)
+    @IBOutlet weak var saveCloseButton: NSButton!
+    
     // Shared preview engine + timer
     private var previewEngine: StarryEngine?
     private var previewTimer: Timer?
@@ -54,14 +57,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         updatePreviewLabels()
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
+        validateInputs()
     }
     
     @IBAction func moonSliderChanged(_ sender: Any) {
-        // Enforce strict inequality: min < max
-        enforceStrictRadiusInequality(changedControl: sender as AnyObject?)
+        // Do NOT auto-correct values; allow invalid state to be displayed.
         updatePreviewLabels()
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
+        validateInputs()
     }
     
     // MARK: - Preview Control Buttons
@@ -116,7 +120,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
             win.setFrame(frame, display: true)
         }
         
-        // Load defaults into UI
+        // Load defaults into UI (do NOT auto-fix ordering; reflect raw stored values)
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
         buildingHeightSlider.doubleValue = defaultsManager.buildingHeight
         buildingHeightPreview.stringValue = String(format: "%.3f", defaultsManager.buildingHeight)
@@ -128,14 +132,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         brightBrightnessSlider.doubleValue = defaultsManager.moonBrightBrightness
         darkBrightnessSlider.doubleValue = defaultsManager.moonDarkBrightness
         
-        // Enforce strict min < max at load (adjust if equal or inverted)
-        enforceStrictRadiusInequality(changedControl: nil)
-        
         updatePreviewLabels()
         self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         
         setupPreviewEngine()
         updatePauseToggleTitle()
+        validateInputs()
         
         // Log raw style mask
         if let styleMaskRaw = window?.styleMask.rawValue {
@@ -145,39 +147,19 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         }
     }
     
-    // MARK: - Radius inequality enforcement (strict: min < max)
-    private func enforceStrictRadiusInequality(changedControl: AnyObject?) {
-        var minVal = minMoonRadiusSlider.integerValue
-        var maxVal = maxMoonRadiusSlider.integerValue
-        
-        if minVal >= maxVal {
-            if changedControl === minMoonRadiusSlider {
-                if maxVal < Int(maxMoonRadiusSlider.maxValue) {
-                    maxVal = min(minVal + 1, Int(maxMoonRadiusSlider.maxValue))
-                } else {
-                    minVal = max(maxVal - 1, Int(minMoonRadiusSlider.minValue))
-                }
-            } else if changedControl === maxMoonRadiusSlider {
-                if minVal > Int(minMoonRadiusSlider.minValue) {
-                    minVal = max(minVal - 1, Int(minMoonRadiusSlider.minValue))
-                } else {
-                    maxVal = min(minVal + 1, Int(maxMoonRadiusSlider.maxValue))
-                }
-            } else {
-                if maxVal <= minVal && maxVal < Int(maxMoonRadiusSlider.maxValue) {
-                    maxVal = minVal + 1
-                } else {
-                    minVal = maxVal - 1
-                }
-            }
-        }
-        
-        minMoonRadiusSlider.integerValue = minVal
-        maxMoonRadiusSlider.integerValue = maxVal
-        
-        // Prevent equality on subsequent drags
-        minMoonRadiusSlider.maxValue = Double(maxVal - 1)
-        maxMoonRadiusSlider.minValue = Double(minVal + 1)
+    // MARK: - Validation
+    
+    // Determines if user input is valid. Current rule: min radius < max radius.
+    private func inputsAreValid() -> Bool {
+        return minMoonRadiusSlider.integerValue < maxMoonRadiusSlider.integerValue
+    }
+    
+    private func validateInputs() {
+        let valid = inputsAreValid()
+        saveCloseButton.isEnabled = valid
+        // Optionally adjust button alpha for clearer "disabled" state (native disabling usually sufficient)
+        saveCloseButton.alphaValue = valid ? 1.0 : 0.5
+        // Could add future visual cues here (e.g., change label color) if desired.
     }
     
     // MARK: - Window Delegate (auto pause/resume)
@@ -292,11 +274,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     // MARK: - Save / Close
     
     @IBAction func saveClose(_ sender: Any) {
+        // Guard against accidental triggering if disabled (should not happen).
+        guard inputsAreValid() else {
+            NSSound.beep()
+            return
+        }
+        
         os_log("hit saveClose", log: self.log!, type: .info)
         
-        // Final strict inequality enforcement before persisting.
-        enforceStrictRadiusInequality(changedControl: nil)
-        
+        // Persist current control values exactly as entered.
         defaultsManager.starsPerUpdate = starsPerUpdate.integerValue
         defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
         defaultsManager.secsBetweenClears = secsBetweenClears.doubleValue
