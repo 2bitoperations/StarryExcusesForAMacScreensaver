@@ -115,6 +115,10 @@ final class MoonLayerRenderer {
                                    width: r + overlap,
                                    height: moonRect.height)
         
+        // clipLens isolates a crescent/gibbous region based on the sideRect provided.
+        // After we changed layering (dark base first) the semantic of which sideRect
+        // yields the LIT portion inverted relative to the previous code. Therefore
+        // we intentionally feed the *opposite* sideRect of the visual lit side.
         func clipLens(sideRect: CGRect) {
             context.clip(to: sideRect)
             let path = CGMutablePath()
@@ -128,13 +132,13 @@ final class MoonLayerRenderer {
         // Restrict to moon circle first (for antialiased rim coherence)
         context.addEllipse(in: moonRect)
         context.clip()
-        // Choose the LIT side (opposite of previous dark-overlay logic)
+        // Choose sideRect to produce illuminated region:
+        // If light should appear on the RIGHT, we must pass leftSideRect (and vice versa)
+        // due to even-odd + sideRect intersection producing the complement after layering change.
         if lightOnRight {
-            // Illuminated portion is right side
-            clipLens(sideRect: rightSideRect)
-        } else {
-            // Illuminated portion is left side
             clipLens(sideRect: leftSideRect)
+        } else {
+            clipLens(sideRect: rightSideRect)
         }
         drawTexture(context: context,
                     image: texture,
