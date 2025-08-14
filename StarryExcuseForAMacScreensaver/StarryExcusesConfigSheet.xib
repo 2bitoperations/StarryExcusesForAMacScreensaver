@@ -8,21 +8,21 @@
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="StarryConfigSheetController" customModule="StarryExcuseForAMacScreensaver" customModuleProvider="target">
             <connections>
+                <outlet property="brightBrightnessPreview" destination="BRI-B-LBL" id="BRI-B-LBL-ID"/>
+                <outlet property="brightBrightnessSlider" destination="BRI-B-SL" id="BRI-B-SL-ID"/>
                 <outlet property="buildingHeight" destination="a9U-nj-sTo" id="ds1-m3-SUH"/>
                 <outlet property="buildingHeightPreview" destination="tfO-4a-uSm" id="Qh8-zi-05S"/>
                 <outlet property="buildingHeightSlider" destination="2pc-x6-KHb" id="d7R-00-4NT"/>
+                <outlet property="darkBrightnessPreview" destination="DRK-B-LBL" id="DRK-B-LBL-ID"/>
+                <outlet property="darkBrightnessSlider" destination="DRK-B-SL" id="DRK-B-SL-ID"/>
+                <outlet property="maxMoonRadiusPreview" destination="MAX-RAD-LBL" id="MAX-RAD-LBL-ID"/>
+                <outlet property="maxMoonRadiusSlider" destination="MAX-RAD-SL" id="MAX-RAD-SL-ID"/>
+                <outlet property="minMoonRadiusPreview" destination="MIN-RAD-LBL" id="MIN-RAD-LBL-ID"/>
+                <outlet property="minMoonRadiusSlider" destination="MIN-RAD-SL" id="MIN-RAD-SL-ID"/>
+                <outlet property="moonPreviewView" destination="PREVIEW-VIEW" id="PREVIEW-VIEW-ID"/>
                 <outlet property="moonTraversalMinutes" destination="MTR-lb-Min" id="OvU-d4-dwH"/>
                 <outlet property="secsBetweenClears" destination="CG8-TJ-hHM" id="5Fh-T7-gR5"/>
                 <outlet property="starsPerUpdate" destination="IjJ-g5-V0M" id="abn-RS-3YH"/>
-                <outlet property="minMoonRadiusSlider" destination="MIN-RAD-SL" id="MIN-RAD-SL-ID"/>
-                <outlet property="maxMoonRadiusSlider" destination="MAX-RAD-SL" id="MAX-RAD-SL-ID"/>
-                <outlet property="brightBrightnessSlider" destination="BRI-B-SL" id="BRI-B-SL-ID"/>
-                <outlet property="darkBrightnessSlider" destination="DRK-B-SL" id="DRK-B-SL-ID"/>
-                <outlet property="minMoonRadiusPreview" destination="MIN-RAD-LBL" id="MIN-RAD-LBL-ID"/>
-                <outlet property="maxMoonRadiusPreview" destination="MAX-RAD-LBL" id="MAX-RAD-LBL-ID"/>
-                <outlet property="brightBrightnessPreview" destination="BRI-B-LBL" id="BRI-B-LBL-ID"/>
-                <outlet property="darkBrightnessPreview" destination="DRK-B-LBL" id="DRK-B-LBL-ID"/>
-                <outlet property="moonPreviewView" destination="PREVIEW-VIEW" id="PREVIEW-VIEW-ID"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
             </connections>
         </customObject>
@@ -39,169 +39,256 @@
                 <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                 <subviews>
                     <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="10" translatesAutoresizingMaskIntoConstraints="NO" id="Ab2-ul-qfO">
-                        <rect key="frame" x="0.0" y="0.0" width="360" height="420"/>
+                        <rect key="frame" x="0.0" y="0.0" width="271" height="420"/>
                         <subviews>
-                            <!-- Stars per update -->
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
-                                <rect key="frame" x="0.0" y="370" width="340" height="30"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
+                                <rect key="frame" x="0.0" y="401" width="181" height="19"/>
                                 <subviews>
-                                    <textField identifier="StarsPerUpdateLabel" translatesAutoresizingMaskIntoConstraints="NO" id="Rih-ed-DK9">
-                                        <rect key="frame" x="0" y="7" width="130" height="17"/>
+                                    <textField identifier="StarsPerUpdateLabel" focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Rih-ed-DK9">
+                                        <rect key="frame" x="-2" y="3" width="97" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Stars Per Update" id="zUj-o7-ksX"/>
                                     </textField>
-                                    <textField identifier="StarsPerUpdate" translatesAutoresizingMaskIntoConstraints="NO" id="IjJ-g5-V0M">
-                                        <rect key="frame" x="140" y="4" width="80" height="22"/>
+                                    <textField identifier="StarsPerUpdate" focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="IjJ-g5-V0M">
+                                        <rect key="frame" x="101" y="0.0" width="80" height="19"/>
                                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" borderStyle="bezel" title="120" id="9WR-VQ-vtH"/>
                                     </textField>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
-                            <!-- Seconds between clears -->
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
-                                <rect key="frame" x="0.0" y="330" width="340" height="30"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
+                                <rect key="frame" x="0.0" y="205" width="223" height="186"/>
                                 <subviews>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="h3L-pH-175">
-                                        <rect key="frame" x="0" y="7" width="160" height="17"/>
+                                    <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="h3L-pH-175">
+                                        <rect key="frame" x="-2" y="86" width="139" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Seconds Between Clears" id="9ZG-YA-dxa"/>
                                     </textField>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="CG8-TJ-hHM">
-                                        <rect key="frame" x="170" y="4" width="80" height="22"/>
+                                    <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="CG8-TJ-hHM">
+                                        <rect key="frame" x="143" y="84" width="80" height="19"/>
                                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" borderStyle="bezel" title="120" id="tUV-bq-piy"/>
                                     </textField>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
-                            <!-- Moon traversal minutes -->
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
-                                <rect key="frame" x="0.0" y="290" width="340" height="30"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
+                                <rect key="frame" x="0.0" y="176" width="156" height="19"/>
                                 <subviews>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="Lbl-Moon-Time">
-                                        <rect key="frame" x="0" y="7" width="160" height="17"/>
+                                    <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Lbl-Moon-Time">
+                                        <rect key="frame" x="-2" y="3" width="130" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Moon Traverse Minutes" id="Lbl-Moon-Time-Cell"/>
                                     </textField>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="MTR-lb-Min">
-                                        <rect key="frame" x="170" y="4" width="80" height="22"/>
+                                    <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="MTR-lb-Min">
+                                        <rect key="frame" x="134" y="0.0" width="22" height="19"/>
                                         <textFieldCell key="cell" borderStyle="bezel" title="60" id="MTR-lb-Min-Cell"/>
                                     </textField>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
-                            <!-- Building height -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="a9U-nj-sTo">
-                                <rect key="frame" x="0.0" y="250" width="340" height="30"/>
+                                <rect key="frame" x="0.0" y="146" width="263" height="20"/>
                                 <subviews>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="eaT-6Y-gvB">
-                                        <rect key="frame" x="0" y="7" width="140" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="eaT-6Y-gvB">
+                                        <rect key="frame" x="-2" y="3" width="111" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Building Max Height" id="kFS-zB-TFf"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="2pc-x6-KHb">
-                                        <rect key="frame" x="150" y="4" width="120" height="22"/>
-                                        <sliderCell key="cell" state="on" maxValue="1" minValue="0.05" doubleValue="0.35" tickMarkPosition="above" sliderType="linear" id="4r4-Fk-bR3"/>
+                                        <rect key="frame" x="113" y="-6" width="120" height="28"/>
+                                        <sliderCell key="cell" state="on" minValue="0.050000000000000003" maxValue="1" doubleValue="0.34999999999999998" tickMarkPosition="above" sliderType="linear" id="4r4-Fk-bR3"/>
                                         <connections>
                                             <action selector="buildingHeightChanged:" target="-2" id="cJn-Ej-nh7"/>
                                         </connections>
                                     </slider>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="tfO-4a-uSm">
-                                        <rect key="frame" x="280" y="7" width="50" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="tfO-4a-uSm">
+                                        <rect key="frame" x="237" y="3" width="28" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="0.35" id="8kT-Tr-HxT"/>
                                     </textField>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
-                            <!-- Min Moon Radius -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-STK">
-                                <rect key="frame" x="0.0" y="210" width="340" height="30"/>
+                                <rect key="frame" x="0.0" y="116" width="260" height="20"/>
                                 <subviews>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL-TXT">
-                                        <rect key="frame" x="0" y="7" width="120" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL-TXT">
+                                        <rect key="frame" x="-2" y="3" width="98" height="14"/>
                                         <textFieldCell key="cell" title="Min Moon Radius" id="MIN-RAD-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-SL">
-                                        <rect key="frame" x="130" y="4" width="140" height="22"/>
-                                        <sliderCell key="cell" minValue="5" maxValue="200" doubleValue="15" sliderType="linear" id="MIN-RAD-SL-CELL"/>
+                                        <rect key="frame" x="100" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="5" maxValue="200" doubleValue="15" tickMarkPosition="below" sliderType="linear" id="MIN-RAD-SL-CELL"/>
                                         <connections>
                                             <action selector="moonSliderChanged:" target="-2" id="MIN-RAD-SL-ACT"/>
                                         </connections>
                                     </slider>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL">
-                                        <rect key="frame" x="280" y="7" width="50" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL">
+                                        <rect key="frame" x="244" y="3" width="18" height="14"/>
                                         <textFieldCell key="cell" title="15" id="MIN-RAD-LBL-CELL"/>
                                     </textField>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
-                            <!-- Max Moon Radius -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-STK">
-                                <rect key="frame" x="0.0" y="170" width="340" height="30"/>
+                                <rect key="frame" x="0.0" y="86" width="263" height="20"/>
                                 <subviews>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL-TXT">
-                                        <rect key="frame" x="0" y="7" width="120" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL-TXT">
+                                        <rect key="frame" x="-2" y="3" width="101" height="14"/>
                                         <textFieldCell key="cell" title="Max Moon Radius" id="MAX-RAD-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-SL">
-                                        <rect key="frame" x="130" y="4" width="140" height="22"/>
-                                        <sliderCell key="cell" minValue="5" maxValue="400" doubleValue="60" sliderType="linear" id="MAX-RAD-SL-CELL"/>
+                                        <rect key="frame" x="103" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="5" maxValue="400" doubleValue="60" tickMarkPosition="below" sliderType="linear" id="MAX-RAD-SL-CELL"/>
                                         <connections>
                                             <action selector="moonSliderChanged:" target="-2" id="MAX-RAD-SL-ACT"/>
                                         </connections>
                                     </slider>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL">
-                                        <rect key="frame" x="280" y="7" width="50" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL">
+                                        <rect key="frame" x="247" y="3" width="18" height="14"/>
                                         <textFieldCell key="cell" title="60" id="MAX-RAD-LBL-CELL"/>
                                     </textField>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
-                            <!-- Moon Bright Brightness -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-STK">
-                                <rect key="frame" x="0.0" y="130" width="340" height="30"/>
+                                <rect key="frame" x="0.0" y="56" width="271" height="20"/>
                                 <subviews>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL-TXT">
-                                        <rect key="frame" x="0" y="7" width="150" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL-TXT">
+                                        <rect key="frame" x="-2" y="3" width="129" height="14"/>
                                         <textFieldCell key="cell" title="Moon Bright Brightness" id="BRI-B-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-SL">
-                                        <rect key="frame" x="160" y="4" width="110" height="22"/>
-                                        <sliderCell key="cell" minValue="0.2" maxValue="1.2" doubleValue="1" sliderType="linear" id="BRI-B-SL-CELL"/>
+                                        <rect key="frame" x="131" y="-6" width="110" height="28"/>
+                                        <sliderCell key="cell" minValue="0.20000000000000001" maxValue="1.2" doubleValue="1" tickMarkPosition="below" sliderType="linear" id="BRI-B-SL-CELL"/>
                                         <connections>
                                             <action selector="moonSliderChanged:" target="-2" id="BRI-B-SL-ACT"/>
                                         </connections>
                                     </slider>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL">
-                                        <rect key="frame" x="280" y="7" width="50" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL">
+                                        <rect key="frame" x="245" y="3" width="28" height="14"/>
                                         <textFieldCell key="cell" title="1.00" id="BRI-B-LBL-CELL"/>
                                     </textField>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
-                            <!-- Moon Dark Brightness -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-STK">
-                                <rect key="frame" x="0.0" y="90" width="340" height="30"/>
+                                <rect key="frame" x="0.0" y="26" width="265" height="20"/>
                                 <subviews>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL-TXT">
-                                        <rect key="frame" x="0" y="7" width="150" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL-TXT">
+                                        <rect key="frame" x="-2" y="3" width="123" height="14"/>
                                         <textFieldCell key="cell" title="Moon Dark Brightness" id="DRK-B-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-SL">
-                                        <rect key="frame" x="160" y="4" width="110" height="22"/>
-                                        <sliderCell key="cell" minValue="0.0" maxValue="0.9" doubleValue="0.15" sliderType="linear" id="DRK-B-SL-CELL"/>
+                                        <rect key="frame" x="125" y="-6" width="110" height="28"/>
+                                        <sliderCell key="cell" maxValue="0.90000000000000002" doubleValue="0.14999999999999999" tickMarkPosition="below" sliderType="linear" id="DRK-B-SL-CELL"/>
                                         <connections>
                                             <action selector="moonSliderChanged:" target="-2" id="DRK-B-SL-ACT"/>
                                         </connections>
                                     </slider>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL">
-                                        <rect key="frame" x="280" y="7" width="50" height="17"/>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL">
+                                        <rect key="frame" x="239" y="3" width="28" height="14"/>
                                         <textFieldCell key="cell" title="0.15" id="DRK-B-LBL-CELL"/>
                                     </textField>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
-                            <!-- Save button -->
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="irw-GB-QPa">
-                                <rect key="frame" x="0" y="40" width="127" height="32"/>
-                                <buttonCell key="cell" type="push" title="Save and Close" bezelStyle="rounded" id="IyX-HG-idV">
+                                <rect key="frame" x="0.0" y="0.0" width="97" height="16"/>
+                                <buttonCell key="cell" type="bevel" title="Save and Close" bezelStyle="rounded" id="IyX-HG-idV">
+                                    <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <connections>
                                         <action selector="saveClose:" target="-2" id="4pr-QP-xmY"/>
                                     </connections>
                                 </buttonCell>
                             </button>
                         </subviews>
+                        <visibilityPriorities>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                        </visibilityPriorities>
+                        <customSpacing>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                        </customSpacing>
                     </stackView>
-                    <!-- Preview Area -->
                     <customView translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-VIEW" customClass="MoonPreviewView" customModule="StarryExcuseForAMacScreensaver" customModuleProvider="target">
-                        <rect key="frame" x="370" y="20" width="250" height="380"/>
+                        <rect key="frame" x="281" y="20" width="339" height="380"/>
                     </customView>
                 </subviews>
                 <constraints>
