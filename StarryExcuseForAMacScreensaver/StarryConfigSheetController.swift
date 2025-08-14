@@ -35,6 +35,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     // Preview container (plain NSView).
     @IBOutlet weak var moonPreviewView: NSView!
     
+    // Pause/Resume toggle button outlet (to update its title)
+    @IBOutlet weak var pauseToggleButton: NSButton!
+    
     // Shared preview engine + timer
     private var previewEngine: StarryEngine?
     private var previewTimer: Timer?
@@ -63,22 +66,31 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     
     // MARK: - Preview Control Buttons
     
-    @IBAction func previewPause(_ sender: Any) {
-        isManuallyPaused = true
-        pausePreview(auto: false)
-    }
-    
-    @IBAction func previewResume(_ sender: Any) {
-        isManuallyPaused = false
-        if !isAutoPaused {
-            resumePreview(auto: false)
+    @IBAction func previewTogglePause(_ sender: Any) {
+        if isManuallyPaused || effectivePaused() {
+            // Resume
+            isManuallyPaused = false
+            if !isAutoPaused {
+                resumePreview(auto: false)
+            }
+        } else {
+            // Pause
+            isManuallyPaused = true
+            pausePreview(auto: false)
         }
+        updatePauseToggleTitle()
     }
     
     @IBAction func previewStep(_ sender: Any) {
-        if previewTimer != nil { return }
+        // Single-step only when paused (manual or auto)
+        if !effectivePaused() {
+            // Force pause first
+            isManuallyPaused = true
+            pausePreview(auto: false)
+        }
         rebuildPreviewEngineIfNeeded()
         advancePreviewFrame()
+        updatePauseToggleTitle()
     }
     
     // MARK: - Sheet lifecycle
@@ -96,6 +108,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         if let win = window {
             win.styleMask = [.titled, .closable]
             win.title = "Starry Excuses Configuration"
+            // Explicit fixed size 800x600 (matching XIB)
+            let desiredSize = NSSize(width: 800, height: 600)
+            var frame = win.frame
+            frame.origin.y -= (desiredSize.height - frame.size.height)
+            frame.size = desiredSize
+            win.setFrame(frame, display: true)
         }
         
         // Load defaults into UI
@@ -117,6 +135,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         
         setupPreviewEngine()
+        updatePauseToggleTitle()
         
         // Log raw style mask
         if let styleMaskRaw = window?.styleMask.rawValue {
@@ -166,12 +185,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         if !isManuallyPaused {
             pausePreview(auto: true)
+            updatePauseToggleTitle()
         }
     }
     
     func windowDidBecomeKey(_ notification: Notification) {
         if isAutoPaused && !isManuallyPaused {
             resumePreview(auto: true)
+            updatePauseToggleTitle()
         }
     }
     
@@ -257,6 +278,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         maxMoonRadiusPreview.stringValue = "\(maxMoonRadiusSlider.integerValue)"
         brightBrightnessPreview.stringValue = String(format: "%.2f", brightBrightnessSlider.doubleValue)
         darkBrightnessPreview.stringValue = String(format: "%.2f", darkBrightnessSlider.doubleValue)
+    }
+    
+    private func effectivePaused() -> Bool {
+        return previewTimer == nil
+    }
+    
+    private func updatePauseToggleTitle() {
+        let title = effectivePaused() ? "Resume" : "Pause"
+        pauseToggleButton?.title = title
     }
     
     // MARK: - Save / Close
