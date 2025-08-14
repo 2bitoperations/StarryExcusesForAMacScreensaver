@@ -20,7 +20,7 @@ final class MoonLayerRenderer {
     // the side rectangle outward toward the limb so any bright fringe is fully
     // covered. Previously this was a fixed constant (1.25). We now scale it
     // linearly with moon diameter:
-    //   diameter <=  40 px  -> 1.25
+    //   diameten
     //   diameter >= 150 px  -> 4.00
     //   in-between          -> linear interpolation
     // This preserves detail for small moons while preventing residual bright rims
