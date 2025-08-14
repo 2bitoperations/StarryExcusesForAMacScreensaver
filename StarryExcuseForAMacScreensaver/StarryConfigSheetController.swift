@@ -9,7 +9,7 @@ import Foundation
 import Cocoa
 import os
 
-class StarryConfigSheetController : NSWindowController {
+class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     let defaultsManager = StarryDefaultsManager()
     weak var view: StarryExcuseForAView?
     private var log: OSLog?
@@ -32,13 +32,19 @@ class StarryConfigSheetController : NSWindowController {
     @IBOutlet weak var brightBrightnessPreview: NSTextField!
     @IBOutlet weak var darkBrightnessPreview: NSTextField!
     
-    // Preview container (was MoonPreviewView). We keep the subclass but treat it as a passive host.
-    @IBOutlet weak var moonPreviewView: MoonPreviewView!
+    // Preview container (was MoonPreviewView). Now a plain NSView.
+    @IBOutlet weak var moonPreviewView: NSView!
     
     // Shared preview engine + timer
     private var previewEngine: StarryEngine?
     private var previewTimer: Timer?
     private var previewImageView: NSImageView?
+    
+    // Pause state tracking
+    private var isManuallyPaused = false
+    private var isAutoPaused = false   // set when window resigns key while not manually paused
+    
+    // MARK: - UI Actions (sliders)
     
     @IBAction func buildingHeightChanged(_ sender: Any) {
         buildingHeightPreview.stringValue = String(format: "%.3f", buildingHeightSlider.doubleValue)
@@ -57,12 +63,41 @@ class StarryConfigSheetController : NSWindowController {
         updatePreviewConfig()
     }
     
+    // MARK: - Preview Control Buttons
+    
+    @IBAction func previewPause(_ sender: Any) {
+        isManuallyPaused = true
+        pausePreview(auto: false)
+    }
+    
+    @IBAction func previewResume(_ sender: Any) {
+        isManuallyPaused = false
+        // Only resume if not auto-paused; if autoPaused flag is set (window not key), just clear manual flag.
+        if !isAutoPaused {
+            resumePreview(auto: false)
+        }
+    }
+    
+    @IBAction func previewStep(_ sender: Any) {
+        // Single-step only when paused (manual or auto)
+        if previewTimer != nil {
+            // Timer running; ignore to avoid conflicting with animation
+            return
+        }
+        rebuildPreviewEngineIfNeeded()
+        advancePreviewFrame()
+    }
+    
+    // MARK: - Sheet lifecycle
+    
     public func setView(view: StarryExcuseForAView) {
         self.view = view
     }
     
     override func windowDidLoad() {
         super.windowDidLoad()
+        
+        window?.delegate = self
         
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
         buildingHeightSlider.doubleValue = defaultsManager.buildingHeight
@@ -81,6 +116,24 @@ class StarryConfigSheetController : NSWindowController {
         setupPreviewEngine()
     }
     
+    // MARK: - Window Delegate (auto pause/resume)
+    
+    func windowDidResignKey(_ notification: Notification) {
+        // Auto-pause only if not already manually paused
+        if !isManuallyPaused {
+            pausePreview(auto: true)
+        }
+    }
+    
+    func windowDidBecomeKey(_ notification: Notification) {
+        // Auto-resume only if previously auto-paused and not manually paused now
+        if isAutoPaused && !isManuallyPaused {
+            resumePreview(auto: true)
+        }
+    }
+    
+    // MARK: - Preview Engine Management
+    
     private func setupPreviewEngine() {
         guard let log = log else { return }
         guard moonPreviewView.bounds.width > 0, moonPreviewView.bounds.height > 0 else { return }
@@ -96,7 +149,9 @@ class StarryConfigSheetController : NSWindowController {
         previewEngine = StarryEngine(size: moonPreviewView.bounds.size,
                                      log: log,
                                      config: currentPreviewRuntimeConfig())
-        startPreviewTimer()
+        if !isManuallyPaused && !isAutoPaused {
+            startPreviewTimer()
+        }
     }
     
     private func rebuildPreviewEngineIfNeeded() {
@@ -107,9 +162,30 @@ class StarryConfigSheetController : NSWindowController {
     
     private func startPreviewTimer() {
         previewTimer?.invalidate()
-        // Match main saver rate (0.1s) for fidelity.
         previewTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             self?.advancePreviewFrame()
+        }
+    }
+    
+    private func stopPreviewTimer() {
+        previewTimer?.invalidate()
+        previewTimer = nil
+    }
+    
+    private func pausePreview(auto: Bool) {
+        stopPreviewTimer()
+        if auto {
+            isAutoPaused = true
+        }
+    }
+    
+    private func resumePreview(auto: Bool) {
+        if auto {
+            isAutoPaused = false
+        }
+        // Only resume if not manually paused and timer not running
+        if !isManuallyPaused && previewTimer == nil {
+            startPreviewTimer()
         }
     }
     
@@ -148,6 +224,8 @@ class StarryConfigSheetController : NSWindowController {
         darkBrightnessPreview.stringValue = String(format: "%.2f", darkBrightnessSlider.doubleValue)
     }
     
+    // MARK: - Save / Close
+    
     @IBAction func saveClose(_ sender: Any) {
         os_log("hit saveClose", log: self.log!, type: .info)
         
@@ -165,14 +243,13 @@ class StarryConfigSheetController : NSWindowController {
         // Notify main saver view
         view?.settingsChanged()
         
-        window!.sheetParent?.endSheet(self.window!, returnCode: NSApplication.ModalResponse.OK)
-        self.window!.close()
+        window?.sheetParent?.endSheet(self.window!, returnCode: NSApplication.ModalResponse.OK)
+        self.window?.close()
         
         os_log("exiting saveClose", log: self.log!, type: .info)
     }
     
     deinit {
-        previewTimer?.invalidate()
-        previewTimer = nil
+        stopPreviewTimer()
     }
 }
