@@ -17,14 +17,24 @@ struct StarryRuntimeConfig {
 }
 
 final class StarryEngine {
-    private(set) var context: CGContext
+    // Base (persistent) star/building/backdrop context
+    private(set) var baseContext: CGContext
+    // Moon overlay (transparent) updated at most once per second
+    private var moonLayerContext: CGContext
+    // Temporary compositing context (reused) used to produce final frame
+    private var compositeContext: CGContext
+    
     private let log: OSLog
     private(set) var config: StarryRuntimeConfig
     
     private var skyline: Skyline?
     private var skylineRenderer: SkylineCoreRenderer?
+    private var moonRenderer: MoonLayerRenderer?
+    
     private var size: CGSize
     private var lastInitSize: CGSize
+    
+    private var lastMoonRenderTime: TimeInterval = 0 // monotonic time
     
     init(size: CGSize,
          log: OSLog,
@@ -33,11 +43,18 @@ final class StarryEngine {
         self.lastInitSize = size
         self.log = log
         self.config = config
-        self.context = StarryEngine.makeContext(size: size)
-        clear()
+        
+        self.baseContext = StarryEngine.makeOpaqueContext(size: size)
+        self.moonLayerContext = StarryEngine.makeTransparentContext(size: size)
+        self.compositeContext = StarryEngine.makeOpaqueContext(size: size)
+        
+        clearBase()
+        clearMoonLayer()
     }
     
-    private static func makeContext(size: CGSize) -> CGContext {
+    // MARK: - Context Helpers
+    
+    private static func makeOpaqueContext(size: CGSize) -> CGContext {
         let ctx = CGContext(data: nil,
                             width: Int(size.width),
                             height: Int(size.height),
@@ -49,20 +66,40 @@ final class StarryEngine {
         return ctx
     }
     
-    // Resize support (e.g. preview window size changes)
+    private static func makeTransparentContext(size: CGSize) -> CGContext {
+        let ctx = CGContext(data: nil,
+                            width: Int(size.width),
+                            height: Int(size.height),
+                            bitsPerComponent: 8,
+                            bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)!
+        ctx.interpolationQuality = .high
+        ctx.setBlendMode(.normal)
+        return ctx
+    }
+    
+    // MARK: - Resizing
+    
     func resizeIfNeeded(newSize: CGSize) {
         guard newSize != lastInitSize, newSize.width > 0, newSize.height > 0 else { return }
         size = newSize
         lastInitSize = newSize
-        context = StarryEngine.makeContext(size: size)
+        
+        baseContext = StarryEngine.makeOpaqueContext(size: size)
+        moonLayerContext = StarryEngine.makeTransparentContext(size: size)
+        compositeContext = StarryEngine.makeOpaqueContext(size: size)
+        
         skyline = nil
         skylineRenderer = nil
-        clear()
+        moonRenderer = nil
+        clearBase()
+        clearMoonLayer()
     }
     
-    // Update runtime (unsaved) configuration for preview, or after user saves for main view.
+    // MARK: - Configuration
+    
     func updateConfig(_ newConfig: StarryRuntimeConfig) {
-        // Only rebuild if something material changed
         if config.starsPerUpdate != newConfig.starsPerUpdate ||
             config.buildingHeight != newConfig.buildingHeight ||
             config.moonTraversalMinutes != newConfig.moonTraversalMinutes ||
@@ -72,9 +109,12 @@ final class StarryEngine {
             config.moonDarkBrightness != newConfig.moonDarkBrightness {
             skyline = nil
             skylineRenderer = nil
+            moonRenderer = nil
         }
         config = newConfig
     }
+    
+    // MARK: - Initialization of Skyline & Moon
     
     private func ensureSkyline() {
         guard skyline == nil || skylineRenderer == nil else { return }
@@ -96,6 +136,12 @@ final class StarryEngine {
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
                                                       traceEnabled: config.traceEnabled)
+                moonRenderer = MoonLayerRenderer(skyline: skyline,
+                                                 log: log,
+                                                 brightBrightness: CGFloat(config.moonBrightBrightness),
+                                                 darkBrightness: CGFloat(config.moonDarkBrightness))
+                // force first moon render immediately
+                lastMoonRenderTime = 0
             }
         } catch {
             os_log("StarryEngine: unable to init skyline %{public}@",
@@ -103,26 +149,66 @@ final class StarryEngine {
         }
     }
     
-    private func clear() {
-        context.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
-        context.fill(CGRect(origin: .zero, size: size))
+    // MARK: - Clearing
+    
+    private func clearBase() {
+        baseContext.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
+        baseContext.fill(CGRect(origin: .zero, size: size))
     }
     
-    // Advance one animation frame. Returns a CGImage snapshot of the framebuffer.
+    private func clearMoonLayer() {
+        moonLayerContext.clear(CGRect(origin: .zero, size: size))
+    }
+    
+    // MARK: - Moon Rendering Rate Limiting
+    
+    private func maybeUpdateMoonLayer() {
+        guard let renderer = moonRenderer else { return }
+        let now = CACurrentMediaTime()
+        // Update at most once per second
+        if now - lastMoonRenderTime < 1.0 { return }
+        lastMoonRenderTime = now
+        clearMoonLayer()
+        renderer.renderMoon(into: moonLayerContext)
+    }
+    
+    // MARK: - Frame Advancement
+    
     @discardableResult
     func advanceFrame() -> CGImage? {
         ensureSkyline()
         guard let skyline = skyline,
-              let _ = skylineRenderer else {
-            return context.makeImage()
+              let skylineRenderer = skylineRenderer else {
+            return baseContext.makeImage()
         }
+        
         if skyline.shouldClearNow() {
+            skylineRenderer.resetFrameCounter()
+            clearBase()
+            clearMoonLayer()
             self.skyline = nil
             self.skylineRenderer = nil
-            clear()
+            self.moonRenderer = nil
             ensureSkyline()
+            return baseContext.makeImage()
         }
-        skylineRenderer?.drawSingleFrame(context: context)
-        return context.makeImage()
+        
+        // Draw incremental stars/building lights/flasher onto base (persistent)
+        skylineRenderer.drawSingleFrame(context: baseContext)
+        
+        // Possibly update moon layer (overlay not baked into base)
+        maybeUpdateMoonLayer()
+        
+        // Composite: base first, then moon overlay
+        compositeContext.setFillColor(CGColor(gray: 0, alpha: 1))
+        compositeContext.fill(CGRect(origin: .zero, size: size))
+        if let baseImage = baseContext.makeImage() {
+            compositeContext.draw(baseImage, in: CGRect(origin: .zero, size: size))
+        }
+        if let moonImage = moonLayerContext.makeImage() {
+            compositeContext.draw(moonImage, in: CGRect(origin: .zero, size: size))
+        }
+        
+        return compositeContext.makeImage()
     }
 }
