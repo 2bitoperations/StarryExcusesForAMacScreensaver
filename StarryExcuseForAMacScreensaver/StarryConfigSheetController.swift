@@ -1,4 +1,4 @@
-//
+﻿//
 //  ConfigurationSheetManager.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -32,7 +32,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     @IBOutlet weak var brightBrightnessPreview: NSTextField!
     @IBOutlet weak var darkBrightnessPreview: NSTextField!
     
-    // Preview container (was MoonPreviewView). Now a plain NSView.
+    // Preview container (plain NSView).
     @IBOutlet weak var moonPreviewView: NSView!
     
     // Shared preview engine + timer
@@ -43,6 +43,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     // Pause state tracking
     private var isManuallyPaused = false
     private var isAutoPaused = false   // set when window resigns key while not manually paused
+    
+    // Minimum window content size (width x height)
+    private let minContentSize = NSSize(width: 480, height: 640)
     
     // MARK: - UI Actions (sliders)
     
@@ -99,6 +102,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         
         window?.delegate = self
         
+        // Make window resizable and enforce minimum size
+        if let styleMask = window?.styleMask {
+            window?.styleMask = styleMask.union(.resizable)
+        }
+        window?.contentMinSize = minContentSize
+        enforceMinimumSizeIfNeeded()
+        
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
         buildingHeightSlider.doubleValue = defaultsManager.buildingHeight
         buildingHeightPreview.stringValue = String(format: "%.3f", defaultsManager.buildingHeight)
@@ -116,7 +126,28 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         setupPreviewEngine()
     }
     
-    // MARK: - Window Delegate (auto pause/resume)
+    // Ensure window is at least min size on load
+    private func enforceMinimumSizeIfNeeded() {
+        guard let win = window else { return }
+        var frame = win.frame
+        var changed = false
+        if frame.size.width < minContentSize.width {
+            frame.size.width = minContentSize.width
+            changed = true
+        }
+        if frame.size.height < minContentSize.height {
+            // Preserve top-left origin when enlarging (grow downward)
+            let heightDelta = minContentSize.height - frame.size.height
+            frame.origin.y -= heightDelta
+            frame.size.height = minContentSize.height
+            changed = true
+        }
+        if changed {
+            win.setFrame(frame, display: true)
+        }
+    }
+    
+    // MARK: - Window Delegate (auto pause/resume & size enforcement)
     
     func windowDidResignKey(_ notification: Notification) {
         // Auto-pause only if not already manually paused
@@ -130,6 +161,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         if isAutoPaused && !isManuallyPaused {
             resumePreview(auto: true)
         }
+    }
+    
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        // Clamp resize to minimum dimensions
+        return NSSize(width: max(minContentSize.width, frameSize.width),
+                      height: max(minContentSize.height, frameSize.height))
     }
     
     // MARK: - Preview Engine Management
