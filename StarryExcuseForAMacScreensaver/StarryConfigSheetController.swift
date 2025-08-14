@@ -309,10 +309,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         guard let log = log else { return }
         stopPreviewTimer()
         previewEngine = nil
-        // Clear visual contents
         if let iv = previewImageView {
             iv.image = nil
-            // Fill black quickly
             let size = moonPreviewView.bounds.size
             if size.width > 0 && size.height > 0 {
                 let img = NSImage(size: size)
@@ -324,7 +322,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             }
         }
         os_log("Preview cleared (reason=%{public}@)", log: log, type: .info, reason)
-        // Reset pause flags only if forced clear (button or valid change) to restart rendering
         isManuallyPaused = false
         if previewEngine == nil {
             setupPreviewEngine()
@@ -408,7 +405,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         pauseToggleButton?.title = title
     }
     
-    // MARK: - Save / Close
+    // MARK: - Save / Close / Cancel
     
     @IBAction func saveClose(_ sender: Any) {
         guard inputsAreValid() else {
@@ -433,6 +430,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.window?.close()
         
         os_log("exiting saveClose", log: self.log!, type: .info)
+    }
+    
+    @IBAction func cancelClose(_ sender: Any) {
+        os_log("cancelClose invoked - dismissing without persisting", log: self.log ?? OSLog.default, type: .info)
+        window?.sheetParent?.endSheet(self.window!, returnCode: .cancel)
+        self.window?.close()
     }
     
     deinit { stopPreviewTimer() }

@@ -236,6 +236,16 @@
                                     </connections>
                                 </buttonCell>
                             </button>
+                            <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CANCEL">
+                                <rect key="frame" x="0.0" y="86" width="106" height="32"/>
+                                <buttonCell key="cell" type="push" title="Cancel" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CANCEL-CELL">
+                                    <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
+                                    <font key="font" metaFont="system"/>
+                                    <connections>
+                                        <action selector="cancelClose:" target="-2" id="BTN-CANCEL-ACT"/>
+                                    </connections>
+                                </buttonCell>
+                            </button>
                         </subviews>
                         <constraints>
                             <constraint firstAttribute="trailing" secondItem="ozG-gR-er8" secondAttribute="trailing" constant="48" id="Zzo-Bh-vdT"/>
