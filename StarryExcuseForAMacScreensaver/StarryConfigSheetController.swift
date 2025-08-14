@@ -3,7 +3,6 @@
 //  StarryExcuseForAMacScreensaver
 //
 //  Created by Andrew Malota on 5/2/19.
-//  Copyright © 2019 Andrew Malota. All rights reserved.
 //
 
 import Foundation
@@ -15,14 +14,14 @@ class StarryConfigSheetController : NSWindowController {
     weak var view: StarryExcuseForAView?
     private var log: OSLog?
     
-    // Existing
+    // Existing controls
     @IBOutlet weak var starsPerUpdate: NSTextField!
     @IBOutlet weak var buildingHeightSlider: NSSlider!
     @IBOutlet weak var buildingHeightPreview: NSTextField!
     @IBOutlet weak var secsBetweenClears: NSTextField!
     @IBOutlet weak var moonTraversalMinutes: NSTextField!
     
-    // New moon sizing & brightness sliders
+    // Moon sizing & brightness sliders
     @IBOutlet weak var minMoonRadiusSlider: NSSlider!
     @IBOutlet weak var maxMoonRadiusSlider: NSSlider!
     @IBOutlet weak var brightBrightnessSlider: NSSlider!
@@ -33,21 +32,29 @@ class StarryConfigSheetController : NSWindowController {
     @IBOutlet weak var brightBrightnessPreview: NSTextField!
     @IBOutlet weak var darkBrightnessPreview: NSTextField!
     
-    // Preview view
+    // Preview container (was MoonPreviewView). We keep the subclass but treat it as a passive host.
     @IBOutlet weak var moonPreviewView: MoonPreviewView!
+    
+    // Shared preview engine + timer
+    private var previewEngine: StarryEngine?
+    private var previewTimer: Timer?
+    private var previewImageView: NSImageView?
     
     @IBAction func buildingHeightChanged(_ sender: Any) {
         buildingHeightPreview.stringValue = String(format: "%.3f", buildingHeightSlider.doubleValue)
-        updateMoonPreview()
+        updatePreviewLabels()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
     }
     
     @IBAction func moonSliderChanged(_ sender: Any) {
-        // Clamp logical relationship live
+        // Enforce logical min <= max while dragging
         if Int(minMoonRadiusSlider.integerValue) > Int(maxMoonRadiusSlider.integerValue) {
             maxMoonRadiusSlider.integerValue = minMoonRadiusSlider.integerValue
         }
         updatePreviewLabels()
-        updateMoonPreview()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
     }
     
     public func setView(view: StarryExcuseForAView) {
@@ -71,47 +78,67 @@ class StarryConfigSheetController : NSWindowController {
         updatePreviewLabels()
         self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         
-        configurePreview()
+        setupPreviewEngine()
     }
     
-    private func configurePreview() {
-        moonPreviewView.configure(
-            phaseFraction: currentPhaseFraction(),
-            waxing: currentWaxing(),
-            minRadius: minMoonRadiusSlider.integerValue,
-            maxRadius: maxMoonRadiusSlider.integerValue,
-            brightBrightness: brightBrightnessSlider.doubleValue,
-            darkBrightness: darkBrightnessSlider.doubleValue,
-            traversalMinutes: moonTraversalMinutes.integerValue,
-            buildingHeightFraction: buildingHeightSlider.doubleValue
+    private func setupPreviewEngine() {
+        guard let log = log else { return }
+        guard moonPreviewView.bounds.width > 0, moonPreviewView.bounds.height > 0 else { return }
+        
+        if previewImageView == nil {
+            let iv = NSImageView(frame: moonPreviewView.bounds)
+            iv.autoresizingMask = [.width, .height]
+            iv.imageScaling = .scaleProportionallyUpOrDown
+            moonPreviewView.addSubview(iv)
+            previewImageView = iv
+        }
+        
+        previewEngine = StarryEngine(size: moonPreviewView.bounds.size,
+                                     log: log,
+                                     config: currentPreviewRuntimeConfig())
+        startPreviewTimer()
+    }
+    
+    private func rebuildPreviewEngineIfNeeded() {
+        if previewEngine == nil {
+            setupPreviewEngine()
+        }
+    }
+    
+    private func startPreviewTimer() {
+        previewTimer?.invalidate()
+        // Match main saver rate (0.1s) for fidelity.
+        previewTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.advancePreviewFrame()
+        }
+    }
+    
+    private func advancePreviewFrame() {
+        guard let engine = previewEngine,
+              let iv = previewImageView else { return }
+        engine.resizeIfNeeded(newSize: moonPreviewView.bounds.size)
+        if let cg = engine.advanceFrame() {
+            iv.image = NSImage(cgImage: cg, size: moonPreviewView.bounds.size)
+        }
+    }
+    
+    private func currentPreviewRuntimeConfig() -> StarryRuntimeConfig {
+        StarryRuntimeConfig(
+            starsPerUpdate: starsPerUpdate.integerValue,
+            buildingHeight: buildingHeightSlider.doubleValue,
+            secsBetweenClears: secsBetweenClears.doubleValue,
+            moonTraversalMinutes: moonTraversalMinutes.integerValue,
+            moonMinRadius: minMoonRadiusSlider.integerValue,
+            moonMaxRadius: maxMoonRadiusSlider.integerValue,
+            moonBrightBrightness: brightBrightnessSlider.doubleValue,
+            moonDarkBrightness: darkBrightnessSlider.doubleValue,
+            traceEnabled: false
         )
-        moonPreviewView.needsDisplay = true
     }
     
-    private func currentPhaseFraction() -> Double {
-        // Mirror Moon.computePhase via a tiny helper (midnight Austin)
-        let tz = TimeZone(identifier: "America/Chicago")!
-        var comps = Calendar(identifier: .gregorian).dateComponents(in: tz, from: Date())
-        comps.hour = 0; comps.minute = 0; comps.second = 0; comps.nanosecond = 0
-        let date = Calendar(identifier: .gregorian).date(from: comps) ?? Date()
-        let synodic = 29.530588853
-        let jd = 2440587.5 + date.timeIntervalSince1970 / 86400.0
-        // epoch 2000-01-06 18:14 UTC
-        var epochComps = DateComponents()
-        epochComps.year = 2000; epochComps.month = 1; epochComps.day = 6
-        epochComps.hour = 18; epochComps.minute = 14; epochComps.timeZone = TimeZone(secondsFromGMT: 0)
-        let epoch = Calendar(identifier: .gregorian).date(from: epochComps)!
-        let epochJD = 2440587.5 + epoch.timeIntervalSince1970 / 86400.0
-        let days = jd - epochJD
-        var age = days.truncatingRemainder(dividingBy: synodic)
-        if age < 0 { age += synodic }
-        let fraction = 0.5 * (1 - cos(2 * Double.pi * (age / synodic)))
-        return min(max(fraction, 0.0), 1.0)
-    }
-    
-    private func currentWaxing() -> Bool {
-        let fraction = currentPhaseFraction()
-        return fraction <= 0.5
+    private func updatePreviewConfig() {
+        let cfg = currentPreviewRuntimeConfig()
+        previewEngine?.updateConfig(cfg)
     }
     
     private func updatePreviewLabels() {
@@ -121,13 +148,10 @@ class StarryConfigSheetController : NSWindowController {
         darkBrightnessPreview.stringValue = String(format: "%.2f", darkBrightnessSlider.doubleValue)
     }
     
-    private func updateMoonPreview() {
-        configurePreview()
-    }
-    
     @IBAction func saveClose(_ sender: Any) {
         os_log("hit saveClose", log: self.log!, type: .info)
         
+        // Persist current control values
         defaultsManager.starsPerUpdate = starsPerUpdate.integerValue
         defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
         defaultsManager.secsBetweenClears = secsBetweenClears.doubleValue
@@ -138,11 +162,17 @@ class StarryConfigSheetController : NSWindowController {
         defaultsManager.moonDarkBrightness = darkBrightnessSlider.doubleValue
         defaultsManager.normalizeMoonRadiusBounds()
         
+        // Notify main saver view
         view?.settingsChanged()
         
         window!.sheetParent?.endSheet(self.window!, returnCode: NSApplication.ModalResponse.OK)
         self.window!.close()
         
         os_log("exiting saveClose", log: self.log!, type: .info)
+    }
+    
+    deinit {
+        previewTimer?.invalidate()
+        previewTimer = nil
     }
 }
