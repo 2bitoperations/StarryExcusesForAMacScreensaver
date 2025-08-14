@@ -74,7 +74,7 @@ final class MoonLayerRenderer {
         // Extension (pixels added to radius) for the dark side only
         let darkExtension: CGFloat = oversizeOverrideEnabled
             ? max(0.0, oversizeOverrideValue)
-            : dynamicDarkSideExtension(forRadius r)
+            : dynamicDarkSideExtension(forRadius: r)
         
         context.saveGState()
         context.setShouldAntialias(true)
