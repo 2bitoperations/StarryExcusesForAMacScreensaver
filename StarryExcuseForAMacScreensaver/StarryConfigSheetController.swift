@@ -44,8 +44,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     private var isManuallyPaused = false
     private var isAutoPaused = false   // set when window resigns key while not manually paused
     
-    // Minimum window content size (width x height)
-    private let minContentSize = NSSize(width: 480, height: 640)
+    // Minimum window content size (width x height) UPDATED to 640 x 480
+    private let minContentSize = NSSize(width: 640, height: 480)
     
     // MARK: - UI Actions (sliders)
     
@@ -57,10 +57,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     }
     
     @IBAction func moonSliderChanged(_ sender: Any) {
-        // Enforce logical min <= max while dragging
-        if Int(minMoonRadiusSlider.integerValue) > Int(maxMoonRadiusSlider.integerValue) {
-            maxMoonRadiusSlider.integerValue = minMoonRadiusSlider.integerValue
-        }
+        // Enforce strict inequality: min < max
+        enforceStrictRadiusInequality(changedControl: sender as AnyObject?)
         updatePreviewLabels()
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
@@ -75,18 +73,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     
     @IBAction func previewResume(_ sender: Any) {
         isManuallyPaused = false
-        // Only resume if not auto-paused; if autoPaused flag is set (window not key), just clear manual flag.
         if !isAutoPaused {
             resumePreview(auto: false)
         }
     }
     
     @IBAction func previewStep(_ sender: Any) {
-        // Single-step only when paused (manual or auto)
-        if previewTimer != nil {
-            // Timer running; ignore to avoid conflicting with animation
-            return
-        }
+        if previewTimer != nil { return }
         rebuildPreviewEngineIfNeeded()
         advancePreviewFrame()
     }
@@ -102,13 +95,19 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         
         window?.delegate = self
         
-        // Make window resizable and enforce minimum size
+        // Ensure standard window chrome & resizable
         if let styleMask = window?.styleMask {
-            window?.styleMask = styleMask.union(.resizable)
+            window?.styleMask = styleMask
+                .union(.titled)
+                .union(.closable)
+                .union(.resizable)
+                .union(.miniaturizable)
         }
+        window?.title = "Starry Excuses Configuration"
         window?.contentMinSize = minContentSize
         enforceMinimumSizeIfNeeded()
         
+        // Load defaults into UI
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
         buildingHeightSlider.doubleValue = defaultsManager.buildingHeight
         buildingHeightPreview.stringValue = String(format: "%.3f", defaultsManager.buildingHeight)
@@ -119,6 +118,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         maxMoonRadiusSlider.integerValue = defaultsManager.moonMaxRadius
         brightBrightnessSlider.doubleValue = defaultsManager.moonBrightBrightness
         darkBrightnessSlider.doubleValue = defaultsManager.moonDarkBrightness
+        
+        // Enforce strict min < max at load (adjust if equal or inverted)
+        enforceStrictRadiusInequality(changedControl: nil)
         
         updatePreviewLabels()
         self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
@@ -136,37 +138,73 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
             changed = true
         }
         if frame.size.height < minContentSize.height {
-            // Preserve top-left origin when enlarging (grow downward)
             let heightDelta = minContentSize.height - frame.size.height
             frame.origin.y -= heightDelta
             frame.size.height = minContentSize.height
             changed = true
         }
-        if changed {
-            win.setFrame(frame, display: true)
+        if changed { win.setFrame(frame, display: true) }
+    }
+    
+    // MARK: - Radius inequality enforcement (strict: min < max)
+    private func enforceStrictRadiusInequality(changedControl: AnyObject?) {
+        var minVal = minMoonRadiusSlider.integerValue
+        var maxVal = maxMoonRadiusSlider.integerValue
+        
+        if minVal >= maxVal {
+            if changedControl === minMoonRadiusSlider {
+                // User moved min up to >= max; attempt to raise max first.
+                if maxVal < Int(maxMoonRadiusSlider.maxValue) {
+                    maxVal = min(minVal + 1, Int(maxMoonRadiusSlider.maxValue))
+                } else {
+                    // Can't raise max; pull min down.
+                    minVal = max(maxVal - 1, Int(minMoonRadiusSlider.minValue))
+                }
+            } else if changedControl === maxMoonRadiusSlider {
+                // User moved max down to <= min; attempt to lower min.
+                if minVal > Int(minMoonRadiusSlider.minValue) {
+                    minVal = max(minVal - 1, Int(minMoonRadiusSlider.minValue))
+                } else {
+                    // Can't lower min; push max up.
+                    maxVal = min(minVal + 1, Int(maxMoonRadiusSlider.maxValue))
+                }
+            } else {
+                // Initial load or unknown sender: prefer widening span by bumping max.
+                if maxVal <= minVal && maxVal < Int(maxMoonRadiusSlider.maxValue) {
+                    maxVal = minVal + 1
+                } else {
+                    minVal = maxVal - 1
+                }
+            }
         }
+        
+        // Apply updates
+        minMoonRadiusSlider.integerValue = minVal
+        maxMoonRadiusSlider.integerValue = maxVal
+        
+        // Dynamically adjust slider bounds to prevent equality on next drag:
+        // min slider cannot reach current max; max slider cannot reach current min.
+        minMoonRadiusSlider.maxValue = Double(maxVal - 1)
+        maxMoonRadiusSlider.minValue = Double(minVal + 1)
     }
     
     // MARK: - Window Delegate (auto pause/resume & size enforcement)
     
     func windowDidResignKey(_ notification: Notification) {
-        // Auto-pause only if not already manually paused
         if !isManuallyPaused {
             pausePreview(auto: true)
         }
     }
     
     func windowDidBecomeKey(_ notification: Notification) {
-        // Auto-resume only if previously auto-paused and not manually paused now
         if isAutoPaused && !isManuallyPaused {
             resumePreview(auto: true)
         }
     }
     
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-        // Clamp resize to minimum dimensions
-        return NSSize(width: max(minContentSize.width, frameSize.width),
-                      height: max(minContentSize.height, frameSize.height))
+        NSSize(width: max(minContentSize.width, frameSize.width),
+               height: max(minContentSize.height, frameSize.height))
     }
     
     // MARK: - Preview Engine Management
@@ -192,9 +230,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     }
     
     private func rebuildPreviewEngineIfNeeded() {
-        if previewEngine == nil {
-            setupPreviewEngine()
-        }
+        if previewEngine == nil { setupPreviewEngine() }
     }
     
     private func startPreviewTimer() {
@@ -211,16 +247,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     
     private func pausePreview(auto: Bool) {
         stopPreviewTimer()
-        if auto {
-            isAutoPaused = true
-        }
+        if auto { isAutoPaused = true }
     }
     
     private func resumePreview(auto: Bool) {
-        if auto {
-            isAutoPaused = false
-        }
-        // Only resume if not manually paused and timer not running
+        if auto { isAutoPaused = false }
         if !isManuallyPaused && previewTimer == nil {
             startPreviewTimer()
         }
@@ -250,8 +281,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     }
     
     private func updatePreviewConfig() {
-        let cfg = currentPreviewRuntimeConfig()
-        previewEngine?.updateConfig(cfg)
+        previewEngine?.updateConfig(currentPreviewRuntimeConfig())
     }
     
     private func updatePreviewLabels() {
@@ -266,7 +296,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     @IBAction func saveClose(_ sender: Any) {
         os_log("hit saveClose", log: self.log!, type: .info)
         
-        // Persist current control values
+        // Final strict inequality enforcement before persisting.
+        enforceStrictRadiusInequality(changedControl: nil)
+        
         defaultsManager.starsPerUpdate = starsPerUpdate.integerValue
         defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
         defaultsManager.secsBetweenClears = secsBetweenClears.doubleValue
@@ -275,18 +307,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         defaultsManager.moonMaxRadius = maxMoonRadiusSlider.integerValue
         defaultsManager.moonBrightBrightness = brightBrightnessSlider.doubleValue
         defaultsManager.moonDarkBrightness = darkBrightnessSlider.doubleValue
-        defaultsManager.normalizeMoonRadiusBounds()
+        // Leaving defaultsManager.normalizeMoonRadiusBounds() as-is (min <= max) since UI guarantees strict.
         
-        // Notify main saver view
         view?.settingsChanged()
         
-        window?.sheetParent?.endSheet(self.window!, returnCode: NSApplication.ModalResponse.OK)
+        window?.sheetParent?.endSheet(self.window!, returnCode: .OK)
         self.window?.close()
         
         os_log("exiting saveClose", log: self.log!, type: .info)
     }
     
-    deinit {
-        stopPreviewTimer()
-    }
+    deinit { stopPreviewTimer() }
 }
