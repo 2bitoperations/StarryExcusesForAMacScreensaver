@@ -1,4 +1,4 @@
-﻿//
+//
 //  StarryExcuseForAView.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -112,7 +112,8 @@ class StarryExcuseForAView: ScreenSaverView {
             moonDarkBrightness: defaultsManager.moonDarkBrightness,
             moonPhaseOverrideEnabled: defaultsManager.moonPhaseOverrideEnabled,
             moonPhaseOverrideValue: defaultsManager.moonPhaseOverrideValue,
-            traceEnabled: traceEnabled
+            traceEnabled: traceEnabled,
+            showCrescentClipMask: defaultsManager.showCrescentClipMask
         )
     }
     
