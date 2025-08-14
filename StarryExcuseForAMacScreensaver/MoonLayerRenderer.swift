@@ -16,11 +16,24 @@ final class MoonLayerRenderer {
     private let debugMoon = false
     private let debugMoonLogEveryNFrames = 60
     
-    // Oversizing used ONLY to ensure the dark minority crescent fully covers any
-    // bright fringe along the OUTER limb (sky boundary). This expansion is applied
-    // outward (toward the limb) and NEVER allowed to erase the narrow dark sliver.
-    // Tune if needed (0.5 .. 2.0 typical).
-    private let darkMinorityOversize: CGFloat = 1.25
+    // Dynamic oversizing (used ONLY to ensure the dark minority crescent fully covers any
+    // bright fringe along the OUTER limb (sky boundary). Formerly a fixed constant (1.25).
+    // Now scales with moon radius:
+    //   radius <= 40  -> 1.25
+    //   radius in (40, 150) -> linear interpolation up to 3.0
+    //   radius >= 150 -> 3.0
+    // Assumption: "moon size" in the request refers to radius, not diameter.
+    // If diameter was intended, adjust the thresholds (divide them by 2 here).
+    private func scaledDarkMinorityOversize(forRadius r: CGFloat) -> CGFloat {
+        let minRadius: CGFloat = 40.0
+        let maxRadius: CGFloat = 150.0
+        let minOversize: CGFloat = 1.25
+        let maxOversize: CGFloat = 3.0
+        if r <= minRadius { return minOversize }
+        if r >= maxRadius { return maxOversize }
+        let t = (r - minRadius) / (maxRadius - minRadius) // 0 -> 1
+        return minOversize + t * (maxOversize - minOversize)
+    }
     
     // When clamping the dark minority crescent we previously snapped the side
     // rectangle exactly to the moon centerline. For early waning / waxing gibbous
@@ -88,14 +101,6 @@ final class MoonLayerRenderer {
         
         // Determine illuminated side (Northern Hemisphere convention).
         let lightOnRight = moon.waxing
-        
-        // Branches:
-        // (1) Crescent  (f <= 0.5): dark full disc base, then bright minority crescent.
-        // (2) Gibbous   (f > 0.5):  bright full disc base, then dark minority crescent.
-        //
-        // For the gibbous branch we guarantee the "dark minority crescent"
-        // does not extend far across the centerline while still keeping a
-        // minimal overlap so the XOR mask produces a visible sliver.
         
         if f <= 0.5 {
             // ---------------------------
@@ -171,6 +176,9 @@ final class MoonLayerRenderer {
                            frameCounter, f, darkFraction, lightOnRight ? "true" : "false", cosTheta, ellipseWidth)
                 }
                 
+                // Compute dynamic oversize for dark minority crescent
+                let dynamicOversize = scaledDarkMinorityOversize(forRadius: r)
+                
                 context.saveGState()
                 context.addEllipse(in: moonRect)
                 context.clip()
@@ -182,7 +190,7 @@ final class MoonLayerRenderer {
                                  moonRect: moonRect,
                                  ellipseRect: ellipseRect,
                                  sideRect: leftSideRect,
-                                 oversize: darkMinorityOversize,
+                                 oversize: dynamicOversize,
                                  preventCrossingCenterline: true,
                                  darkFraction: darkFraction,
                                  darkOnRightSide: false)
@@ -192,7 +200,7 @@ final class MoonLayerRenderer {
                                  moonRect: moonRect,
                                  ellipseRect: ellipseRect,
                                  sideRect: rightSideRect,
-                                 oversize: darkMinorityOversize,
+                                 oversize: dynamicOversize,
                                  preventCrossingCenterline: true,
                                  darkFraction: darkFraction,
                                  darkOnRightSide: true)
