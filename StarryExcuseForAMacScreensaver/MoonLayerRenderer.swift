@@ -48,14 +48,11 @@ final class MoonLayerRenderer {
         let center = CGPoint(x: pixelAlign(rawCenter.x),
                              y: pixelAlign(rawCenter.y))
         
-        // Transparent background assumed. We only draw the moon shape so that
-        // uncovering regions shows whatever has accumulated beneath.
         context.saveGState()
         context.setShouldAntialias(true)
         context.setAllowsAntialiasing(true)
         context.interpolationQuality = .none
         
-        // Use aligned center for all rect calculations.
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         
         let newThreshold: CGFloat = 0.005
@@ -66,12 +63,31 @@ final class MoonLayerRenderer {
             context.restoreGState()
             return
         } else if f >= fullThreshold {
-            drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: true)
+            // Full moon -> draw bright disc once
+            drawTexture(context: context,
+                        image: texture,
+                        in: moonRect,
+                        brightness: brightBrightness,
+                        clipToCircle: true)
             context.restoreGState()
             return
         }
         
-        // Terminator geometry (phase lens)
+        // Partial phase:
+        // Draw strategy (fixes bright halo on dark limb):
+        // 1. Draw entire disc at darkBrightness (base).
+        // 2. Overlay ONLY the illuminated portion at brightBrightness.
+        // This avoids relying on perfectly covering the bright disc with a dark overlay,
+        // eliminating the thin bright rim artifact.
+        
+        // Step 1: dark base disc
+        drawTexture(context: context,
+                    image: texture,
+                    in: moonRect,
+                    brightness: darkBrightness,
+                    clipToCircle: true)
+        
+        // Step 2: illuminated segment overlay
         let cosTheta = 1.0 - 2.0 * f
         let minorScale = abs(cosTheta)
         let rawEllipseWidth = 2.0 * r * minorScale
@@ -88,10 +104,8 @@ final class MoonLayerRenderer {
                    frameCounter, f, lightOnRight ? "true" : "false", cosTheta, ellipseWidth)
         }
         
-        // Side rectangles used for even-odd clipping of the shadow lens.
         let overlap: CGFloat = 1.0
         let centerX = moonRect.midX
-        
         let rightSideRect = CGRect(x: centerX - overlap,
                                    y: moonRect.minY,
                                    width: r + overlap,
@@ -110,26 +124,22 @@ final class MoonLayerRenderer {
             context.clip(using: .evenOdd)
         }
         
-        // Bright disc first
-        drawTexture(context: context,
-                    image: texture,
-                    in: moonRect,
-                    brightness: brightBrightness,
-                    clipToCircle: true)
-        
-        // Dark lens overlay
         context.saveGState()
+        // Restrict to moon circle first (for antialiased rim coherence)
         context.addEllipse(in: moonRect)
         context.clip()
+        // Choose the LIT side (opposite of previous dark-overlay logic)
         if lightOnRight {
-            clipLens(sideRect: leftSideRect)
-        } else {
+            // Illuminated portion is right side
             clipLens(sideRect: rightSideRect)
+        } else {
+            // Illuminated portion is left side
+            clipLens(sideRect: leftSideRect)
         }
         drawTexture(context: context,
                     image: texture,
                     in: moonRect,
-                    brightness: darkBrightness,
+                    brightness: brightBrightness,
                     clipToCircle: false)
         context.restoreGState()
         
