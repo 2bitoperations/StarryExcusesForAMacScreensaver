@@ -123,6 +123,10 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     fileprivate func initSkyline(xMax: Int, yMax: Int) {
+        // Validate potentially corrupted or logically invalid persisted values before use.
+        if let log = log {
+            defaultsManager.validateAndCorrectMoonSettings(log: log)
+        }
         do {
             let traversalMinutes = defaultsManager.moonTraversalMinutes
             let minRadius = defaultsManager.moonMinRadius
