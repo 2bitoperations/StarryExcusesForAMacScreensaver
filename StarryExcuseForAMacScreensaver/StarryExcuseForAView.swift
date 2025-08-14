@@ -27,6 +27,7 @@ class StarryExcuseForAView: ScreenSaverView {
             log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         }
         os_log("start skyline init", log: log!)
+        defaultsManager.validateAndCorrectMoonSettings(log: log!)
         animationTimeInterval = 0.1
         registerListeners()
     }
