@@ -40,12 +40,38 @@ struct Moon {
         self.traversalSeconds = traversalSeconds
         self.movingLeftToRight = Moon.referenceLatitude >= 0.0
         
-        // Radius selection with safe bounds
-        let boundedMin = max(5, min(1000, minRadius))
-        let boundedMax = max(boundedMin, min(1200, maxRadius))
+        // Incoming slider values can exceed what the screen can sensibly display.
+        // We clamp and guarantee a NON-EMPTY random range to avoid crashes when
+        // the user sets min > screen-derived max.
+        let boundedMinUser = max(5, min(1000, minRadius))
+        let boundedMaxUser = max(boundedMinUser, min(1200, maxRadius))
         let maxRLimitFromScreen = Int(0.2 * Double(min(screenWidth, screenHeight)))
-        let allowedMaxR = min(boundedMax, maxRLimitFromScreen)
-        self.radius = Int.random(in: boundedMin...allowedMaxR)
+        
+        var effectiveMin = boundedMinUser
+        var effectiveMax = min(boundedMaxUser, maxRLimitFromScreen)
+        
+        // If user min exceeds screen cap, clamp it down (and log).
+        if effectiveMin > maxRLimitFromScreen {
+            os_log("Moon radius min (%{public}d) > screen cap (%{public}d); clamping.",
+                   log: log, type: .info, effectiveMin, maxRLimitFromScreen)
+            effectiveMin = maxRLimitFromScreen
+        }
+        // Ensure max is at least min (can happen if screen cap < user min or both collapse).
+        if effectiveMax < effectiveMin {
+            os_log("Moon radius max (%{public}d) < min (%{public}d); adjusting max = min.",
+                   log: log, type: .debug, effectiveMax, effectiveMin)
+            effectiveMax = effectiveMin
+        }
+        
+        // Final safety: radius range should never be empty.
+        if effectiveMin < 5 {
+            effectiveMin = 5
+        }
+        if effectiveMax < effectiveMin {
+            effectiveMax = effectiveMin
+        }
+        
+        self.radius = Int.random(in: effectiveMin...effectiveMax)
         
         // Base Y for the traversal arc (ensures it is above buildings and inside screen)
         let minBaseUnclamped = buildingMaxHeight + self.radius + 10
@@ -71,14 +97,16 @@ struct Moon {
         // Texture
         self.textureImage = MoonTexture.createMoonTexture(diameter: self.radius * 2)
         
-        // Break complex os_log argument building into simpler pieces (prevents type-check explosion)
         let waxingStr: String = self.waxing ? "true" : "false"
         let direction: String = self.movingLeftToRight ? "L->R" : "R->L"
         let dur: Double = self.traversalSeconds
-        os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@ dur=%.0fs",
+        os_log("Moon init r=%{public}d (range %d-%d cap %d) frac=%.3f waxing=%{public}@ dir=%{public}@ dur=%.0fs",
                log: log,
                type: .info,
                self.radius,
+               effectiveMin,
+               effectiveMax,
+               maxRLimitFromScreen,
                self.illuminatedFraction,
                waxingStr,
                direction,
