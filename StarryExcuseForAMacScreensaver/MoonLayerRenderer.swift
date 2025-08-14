@@ -74,11 +74,9 @@ final class MoonLayerRenderer {
         }
         
         // Partial phase:
-        // Draw strategy (fixes bright halo on dark limb):
+        // Strategy (fixes bright halo on dark limb):
         // 1. Draw entire disc at darkBrightness (base).
         // 2. Overlay ONLY the illuminated portion at brightBrightness.
-        // This avoids relying on perfectly covering the bright disc with a dark overlay,
-        // eliminating the thin bright rim artifact.
         
         // Step 1: dark base disc
         drawTexture(context: context,
@@ -116,9 +114,10 @@ final class MoonLayerRenderer {
                                    height: moonRect.height)
         
         // clipLens isolates a crescent/gibbous region based on the sideRect provided.
-        // After we changed layering (dark base first) the semantic of which sideRect
-        // yields the LIT portion inverted relative to the previous code. Therefore
-        // we intentionally feed the *opposite* sideRect of the visual lit side.
+        // After layering change, our earlier inversion still produced the opposite
+        // of the desired real-world orientation. We now directly map:
+        // waxing  -> bright on RIGHT  -> use rightSideRect
+        // waning  -> bright on LEFT   -> use leftSideRect
         func clipLens(sideRect: CGRect) {
             context.clip(to: sideRect)
             let path = CGMutablePath()
@@ -129,16 +128,14 @@ final class MoonLayerRenderer {
         }
         
         context.saveGState()
-        // Restrict to moon circle first (for antialiased rim coherence)
         context.addEllipse(in: moonRect)
         context.clip()
-        // Choose sideRect to produce illuminated region:
-        // If light should appear on the RIGHT, we must pass leftSideRect (and vice versa)
-        // due to even-odd + sideRect intersection producing the complement after layering change.
         if lightOnRight {
-            clipLens(sideRect: leftSideRect)
-        } else {
+            // Waxing: illuminated portion should be on right side
             clipLens(sideRect: rightSideRect)
+        } else {
+            // Waning: illuminated portion should be on left side
+            clipLens(sideRect: leftSideRect)
         }
         drawTexture(context: context,
                     image: texture,
