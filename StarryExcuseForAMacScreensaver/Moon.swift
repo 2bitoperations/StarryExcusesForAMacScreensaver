@@ -4,9 +4,17 @@ import os
 
 // Represents the moon, its phase, and traversal across the screen.
 // Incorporates configurable traversal duration and radius range (from defaults).
+// Phase behavior:
+// - If phaseOverrideEnabled == true, the override slider value (0.0 -> 1.0) maps
+//   to an illuminated fraction as before (0=new, 0.5=full, 1 wraps to new).
+// - If not overridden, we now compute the phase for the CURRENT moment (Date())
+//   instead of anchoring to local midnight. This makes the displayed phase more
+//   accurate to "right now" instead of remaining fixed for the whole calendar day.
+//   (Note: We still only compute at Moon init; if you want the phase to change
+//   gradually while the saver runs, you'd need to update illuminatedFraction
+//   over time or recreate Moon periodically.)
 struct Moon {
     static let synodicMonthDays: Double = 29.530588853
-    static let referenceLatitude: Double = 30.2672 // Austin, TX
     
     static let newMoonEpoch: Date = {
         var comps = DateComponents()
@@ -40,7 +48,9 @@ struct Moon {
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         self.traversalSeconds = traversalSeconds
-        self.movingLeftToRight = Moon.referenceLatitude >= 0.0
+        
+        // Always move left -> right (previously depended on a latitude constant).
+        self.movingLeftToRight = true
         
         // Clamp user-provided radius bounds and enforce screen-derived cap.
         let boundedMinUser = max(5, min(1000, minRadius))
@@ -95,13 +105,13 @@ struct Moon {
                 waxingFlag = false
             }
         } else {
-            let phaseDate = Moon.midnightInAustin()
-            (fraction, waxingFlag) = Moon.computePhase(on: phaseDate)
+            // Use the current instant for a more precise phase.
+            (fraction, waxingFlag) = Moon.computePhase(on: Date())
         }
         self.illuminatedFraction = fraction
         self.waxing = waxingFlag
         
-        // Texture
+        // Texture (static grayscale albedo map)
         self.textureImage = MoonTexture.createMoonTexture(diameter: self.radius * 2)
         
         let waxingStr: String = self.waxing ? "true" : "false"
@@ -142,15 +152,6 @@ struct Moon {
         }
         let y = arcBaseY + arcAmplitude * sin(Double.pi * progress)
         return CGPoint(x: x, y: y)
-    }
-    
-    private static func midnightInAustin(reference: Date = Date()) -> Date {
-        let tz = TimeZone(identifier: "America/Chicago")!
-        let cal = Calendar(identifier: .gregorian)
-        var comps = cal.dateComponents(in: tz, from: reference)
-        comps.hour = 0; comps.minute = 0; comps.second = 0; comps.nanosecond = 0
-        comps.timeZone = tz
-        return cal.date(from: comps)!
     }
     
     private static func julianDay(from date: Date) -> Double {
