@@ -32,13 +32,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var brightBrightnessPreview: NSTextField!
     @IBOutlet weak var darkBrightnessPreview: NSTextField!
     
-    // New: Phase override controls
-    // Checkbox toggles whether phase override slider is active.
+    // Phase override controls
     @IBOutlet weak var moonPhaseOverrideCheckbox: NSButton!
-    // Slider range 0.0 ... 1.0 (Interface Builder should set min=0, max=1, tick marks optional)
     @IBOutlet weak var moonPhaseSlider: NSSlider!
-    // Shows numeric value (optional label)
     @IBOutlet weak var moonPhasePreview: NSTextField!
+    
+    // Debug / troubleshooting: show crescent clip mask (bright red) checkbox
+    @IBOutlet weak var showCrescentClipMaskCheckbox: NSButton!
     
     // Preview container (plain NSView).
     @IBOutlet weak var moonPreviewView: NSView!
@@ -69,6 +69,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastDarkBrightness: Double = 0
     private var lastMoonPhaseOverrideEnabled: Bool = false
     private var lastMoonPhaseOverrideValue: Double = 0.0
+    private var lastShowCrescentClipMask: Bool = false
     
     // MARK: - UI Actions (sliders / controls)
     
@@ -152,6 +153,19 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         }
     }
     
+    @IBAction func showCrescentClipMaskToggled(_ sender: Any) {
+        let newVal = (showCrescentClipMaskCheckbox.state == .on)
+        if newVal != lastShowCrescentClipMask {
+            logChange(changedKey: "showCrescentClipMask",
+                      oldValue: lastShowCrescentClipMask ? "true" : "false",
+                      newValue: newVal ? "true" : "false")
+            lastShowCrescentClipMask = newVal
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+        maybeClearAndRestartPreview(reason: "showCrescentClipMaskToggled")
+    }
+    
     // MARK: - Preview Control Buttons
     
     @IBAction func previewTogglePause(_ sender: Any) {
@@ -230,6 +244,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonPhasePreview.stringValue = formatPhase(moonPhaseSlider.doubleValue)
         updatePhaseOverrideUIEnabled()
         
+        showCrescentClipMaskCheckbox.state = defaultsManager.showCrescentClipMask ? .on : .off
+        
         // Initialize last-known snapshot for logging
         lastStarsPerUpdate = starsPerUpdate.integerValue
         lastBuildingHeight = buildingHeightSlider.doubleValue
@@ -241,6 +257,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastDarkBrightness = darkBrightnessSlider.doubleValue
         lastMoonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         lastMoonPhaseOverrideValue = moonPhaseSlider.doubleValue
+        lastShowCrescentClipMask = (showCrescentClipMaskCheckbox.state == .on)
         
         // Assign delegates
         starsPerUpdate.delegate = self
@@ -432,7 +449,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             moonDarkBrightness: darkBrightnessSlider.doubleValue,
             moonPhaseOverrideEnabled: moonPhaseOverrideCheckbox.state == .on,
             moonPhaseOverrideValue: moonPhaseSlider.doubleValue,
-            traceEnabled: false
+            traceEnabled: false,
+            showCrescentClipMask: (showCrescentClipMaskCheckbox.state == .on)
         )
     }
     
@@ -484,6 +502,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.moonDarkBrightness = darkBrightnessSlider.doubleValue
         defaultsManager.moonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         defaultsManager.moonPhaseOverrideValue = moonPhaseSlider.doubleValue
+        defaultsManager.showCrescentClipMask = (showCrescentClipMaskCheckbox.state == .on)
         
         view?.settingsChanged()
         
@@ -524,7 +543,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                " moonBrightBrightness=\(format(brightBrightnessSlider.doubleValue))," +
                " moonDarkBrightness=\(format(darkBrightnessSlider.doubleValue))," +
                " moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)," +
-               " moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))"
+               " moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))," +
+               " showCrescentClipMask=\(showCrescentClipMaskCheckbox.state == .on)"
     }
     
     private func format(_ d: Double) -> String {

@@ -10,20 +10,14 @@ final class MoonLayerRenderer {
     private let log: OSLog
     private let brightBrightness: CGFloat
     private let darkBrightness: CGFloat
+    private let showCrescentClipMask: Bool
     
     // internal reuse
     private var frameCounter: Int = 0
     private let debugMoon = false
     private let debugMoonLogEveryNFrames = 60
     
-    // Dynamic oversizing (used ONLY to ensure the dark minority crescent fully covers any
-    // bright fringe along the OUTER limb (sky boundary). Formerly a fixed constant (1.25).
-    // Now scales with moon radius:
-    //   radius <= 40  -> 1.25
-    //   radius in (40, 150) -> linear interpolation up to 3.0
-    //   radius >= 150 -> 3.0
-    // Assumption: "moon size" in the request refers to radius, not diameter.
-    // If diameter was intended, adjust the thresholds (divide them by 2 here).
+    // Dynamic oversizing scaling with radius
     private func scaledDarkMinorityOversize(forRadius r: CGFloat) -> CGFloat {
         let minRadius: CGFloat = 40.0
         let maxRadius: CGFloat = 150.0
@@ -31,30 +25,24 @@ final class MoonLayerRenderer {
         let maxOversize: CGFloat = 3.0
         if r <= minRadius { return minOversize }
         if r >= maxRadius { return maxOversize }
-        let t = (r - minRadius) / (maxRadius - minRadius) // 0 -> 1
+        let t = (r - minRadius) / (maxRadius - minRadius)
         return minOversize + t * (maxOversize - minOversize)
     }
     
-    // When clamping the dark minority crescent we previously snapped the side
-    // rectangle exactly to the moon centerline. For early waning / waxing gibbous
-    // phases (fraction just below 1.0, i.e. slider in ~0.5 .. 0.75 or ~0.25 .. 0.5
-    // depending on direction) this eliminated the narrow dark sliver completely,
-    // making the moon appear full. We now allow a thin overlap past the centerline
-    // so the even‑odd (circle XOR ellipse) operation still yields a crescent.
-    // This is a minimal pixel width (in logical points) retained across midline.
     private let centerlineOverlapForDark: CGFloat = 1.0
     
     init(skyline: Skyline,
          log: OSLog,
          brightBrightness: CGFloat,
-         darkBrightness: CGFloat) {
+         darkBrightness: CGFloat,
+         showCrescentClipMask: Bool) {
         self.skyline = skyline
         self.log = log
         self.brightBrightness = brightBrightness
         self.darkBrightness = darkBrightness
+        self.showCrescentClipMask = showCrescentClipMask
     }
     
-    // Pixel alignment helper: snaps a CGFloat to the nearest device pixel.
     @inline(__always)
     private func pixelAlign(_ value: CGFloat) -> CGFloat {
         return round(value)
@@ -65,13 +53,10 @@ final class MoonLayerRenderer {
         guard let moon = skyline.getMoon(),
               let texture = moon.textureImage else { return }
         
-        // Original (potentially fractional) center.
         let rawCenter = moon.currentCenter()
         let r = CGFloat(moon.radius)
         let fRaw = moon.illuminatedFraction
         let f = CGFloat(min(max(fRaw, 0.0), 1.0))
-        
-        // Align center so bitmap + clip are stable relative to pixel grid.
         let center = CGPoint(x: pixelAlign(rawCenter.x),
                              y: pixelAlign(rawCenter.y))
         
@@ -81,8 +66,6 @@ final class MoonLayerRenderer {
         context.interpolationQuality = .none
         
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
-        
-        // Thresholds for near-new / near-full.
         let newThreshold: CGFloat = 0.005
         let fullThreshold: CGFloat = 0.995
         
@@ -99,13 +82,9 @@ final class MoonLayerRenderer {
             return
         }
         
-        // Determine illuminated side (Northern Hemisphere convention).
         let lightOnRight = moon.waxing
         
         if f <= 0.5 {
-            // ---------------------------
-            // CRESCENT PHASE (bright minority)
-            // ---------------------------
             drawTexture(context: context,
                         image: texture,
                         in: moonRect,
@@ -126,7 +105,6 @@ final class MoonLayerRenderer {
             context.clip()
             
             context.saveGState()
-            // Bright crescent (minority) – no oversize & no centerline clamp needed
             if lightOnRight {
                 clipCrescent(context: context,
                              moonRect: moonRect,
@@ -146,19 +124,20 @@ final class MoonLayerRenderer {
                              darkFraction: nil,
                              darkOnRightSide: nil)
             }
-            drawTexture(context: context,
-                        image: texture,
-                        in: moonRect,
-                        brightness: brightBrightness,
-                        clipToCircle: false)
+            if showCrescentClipMask {
+                context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 0.9))
+                context.fill(moonRect)
+            } else {
+                drawTexture(context: context,
+                            image: texture,
+                            in: moonRect,
+                            brightness: brightBrightness,
+                            clipToCircle: false)
+            }
             context.restoreGState()
-            
             context.restoreGState()
             
         } else {
-            // ---------------------------
-            // GIBBOUS PHASE (bright majority)
-            // ---------------------------
             drawTexture(context: context,
                         image: texture,
                         in: moonRect,
@@ -176,7 +155,6 @@ final class MoonLayerRenderer {
                            frameCounter, f, darkFraction, lightOnRight ? "true" : "false", cosTheta, ellipseWidth)
                 }
                 
-                // Compute dynamic oversize for dark minority crescent
                 let dynamicOversize = scaledDarkMinorityOversize(forRadius: r)
                 
                 context.saveGState()
@@ -185,7 +163,6 @@ final class MoonLayerRenderer {
                 
                 context.saveGState()
                 if lightOnRight {
-                    // Light on right => dark crescent on LEFT
                     clipCrescent(context: context,
                                  moonRect: moonRect,
                                  ellipseRect: ellipseRect,
@@ -195,7 +172,6 @@ final class MoonLayerRenderer {
                                  darkFraction: darkFraction,
                                  darkOnRightSide: false)
                 } else {
-                    // Light on left => dark crescent on RIGHT
                     clipCrescent(context: context,
                                  moonRect: moonRect,
                                  ellipseRect: ellipseRect,
@@ -205,21 +181,23 @@ final class MoonLayerRenderer {
                                  darkFraction: darkFraction,
                                  darkOnRightSide: true)
                 }
-                drawTexture(context: context,
-                            image: texture,
-                            in: moonRect,
-                            brightness: darkBrightness,
-                            clipToCircle: false)
+                if showCrescentClipMask {
+                    context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 0.9))
+                    context.fill(moonRect)
+                } else {
+                    drawTexture(context: context,
+                                image: texture,
+                                in: moonRect,
+                                brightness: darkBrightness,
+                                clipToCircle: false)
+                }
                 context.restoreGState()
-                
                 context.restoreGState()
             }
         }
         
         context.restoreGState()
     }
-    
-    // MARK: - Phase Geometry Helper
     
     private func phaseGeometry(radius r: CGFloat,
                                center: CGPoint,
@@ -247,18 +225,6 @@ final class MoonLayerRenderer {
         return (ellipseRect, rightSideRect, leftSideRect, cosTheta, ellipseWidth)
     }
     
-    // Applies clipping to isolate a crescent (bright or dark) by performing a
-    // symmetric difference (moonRect XOR ellipse) restricted to a (possibly
-    // oversized) side rectangle.
-    //
-    // oversize: outward expansion toward the limb ONLY (never into the bright majority).
-    // preventCrossingCenterline: when true, clamps side rect so dark overlay doesn't
-    //                             swallow the bright hemisphere. We now retain a
-    //                             minimal centerline overlap so the XOR result does
-    //                             not vanish (which previously caused a "full" moon
-    //                             appearance for early gibbous).
-    // darkFraction / darkOnRightSide: used to tailor clamping based on which side
-    //                                 the dark region is on and how large it is.
     private func clipCrescent(context: CGContext,
                               moonRect: CGRect,
                               ellipseRect: CGRect,
@@ -270,27 +236,19 @@ final class MoonLayerRenderer {
         var sr = sideRect
         let moonCenterX = moonRect.midX
         
-        // Determine side & apply outward oversize
         if oversize > 0 {
             if sr.minX < moonCenterX {
-                // LEFT side: expand toward limb (further left)
                 sr.origin.x -= oversize
                 sr.size.width += oversize
             } else {
-                // RIGHT side: expand toward limb (further right)
                 sr.size.width += oversize
             }
         }
         
         if preventCrossingCenterline, let df = darkFraction, let rightSide = darkOnRightSide {
-            // Allow a narrow overlap across the centerline; use centerlineOverlapForDark,
-            // but scale it slightly with darkFraction so very small dark slivers
-            // still survive the XOR mask.
             let scaledOverlap = max(0.5, centerlineOverlapForDark * max(0.35, Double(df)))
             
             if rightSide {
-                // Dark crescent on RIGHT
-                // Previously: newMinX = center -> lost sliver. Now allow small overlap into left.
                 let desiredMin = moonCenterX - CGFloat(scaledOverlap)
                 if sr.minX < desiredMin {
                     let delta = desiredMin - sr.minX
@@ -298,16 +256,12 @@ final class MoonLayerRenderer {
                     sr.size.width -= delta
                 }
             } else {
-                // Dark crescent on LEFT
-                // Keep maxX a little past center to preserve XOR area.
                 let desiredMax = moonCenterX + CGFloat(scaledOverlap)
                 if sr.maxX > desiredMax {
                     sr.size.width = max(0, desiredMax - sr.minX)
                 }
             }
-            // Also enforce that we don't extend far into the bright hemisphere:
             if rightSide {
-                // Prevent right dark rect from starting too far left ( > half + overlap limit)
                 let absoluteMin = moonCenterX - 2.0 * CGFloat(scaledOverlap)
                 if sr.minX < absoluteMin {
                     let delta = absoluteMin - sr.minX
@@ -322,7 +276,6 @@ final class MoonLayerRenderer {
             }
         }
         
-        // If clipping collapsed (edge case), nothing to render
         if sr.width <= 0 {
             return
         }
@@ -334,8 +287,6 @@ final class MoonLayerRenderer {
         context.addPath(path)
         context.clip(using: .evenOdd)
     }
-    
-    // MARK: - Texture Draw Helper
     
     private func drawTexture(context: CGContext,
                              image: CGImage,
