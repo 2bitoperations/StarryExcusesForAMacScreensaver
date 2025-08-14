@@ -23,18 +23,26 @@ class StarryExcuseForAView: ScreenSaverView {
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
         super.init(frame: frame, isPreview: isPreview)
-        if log == nil {
-            log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
-        }
-        os_log("start skyline init", log: log!)
-        defaultsManager.validateAndCorrectMoonSettings(log: log!)
-        animationTimeInterval = 0.1
-        registerListeners()
+        
+        self.requiredInternalInit()
     }
     
     required init?(coder decoder: NSCoder) {
         self.traceEnabled = false
         super.init(coder: decoder)
+        
+        self.requiredInternalInit()
+    }
+    
+    private func requiredInternalInit() {
+        if log == nil {
+            log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
+        }
+        os_log("internal init", log: log!)
+        
+        defaultsManager.validateAndCorrectMoonSettings(log: log!)
+        animationTimeInterval = 0.1
+        registerListeners()
     }
     
     deinit { deallocateResources() }
