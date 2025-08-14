@@ -107,7 +107,6 @@ class SkylineCoreRenderer {
         let rawEllipseWidth = 2.0 * r * minorScale
         let ellipseWidth = max(0.5, rawEllipseWidth)
         let ellipseRect = CGRect(x: center.x - ellipseWidth/2.0, y: center.y - r, width: ellipseWidth, height: 2*r)
-        let isCrescent = f < 0.5
         let lightOnRight = moon.waxing
         
         if debugMoon, frameCounter % debugMoonLogEveryNFrames == 0 {
@@ -118,6 +117,7 @@ class SkylineCoreRenderer {
         
         let overlap: CGFloat = 1.0
         let centerX = moonRect.midX
+        
         let rightSideRect = CGRect(x: centerX - overlap, y: moonRect.minY, width: r + overlap, height: moonRect.height)
         let leftSideRect  = CGRect(x: centerX - r, y: moonRect.minY, width: r + overlap, height: moonRect.height)
         
@@ -130,37 +130,21 @@ class SkylineCoreRenderer {
             context.addPath(path)
             context.clip(using: .evenOdd)
         }
-        
-        if isCrescent {
-            // CRESCENT: draw ONLY the bright lens. No dark base pass -> eliminates light rim.
-            context.saveGState()
-            context.addEllipse(in: moonRect)
-            context.clip()
-            if lightOnRight {
-                clipLens(sideRect: rightSideRect)
-            } else {
-                clipLens(sideRect: leftSideRect)
-            }
-            drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: false)
-            context.restoreGState()
+
+        drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: true)
+        context.saveGState()
+        context.addEllipse(in: moonRect)
+        context.clip()
+        if lightOnRight {
+            // Dark left lens
+            clipLens(sideRect: leftSideRect)
         } else {
-            // GIBBOUS: draw full bright disc, then overlay dark lens (single overlap).
-            drawTexture(context: context, image: texture, in: moonRect, brightness: brightBrightness, clipToCircle: true)
-            context.saveGState()
-            context.addEllipse(in: moonRect)
-            context.clip()
-            if lightOnRight {
-                // Dark left lens
-                clipLens(sideRect: leftSideRect)
-            } else {
-                // Dark right lens
-                clipLens(sideRect: rightSideRect)
-            }
-            drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: false)
-            context.restoreGState()
+            // Dark right lens
+            clipLens(sideRect: rightSideRect)
         }
-        
+        drawTexture(context: context, image: texture, in: moonRect, brightness: darkBrightness, clipToCircle: false)
         context.restoreGState()
+
         lastMoonRect = moonRect
     }
     
@@ -172,7 +156,6 @@ class SkylineCoreRenderer {
         context.saveGState()
         context.setShouldAntialias(true)
         context.setAllowsAntialiasing(true)
-        context.interpolationQuality = .none
         if clipToCircle {
             context.addEllipse(in: rect)
             context.clip()
