@@ -18,6 +18,9 @@
                 <outlet property="maxMoonRadiusSlider" destination="MAX-RAD-SL" id="MAX-RAD-SL-ID"/>
                 <outlet property="minMoonRadiusPreview" destination="MIN-RAD-LBL" id="MIN-RAD-LBL-ID"/>
                 <outlet property="minMoonRadiusSlider" destination="MIN-RAD-SL" id="MIN-RAD-SL-ID"/>
+                <outlet property="moonPhaseOverrideCheckbox" destination="PHASE-CHK" id="PHASE-CHK-OUTLET"/>
+                <outlet property="moonPhasePreview" destination="PHASE-VAL-LBL" id="PHASE-VAL-LBL-OUTLET"/>
+                <outlet property="moonPhaseSlider" destination="PHASE-SL" id="PHASE-SL-OUTLET"/>
                 <outlet property="moonPreviewView" destination="PREVIEW-VIEW" id="PREVIEW-VIEW-ID"/>
                 <outlet property="moonTraversalMinutes" destination="MTR-lb-Min" id="OvU-d4-dwH"/>
                 <outlet property="pauseToggleButton" destination="BTN-PAUSE" id="PAUSE-BTN-OUTLET"/>
@@ -40,10 +43,10 @@
                 <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                 <subviews>
                     <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="10" translatesAutoresizingMaskIntoConstraints="NO" id="Ab2-ul-qfO">
-                        <rect key="frame" x="0.0" y="0.0" width="271" height="600"/>
+                        <rect key="frame" x="0.0" y="0.0" width="300" height="600"/>
                         <subviews>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
-                                <rect key="frame" x="0.0" y="384" width="181" height="216"/>
+                                <rect key="frame" x="0.0" y="430" width="181" height="216"/>
                                 <subviews>
                                     <textField identifier="StarsPerUpdateLabel" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Rih-ed-DK9">
                                         <rect key="frame" x="-2" y="101" width="97" height="14"/>
@@ -60,7 +63,7 @@
                                 </constraints>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
-                                <rect key="frame" x="0.0" y="355" width="223" height="19"/>
+                                <rect key="frame" x="0.0" y="401" width="223" height="19"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="h3L-pH-175">
                                         <rect key="frame" x="-2" y="2" width="139" height="15"/>
@@ -76,7 +79,7 @@
                                 </constraints>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
-                                <rect key="frame" x="0.0" y="326" width="156" height="19"/>
+                                <rect key="frame" x="0.0" y="372" width="156" height="19"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Lbl-Moon-Time">
                                         <rect key="frame" x="-2" y="2" width="130" height="15"/>
@@ -92,7 +95,7 @@
                                 </constraints>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="a9U-nj-sTo">
-                                <rect key="frame" x="0.0" y="296" width="263" height="20"/>
+                                <rect key="frame" x="0.0" y="342" width="263" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="eaT-6Y-gvB">
                                         <rect key="frame" x="-2" y="3" width="111" height="14"/>
@@ -112,7 +115,7 @@
                                 </subviews>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-STK">
-                                <rect key="frame" x="0.0" y="266" width="260" height="20"/>
+                                <rect key="frame" x="0.0" y="312" width="260" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="98" height="14"/>
@@ -132,7 +135,7 @@
                                 </subviews>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-STK">
-                                <rect key="frame" x="0.0" y="236" width="263" height="20"/>
+                                <rect key="frame" x="0.0" y="282" width="263" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="101" height="14"/>
@@ -152,7 +155,7 @@
                                 </subviews>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-STK">
-                                <rect key="frame" x="0.0" y="206" width="271" height="20"/>
+                                <rect key="frame" x="0.0" y="252" width="271" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="129" height="14"/>
@@ -172,7 +175,7 @@
                                 </subviews>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-STK">
-                                <rect key="frame" x="0.0" y="176" width="265" height="20"/>
+                                <rect key="frame" x="0.0" y="222" width="265" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="123" height="14"/>
@@ -191,8 +194,45 @@
                                     </textField>
                                 </subviews>
                             </stackView>
+                            <!-- Phase override checkbox row -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK-STK">
+                                <rect key="frame" x="0.0" y="192" width="250" height="22"/>
+                                <subviews>
+                                    <button translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK">
+                                        <rect key="frame" x="-2" y="0.0" width="140" height="22"/>
+                                        <buttonCell key="cell" type="switch" title="Lock Moon Phase" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="PHASE-CHK-CELL">
+                                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
+                                            <font key="font" metaFont="system"/>
+                                        </buttonCell>
+                                        <connections>
+                                            <action selector="moonPhaseOverrideToggled:" target="-2" id="PHASE-CHK-ACT"/>
+                                        </connections>
+                                    </button>
+                                </subviews>
+                            </stackView>
+                            <!-- Phase slider row -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-SL-STK">
+                                <rect key="frame" x="0.0" y="162" width="270" height="22"/>
+                                <subviews>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-LBL-TXT">
+                                        <rect key="frame" x="-2" y="4" width="70" height="14"/>
+                                        <textFieldCell key="cell" title="Moon Phase" id="PHASE-LBL-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-SL">
+                                        <rect key="frame" x="72" y="-6" width="150" height="28"/>
+                                        <sliderCell key="cell" minValue="0" maxValue="1" doubleValue="0" numberOfTickMarks="5" tickMarkPosition="below" sliderType="linear" id="PHASE-SL-CELL"/>
+                                        <connections>
+                                            <action selector="moonPhaseSliderChanged:" target="-2" id="PHASE-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-VAL-LBL">
+                                        <rect key="frame" x="226" y="4" width="42" height="14"/>
+                                        <textFieldCell key="cell" title="0.000" id="PHASE-VAL-LBL-CELL"/>
+                                    </textField>
+                                </subviews>
+                            </stackView>
                             <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
-                                <rect key="frame" x="0.0" y="146" width="130" height="20"/>
+                                <rect key="frame" x="0.0" y="132" width="130" height="20"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-PAUSE">
                                         <rect key="frame" x="-7" y="-7" width="71" height="32"/>
@@ -217,7 +257,7 @@
                                 </subviews>
                             </stackView>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CLEAR">
-                                <rect key="frame" x="0.0" y="134" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="120" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Clear Preview" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CLEAR-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -227,7 +267,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="irw-GB-QPa">
-                                <rect key="frame" x="0.0" y="120" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="86" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Save and Close" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="IyX-HG-idV">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -237,7 +277,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CANCEL">
-                                <rect key="frame" x="0.0" y="86" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="52" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Cancel" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CANCEL-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -254,7 +294,7 @@
                         </constraints>
                     </stackView>
                     <customView translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-VIEW">
-                        <rect key="frame" x="281" y="20" width="499" height="560"/>
+                        <rect key="frame" x="310" y="20" width="470" height="560"/>
                     </customView>
                 </subviews>
                 <constraints>
