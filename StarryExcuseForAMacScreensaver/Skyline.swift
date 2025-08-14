@@ -35,6 +35,8 @@ class Skyline {
     let moonDarkBrightness: Double
     let moonMinRadius: Int
     let moonMaxRadius: Int
+    let moonPhaseOverrideEnabled: Bool
+    let moonPhaseOverrideValue: Double
     
     init(screenXMax: Int,
          screenYMax: Int,
@@ -54,7 +56,9 @@ class Skyline {
          moonMinRadius: Int = 15,
          moonMaxRadius: Int = 60,
          moonBrightBrightness: Double = 1.0,
-         moonDarkBrightness: Double = 0.15) throws {
+         moonDarkBrightness: Double = 0.15,
+         moonPhaseOverrideEnabled: Bool = false,
+         moonPhaseOverrideValue: Double = 0.0) throws {
         self.log = log
         var buildingWorkingList = [Building]()
         self.width = screenXMax
@@ -74,6 +78,8 @@ class Skyline {
         self.moonDarkBrightness = moonDarkBrightness
         self.moonMinRadius = moonMinRadius
         self.moonMaxRadius = moonMaxRadius
+        self.moonPhaseOverrideEnabled = moonPhaseOverrideEnabled
+        self.moonPhaseOverrideValue = min(max(moonPhaseOverrideValue, 0.0), 1.0)
         
         os_log("invoking skyline init, screen %{PUBLIC}dx%{PUBLIC}d", log: log, type: .info, screenXMax, screenYMax)
         os_log("found %{PUBLIC}d styles", log: log, type: .debug, styles.count)
@@ -105,7 +111,9 @@ class Skyline {
                          log: log,
                          minRadius: moonMinRadius,
                          maxRadius: moonMaxRadius,
-                         traversalSeconds: moonTraversalSeconds)
+                         traversalSeconds: moonTraversalSeconds,
+                         phaseOverrideEnabled: moonPhaseOverrideEnabled,
+                         phaseOverrideValue: self.moonPhaseOverrideValue)
         
         self.flasherPosition = getFlasherPosition()
     }

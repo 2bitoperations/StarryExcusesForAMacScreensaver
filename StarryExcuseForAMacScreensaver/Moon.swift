@@ -34,15 +34,15 @@ struct Moon {
          log: OSLog,
          minRadius: Int = 15,
          maxRadius: Int = 60,
-         traversalSeconds: Double = 3600.0) {
+         traversalSeconds: Double = 3600.0,
+         phaseOverrideEnabled: Bool = false,
+         phaseOverrideValue: Double = 0.0) {
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         self.traversalSeconds = traversalSeconds
         self.movingLeftToRight = Moon.referenceLatitude >= 0.0
         
-        // Incoming slider values can exceed what the screen can sensibly display.
-        // We clamp and guarantee a NON-EMPTY random range to avoid crashes when
-        // the user sets min > screen-derived max.
+        // Clamp user-provided radius bounds and enforce screen-derived cap.
         let boundedMinUser = max(5, min(1000, minRadius))
         let boundedMaxUser = max(boundedMinUser, min(1200, maxRadius))
         let maxRLimitFromScreen = Int(0.2 * Double(min(screenWidth, screenHeight)))
@@ -50,30 +50,22 @@ struct Moon {
         var effectiveMin = boundedMinUser
         var effectiveMax = min(boundedMaxUser, maxRLimitFromScreen)
         
-        // If user min exceeds screen cap, clamp it down (and log).
         if effectiveMin > maxRLimitFromScreen {
             os_log("Moon radius min (%{public}d) > screen cap (%{public}d); clamping.",
                    log: log, type: .info, effectiveMin, maxRLimitFromScreen)
             effectiveMin = maxRLimitFromScreen
         }
-        // Ensure max is at least min (can happen if screen cap < user min or both collapse).
         if effectiveMax < effectiveMin {
             os_log("Moon radius max (%{public}d) < min (%{public}d); adjusting max = min.",
                    log: log, type: .debug, effectiveMax, effectiveMin)
             effectiveMax = effectiveMin
         }
-        
-        // Final safety: radius range should never be empty.
-        if effectiveMin < 5 {
-            effectiveMin = 5
-        }
-        if effectiveMax < effectiveMin {
-            effectiveMax = effectiveMin
-        }
+        if effectiveMin < 5 { effectiveMin = 5 }
+        if effectiveMax < effectiveMin { effectiveMax = effectiveMin }
         
         self.radius = Int.random(in: effectiveMin...effectiveMax)
         
-        // Base Y for the traversal arc (ensures it is above buildings and inside screen)
+        // Base Y for the traversal arc
         let minBaseUnclamped = buildingMaxHeight + self.radius + 10
         let minBase = max(minBaseUnclamped, self.radius + 10)
         let maxBaseCandidate = minBase + Int(0.10 * Double(screenHeight))
@@ -82,15 +74,30 @@ struct Moon {
         let chosenBase = (baseUpper >= minBase) ? Int.random(in: minBase...baseUpper) : minBase
         self.arcBaseY = Double(chosenBase)
         
-        // Arc amplitude (ensure some vertical motion, but stay within headroom)
+        // Arc amplitude
         let verticalHeadroom = Double(screenHeight - self.radius) - self.arcBaseY - 10.0
         let suggested = 0.15 * Double(screenHeight)
         let minAmp = 20.0
         self.arcAmplitude = min(max(minAmp, suggested), max(0.0, verticalHeadroom))
         
-        // Phase & waxing
-        let phaseDate = Moon.midnightInAustin()
-        let (fraction, waxingFlag) = Moon.computePhase(on: phaseDate)
+        // Phase
+        let (fraction, waxingFlag): (Double, Bool)
+        if phaseOverrideEnabled {
+            // phaseOverrideValue: 0.0 -> New (fraction=0, waxing)
+            // 0.0 .. 0.5: waxing, illuminatedFraction = value * 2
+            // 0.5 .. 1.0: waning, illuminatedFraction = 2 - 2*value
+            let p = min(max(phaseOverrideValue, 0.0), 1.0)
+            if p <= 0.5 {
+                fraction = Double(p * 2.0)
+                waxingFlag = true
+            } else {
+                fraction = Double(2.0 - 2.0 * p)
+                waxingFlag = false
+            }
+        } else {
+            let phaseDate = Moon.midnightInAustin()
+            (fraction, waxingFlag) = Moon.computePhase(on: phaseDate)
+        }
         self.illuminatedFraction = fraction
         self.waxing = waxingFlag
         
@@ -100,7 +107,7 @@ struct Moon {
         let waxingStr: String = self.waxing ? "true" : "false"
         let direction: String = self.movingLeftToRight ? "L->R" : "R->L"
         let dur: Double = self.traversalSeconds
-        os_log("Moon init r=%{public}d (range %d-%d cap %d) frac=%.3f waxing=%{public}@ dir=%{public}@ dur=%.0fs",
+        os_log("Moon init r=%{public}d (range %d-%d cap %d) frac=%.3f waxing=%{public}@ dir=%{public}@ dur=%.0fs override=%{public}@ val=%.3f",
                log: log,
                type: .info,
                self.radius,
@@ -110,7 +117,9 @@ struct Moon {
                self.illuminatedFraction,
                waxingStr,
                direction,
-               dur)
+               dur,
+               phaseOverrideEnabled ? "true" : "false",
+               phaseOverrideValue)
     }
     
     func currentCenter(now: Date = Date()) -> CGPoint {

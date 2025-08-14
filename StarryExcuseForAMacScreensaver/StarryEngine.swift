@@ -14,6 +14,9 @@ struct StarryRuntimeConfig {
     var moonMaxRadius: Int
     var moonBrightBrightness: Double
     var moonDarkBrightness: Double
+    var moonPhaseOverrideEnabled: Bool
+    // 0.0 -> New, 0.5 -> Full, 1.0 -> New (wrap)
+    var moonPhaseOverrideValue: Double
     var traceEnabled: Bool
 }
 
@@ -107,7 +110,9 @@ final class StarryEngine {
             config.moonMinRadius != newConfig.moonMinRadius ||
             config.moonMaxRadius != newConfig.moonMaxRadius ||
             config.moonBrightBrightness != newConfig.moonBrightBrightness ||
-            config.moonDarkBrightness != newConfig.moonDarkBrightness {
+            config.moonDarkBrightness != newConfig.moonDarkBrightness ||
+            config.moonPhaseOverrideEnabled != newConfig.moonPhaseOverrideEnabled ||
+            config.moonPhaseOverrideValue != newConfig.moonPhaseOverrideValue {
             skyline = nil
             skylineRenderer = nil
             moonRenderer = nil
@@ -132,7 +137,9 @@ final class StarryEngine {
                                   moonMinRadius: config.moonMinRadius,
                                   moonMaxRadius: config.moonMaxRadius,
                                   moonBrightBrightness: config.moonBrightBrightness,
-                                  moonDarkBrightness: config.moonDarkBrightness)
+                                  moonDarkBrightness: config.moonDarkBrightness,
+                                  moonPhaseOverrideEnabled: config.moonPhaseOverrideEnabled,
+                                  moonPhaseOverrideValue: config.moonPhaseOverrideValue)
             if let skyline = skyline {
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,

@@ -3,7 +3,6 @@
 //  StarryExcuseForAMacScreensaver
 //
 //  Created by Andrew Malota on 5/2/19.
-//  Copyright © 2019 Andrew Malota. All rights reserved.
 //
 
 import Foundation
@@ -22,6 +21,9 @@ class StarryDefaultsManager {
     private let defaultMoonMaxRadius = 60
     private let defaultMoonBrightBrightness = 1.0
     private let defaultMoonDarkBrightness = 0.15
+    private let defaultMoonPhaseOverrideEnabled = false
+    // 0 = New, 0.25 ≈ First Quarter, 0.5 = Full, 0.75 ≈ Last Quarter, 1.0 = New
+    private let defaultMoonPhaseOverrideValue = 0.0
     
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
@@ -119,6 +121,36 @@ class StarryDefaultsManager {
         }
     }
     
+    // Phase override enabled
+    var moonPhaseOverrideEnabled: Bool {
+        set {
+            defaults.set(newValue, forKey: "MoonPhaseOverrideEnabled")
+            defaults.synchronize()
+        }
+        get {
+            if defaults.object(forKey: "MoonPhaseOverrideEnabled") == nil {
+                return defaultMoonPhaseOverrideEnabled
+            }
+            return defaults.bool(forKey: "MoonPhaseOverrideEnabled")
+        }
+    }
+    
+    // Phase override value (0.0 .. 1.0)
+    var moonPhaseOverrideValue: Double {
+        set {
+            let clamped = max(0.0, min(1.0, newValue))
+            defaults.set(clamped, forKey: "MoonPhaseOverrideValue")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "MoonPhaseOverrideValue")
+            if v.isNaN || v < 0.0 || v > 1.0 {
+                return defaultMoonPhaseOverrideValue
+            }
+            return v
+        }
+    }
+    
     // Ensure logical relation when saving (called by config UI)
     func normalizeMoonRadiusBounds() {
         if moonMinRadius > moonMaxRadius {
@@ -129,12 +161,10 @@ class StarryDefaultsManager {
     }
     
     // MARK: - Runtime validation (screensaver start-time)
-    // Validates cross-field constraints that user defaults range checks alone can't ensure.
-    // If invalid combinations are detected, falls back to sensible defaults and logs errors.
     func validateAndCorrectMoonSettings(log: OSLog) {
         var corrected = false
         
-        // 1. Radius ordering: min must not exceed max.
+        // 1. Radius ordering
         if moonMinRadius > moonMaxRadius {
             os_log("Invalid moon size settings detected (min %d > max %d). Reverting to defaults (%d, %d).",
                    log: log, type: .error,
@@ -145,7 +175,7 @@ class StarryDefaultsManager {
             corrected = true
         }
         
-        // 2. Brightness ordering: bright should be >= dark (otherwise visually inverted).
+        // 2. Brightness ordering
         if moonBrightBrightness < moonDarkBrightness {
             os_log("Invalid moon brightness settings (bright %.3f < dark %.3f). Reverting to defaults (bright %.2f, dark %.2f).",
                    log: log, type: .error,
@@ -156,7 +186,7 @@ class StarryDefaultsManager {
             corrected = true
         }
         
-        // 3. Extra: If either radius sits outside its getter-enforced range due to stale on-disk values.
+        // 3. Radius hard range revalidation
         let minR = defaults.integer(forKey: "MoonMinRadius")
         if !(5...200).contains(minR) {
             os_log("Out-of-range MoonMinRadius %d detected at runtime. Resetting to %d.",
@@ -172,8 +202,15 @@ class StarryDefaultsManager {
             corrected = true
         }
         
-        if corrected {
-            defaults.synchronize()
+        // 4. Phase override sanity
+        let phaseOverride = defaults.double(forKey: "MoonPhaseOverrideValue")
+        if phaseOverride.isNaN || phaseOverride < 0.0 || phaseOverride > 1.0 {
+            os_log("Out-of-range MoonPhaseOverrideValue %.3f detected. Resetting to %.3f.",
+                   log: log, type: .error, phaseOverride, defaultMoonPhaseOverrideValue)
+            defaults.set(defaultMoonPhaseOverrideValue, forKey: "MoonPhaseOverrideValue")
+            corrected = true
         }
+        
+        if corrected { defaults.synchronize() }
     }
 }
