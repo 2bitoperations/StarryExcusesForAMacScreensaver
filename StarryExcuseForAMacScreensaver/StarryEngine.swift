@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import os
+import QuartzCore   // For CACurrentMediaTime()
 
 // Encapsulates the rendering state and logic so both the main ScreenSaverView
 // and the configuration sheet preview can share the exact same code path.
@@ -144,8 +145,7 @@ final class StarryEngine {
                 lastMoonRenderTime = 0
             }
         } catch {
-            os_log("StarryEngine: unable to init skyline %{public}@",
-                   log: log, type: .fault, "\(error)")
+            os_log("StarryEngine: unable to init skyline %{public}@", log: log, type: .fault, "\(error)")
         }
     }
     
