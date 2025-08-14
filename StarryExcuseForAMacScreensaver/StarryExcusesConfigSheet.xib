@@ -41,14 +41,14 @@
                         <rect key="frame" x="0.0" y="0.0" width="271" height="420"/>
                         <subviews>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
-                                <rect key="frame" x="0.0" y="234" width="181" height="186"/>
+                                <rect key="frame" x="0.0" y="264" width="181" height="156"/>
                                 <subviews>
                                     <textField identifier="StarsPerUpdateLabel" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Rih-ed-DK9">
-                                        <rect key="frame" x="-2" y="86" width="97" height="14"/>
+                                        <rect key="frame" x="-2" y="71" width="97" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Stars Per Update" id="zUj-o7-ksX"/>
                                     </textField>
                                     <textField identifier="StarsPerUpdate" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="IjJ-g5-V0M">
-                                        <rect key="frame" x="101" y="84" width="80" height="19"/>
+                                        <rect key="frame" x="101" y="69" width="80" height="19"/>
                                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" borderStyle="bezel" title="120" id="9WR-VQ-vtH"/>
                                     </textField>
                                 </subviews>
@@ -66,7 +66,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
-                                <rect key="frame" x="0.0" y="205" width="223" height="19"/>
+                                <rect key="frame" x="0.0" y="235" width="223" height="19"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="h3L-pH-175">
                                         <rect key="frame" x="-2" y="2" width="139" height="15"/>
@@ -90,7 +90,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
-                                <rect key="frame" x="0.0" y="176" width="156" height="19"/>
+                                <rect key="frame" x="0.0" y="206" width="156" height="19"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Lbl-Moon-Time">
                                         <rect key="frame" x="-2" y="2" width="130" height="15"/>
@@ -114,7 +114,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="a9U-nj-sTo">
-                                <rect key="frame" x="0.0" y="146" width="263" height="20"/>
+                                <rect key="frame" x="0.0" y="176" width="263" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="eaT-6Y-gvB">
                                         <rect key="frame" x="-2" y="3" width="111" height="14"/>
@@ -144,7 +144,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-STK">
-                                <rect key="frame" x="0.0" y="116" width="260" height="20"/>
+                                <rect key="frame" x="0.0" y="146" width="260" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="98" height="14"/>
@@ -174,7 +174,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-STK">
-                                <rect key="frame" x="0.0" y="86" width="263" height="20"/>
+                                <rect key="frame" x="0.0" y="116" width="263" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="101" height="14"/>
@@ -204,7 +204,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-STK">
-                                <rect key="frame" x="0.0" y="56" width="271" height="20"/>
+                                <rect key="frame" x="0.0" y="86" width="271" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="129" height="14"/>
@@ -234,7 +234,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-STK">
-                                <rect key="frame" x="0.0" y="26" width="265" height="20"/>
+                                <rect key="frame" x="0.0" y="56" width="265" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="123" height="14"/>
@@ -263,11 +263,11 @@
                                     <real value="3.4028234663852886e+38"/>
                                 </customSpacing>
                             </stackView>
-                            <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
-                                <rect key="frame" x="0.0" y="0.0" width="165" height="20"/>
+                            <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
+                                <rect key="frame" x="0.0" y="26" width="190" height="20"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-PAUSE">
-                                        <rect key="frame" x="-6" y="-7" width="58" height="32"/>
+                                        <rect key="frame" x="-7" y="-7" width="71" height="32"/>
                                         <buttonCell key="cell" type="push" title="Pause" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-PAUSE-CELL">
                                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                             <font key="font" metaFont="system"/>
@@ -277,7 +277,7 @@
                                         </connections>
                                     </button>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-RESUME">
-                                        <rect key="frame" x="52" y="-7" width="69" height="32"/>
+                                        <rect key="frame" x="58" y="-7" width="83" height="32"/>
                                         <buttonCell key="cell" type="push" title="Resume" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-RESUME-CELL">
                                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                             <font key="font" metaFont="system"/>
@@ -287,7 +287,7 @@
                                         </connections>
                                     </button>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-STEP">
-                                        <rect key="frame" x="121" y="-7" width="54" height="32"/>
+                                        <rect key="frame" x="135" y="-7" width="62" height="32"/>
                                         <buttonCell key="cell" type="push" title="Step" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-STEP-CELL">
                                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                             <font key="font" metaFont="system"/>
@@ -297,9 +297,19 @@
                                         </connections>
                                     </button>
                                 </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
                             </stackView>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="irw-GB-QPa">
-                                <rect key="frame" x="0.0" y="-26" width="97" height="16"/>
+                                <rect key="frame" x="0.0" y="0.0" width="97" height="16"/>
                                 <buttonCell key="cell" type="bevel" title="Save and Close" bezelStyle="rounded" id="IyX-HG-idV">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <connections>
