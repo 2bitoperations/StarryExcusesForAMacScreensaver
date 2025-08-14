@@ -21,6 +21,6 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2019 Andrew Malota. All rights reserved.</string>
 	<key>NSPrincipalClass</key>
-	<string>StarryExcuseForAView</string>
+	<string>$(PRODUCT_MODULE_NAME).StarryExcuseForAView</string>
 </dict>
 </plist>
