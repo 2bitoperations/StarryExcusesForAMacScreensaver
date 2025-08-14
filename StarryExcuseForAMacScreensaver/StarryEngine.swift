@@ -113,7 +113,7 @@ final class StarryEngine {
     func advanceFrame() -> CGImage? {
         ensureSkyline()
         guard let skyline = skyline,
-              let renderer = skylineRenderer else {
+              let _ = skylineRenderer else {
             return context.makeImage()
         }
         if skyline.shouldClearNow() {
