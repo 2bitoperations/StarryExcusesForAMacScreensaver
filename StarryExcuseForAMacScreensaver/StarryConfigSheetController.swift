@@ -44,9 +44,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     private var isManuallyPaused = false
     private var isAutoPaused = false   // set when window resigns key while not manually paused
     
-    // Minimum window content size (width x height) for sheet compatibility
-    private let minContentSize = NSSize(width: 640, height: 480)
-    
     // MARK: - UI Actions (sliders)
     
     @IBAction func buildingHeightChanged(_ sender: Any) {
@@ -95,13 +92,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         
         window?.delegate = self
         
-        // SHEET SANITIZATION:
-        // Limit style mask to sheet-friendly values (titled & closable only).
+        // Sheet style: titled & closable only (no resizing).
         if let win = window {
             win.styleMask = [.titled, .closable]
             win.title = "Starry Excuses Configuration"
-            win.contentMinSize = minContentSize
-            enforceMinimumSizeIfNeeded()
         }
         
         // Load defaults into UI
@@ -124,26 +118,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         
         setupPreviewEngine()
         
-        os_log("Config sheet loaded (styleMask=%{public}@)",
-               log: log!, type: .info, window?.styleMask.debugDescription ?? "nil")
-    }
-    
-    // Ensure window is at least min size on load
-    private func enforceMinimumSizeIfNeeded() {
-        guard let win = window else { return }
-        var frame = win.frame
-        var changed = false
-        if frame.size.width < minContentSize.width {
-            frame.size.width = minContentSize.width
-            changed = true
+        // Log raw style mask
+        if let styleMaskRaw = window?.styleMask.rawValue {
+            os_log("Config sheet loaded (styleMask raw=0x%{public}llx)", log: log!, type: .info, styleMaskRaw)
+        } else {
+            os_log("Config sheet loaded (no window style mask)", log: log!, type: .info)
         }
-        if frame.size.height < minContentSize.height {
-            let heightDelta = minContentSize.height - frame.size.height
-            frame.origin.y -= heightDelta
-            frame.size.height = minContentSize.height
-            changed = true
-        }
-        if changed { win.setFrame(frame, display: true) }
     }
     
     // MARK: - Radius inequality enforcement (strict: min < max)
@@ -181,7 +161,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         maxMoonRadiusSlider.minValue = Double(minVal + 1)
     }
     
-    // MARK: - Window Delegate (auto pause/resume & size enforcement)
+    // MARK: - Window Delegate (auto pause/resume)
     
     func windowDidResignKey(_ notification: Notification) {
         if !isManuallyPaused {
@@ -193,12 +173,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         if isAutoPaused && !isManuallyPaused {
             resumePreview(auto: true)
         }
-    }
-    
-    // (Resizing disabled by style mask; keep method if mask changes in future)
-    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-        NSSize(width: max(minContentSize.width, frameSize.width),
-               height: max(minContentSize.height, frameSize.height))
     }
     
     // MARK: - Preview Engine Management
