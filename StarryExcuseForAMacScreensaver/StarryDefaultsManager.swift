@@ -1,4 +1,4 @@
-//
+﻿//
 //  StarryConfigSheetManager.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -24,8 +24,10 @@ class StarryDefaultsManager {
     private let defaultMoonPhaseOverrideEnabled = false
     // 0 = New, 0.25 ≈ First Quarter, 0.5 = Full, 0.75 ≈ Last Quarter, 1.0 = New
     private let defaultMoonPhaseOverrideValue = 0.0
-    // Debug toggle default
+    // Debug toggle defaults
     private let defaultShowCrescentClipMask = false
+    private let defaultDarkMinorityOversizeOverrideEnabled = false
+    private let defaultDarkMinorityOversizeOverrideValue = 1.25  // starting point of dynamic range
     
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
@@ -167,6 +169,36 @@ class StarryDefaultsManager {
         }
     }
     
+    // Override for dark minority oversize (when true, renderer uses provided value)
+    var darkMinorityOversizeOverrideEnabled: Bool {
+        set {
+            defaults.set(newValue, forKey: "DarkMinorityOversizeOverrideEnabled")
+            defaults.synchronize()
+        }
+        get {
+            if defaults.object(forKey: "DarkMinorityOversizeOverrideEnabled") == nil {
+                return defaultDarkMinorityOversizeOverrideEnabled
+            }
+            return defaults.bool(forKey: "DarkMinorityOversizeOverrideEnabled")
+        }
+    }
+    
+    // Value used when override is enabled. Allow a practical range 0.5 .. 5.0
+    var darkMinorityOversizeOverrideValue: Double {
+        set {
+            let clamped = max(0.5, min(5.0, newValue))
+            defaults.set(clamped, forKey: "DarkMinorityOversizeOverrideValue")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "DarkMinorityOversizeOverrideValue")
+            if v.isNaN || v < 0.5 || v > 5.0 {
+                return defaultDarkMinorityOversizeOverrideValue
+            }
+            return v
+        }
+    }
+    
     // Ensure logical relation when saving (called by config UI)
     func normalizeMoonRadiusBounds() {
         if moonMinRadius > moonMaxRadius {
@@ -224,6 +256,15 @@ class StarryDefaultsManager {
             os_log("Out-of-range MoonPhaseOverrideValue %.3f detected. Resetting to %.3f.",
                    log: log, type: .error, phaseOverride, defaultMoonPhaseOverrideValue)
             defaults.set(defaultMoonPhaseOverrideValue, forKey: "MoonPhaseOverrideValue")
+            corrected = true
+        }
+        
+        // 5. Oversize override value sanity
+        let oversizeOverride = defaults.double(forKey: "DarkMinorityOversizeOverrideValue")
+        if oversizeOverride.isNaN || oversizeOverride < 0.5 || oversizeOverride > 5.0 {
+            os_log("Out-of-range DarkMinorityOversizeOverrideValue %.3f detected. Resetting to %.3f.",
+                   log: log, type: .error, oversizeOverride, defaultDarkMinorityOversizeOverrideValue)
+            defaults.set(defaultDarkMinorityOversizeOverrideValue, forKey: "DarkMinorityOversizeOverrideValue")
             corrected = true
         }
         

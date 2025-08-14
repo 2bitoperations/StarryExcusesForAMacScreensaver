@@ -11,13 +11,15 @@ final class MoonLayerRenderer {
     private let brightBrightness: CGFloat
     private let darkBrightness: CGFloat
     private let showCrescentClipMask: Bool
+    private let oversizeOverrideEnabled: Bool
+    private let oversizeOverrideValue: CGFloat
     
     // internal reuse
     private var frameCounter: Int = 0
     private let debugMoon = false
     private let debugMoonLogEveryNFrames = 60
     
-    // Dynamic oversizing scaling with radius
+    // Dynamic oversizing scaling with radius (only used when override disabled)
     private func scaledDarkMinorityOversize(forRadius r: CGFloat) -> CGFloat {
         let minRadius: CGFloat = 40.0
         let maxRadius: CGFloat = 150.0
@@ -35,12 +37,16 @@ final class MoonLayerRenderer {
          log: OSLog,
          brightBrightness: CGFloat,
          darkBrightness: CGFloat,
-         showCrescentClipMask: Bool) {
+         showCrescentClipMask: Bool,
+         oversizeOverrideEnabled: Bool,
+         oversizeOverrideValue: CGFloat) {
         self.skyline = skyline
         self.log = log
         self.brightBrightness = brightBrightness
         self.darkBrightness = darkBrightness
         self.showCrescentClipMask = showCrescentClipMask
+        self.oversizeOverrideEnabled = oversizeOverrideEnabled
+        self.oversizeOverrideValue = oversizeOverrideValue
     }
     
     @inline(__always)
@@ -85,6 +91,7 @@ final class MoonLayerRenderer {
         let lightOnRight = moon.waxing
         
         if f <= 0.5 {
+            // Bright minority phase (crescent)
             drawTexture(context: context,
                         image: texture,
                         in: moonRect,
@@ -138,6 +145,7 @@ final class MoonLayerRenderer {
             context.restoreGState()
             
         } else {
+            // Bright majority phase (gibbous)
             drawTexture(context: context,
                         image: texture,
                         in: moonRect,
@@ -155,7 +163,9 @@ final class MoonLayerRenderer {
                            frameCounter, f, darkFraction, lightOnRight ? "true" : "false", cosTheta, ellipseWidth)
                 }
                 
-                let dynamicOversize = scaledDarkMinorityOversize(forRadius: r)
+                let dynamicOversize = oversizeOverrideEnabled ?
+                    oversizeOverrideValue :
+                    scaledDarkMinorityOversize(forRadius: r)
                 
                 context.saveGState()
                 context.addEllipse(in: moonRect)
@@ -163,6 +173,7 @@ final class MoonLayerRenderer {
                 
                 context.saveGState()
                 if lightOnRight {
+                    // Dark crescent on left
                     clipCrescent(context: context,
                                  moonRect: moonRect,
                                  ellipseRect: ellipseRect,
@@ -172,6 +183,7 @@ final class MoonLayerRenderer {
                                  darkFraction: darkFraction,
                                  darkOnRightSide: false)
                 } else {
+                    // Dark crescent on right
                     clipCrescent(context: context,
                                  moonRect: moonRect,
                                  ellipseRect: ellipseRect,

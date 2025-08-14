@@ -20,6 +20,9 @@ struct StarryRuntimeConfig {
     var traceEnabled: Bool
     // Troubleshooting: show the crescent clip region (bright or dark minority) in red
     var showCrescentClipMask: Bool
+    // Override for dark minority oversize
+    var darkMinorityOversizeOverrideEnabled: Bool
+    var darkMinorityOversizeOverrideValue: Double
 }
 
 final class StarryEngine {
@@ -115,7 +118,9 @@ final class StarryEngine {
             config.moonDarkBrightness != newConfig.moonDarkBrightness ||
             config.moonPhaseOverrideEnabled != newConfig.moonPhaseOverrideEnabled ||
             config.moonPhaseOverrideValue != newConfig.moonPhaseOverrideValue ||
-            config.showCrescentClipMask != newConfig.showCrescentClipMask {
+            config.showCrescentClipMask != newConfig.showCrescentClipMask ||
+            config.darkMinorityOversizeOverrideEnabled != newConfig.darkMinorityOversizeOverrideEnabled ||
+            config.darkMinorityOversizeOverrideValue != newConfig.darkMinorityOversizeOverrideValue {
             skyline = nil
             skylineRenderer = nil
             moonRenderer = nil
@@ -151,7 +156,9 @@ final class StarryEngine {
                                                  log: log,
                                                  brightBrightness: CGFloat(config.moonBrightBrightness),
                                                  darkBrightness: CGFloat(config.moonDarkBrightness),
-                                                 showCrescentClipMask: config.showCrescentClipMask)
+                                                 showCrescentClipMask: config.showCrescentClipMask,
+                                                 oversizeOverrideEnabled: config.darkMinorityOversizeOverrideEnabled,
+                                                 oversizeOverrideValue: CGFloat(config.darkMinorityOversizeOverrideValue))
                 // force first moon render immediately
                 lastMoonRenderTime = 0
             }

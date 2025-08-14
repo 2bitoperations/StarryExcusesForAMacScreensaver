@@ -40,6 +40,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // Debug / troubleshooting: show crescent clip mask (bright red) checkbox
     @IBOutlet weak var showCrescentClipMaskCheckbox: NSButton!
     
+    // Oversize override controls
+    @IBOutlet weak var oversizeOverrideCheckbox: NSButton!
+    @IBOutlet weak var oversizeOverrideSlider: NSSlider!
+    @IBOutlet weak var oversizeOverridePreview: NSTextField!
+    
     // Preview container (plain NSView).
     @IBOutlet weak var moonPreviewView: NSView!
     
@@ -70,6 +75,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastMoonPhaseOverrideEnabled: Bool = false
     private var lastMoonPhaseOverrideValue: Double = 0.0
     private var lastShowCrescentClipMask: Bool = false
+    private var lastOversizeOverrideEnabled: Bool = false
+    private var lastOversizeOverrideValue: Double = 1.25
     
     // MARK: - UI Actions (sliders / controls)
     
@@ -89,7 +96,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     @IBAction func moonSliderChanged(_ sender: Any) {
-        // Do NOT auto-correct values; allow invalid state to be displayed.
         if minMoonRadiusSlider.integerValue != lastMinMoonRadius {
             logChange(changedKey: "moonMinRadius",
                       oldValue: "\(lastMinMoonRadius)",
@@ -166,6 +172,36 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         maybeClearAndRestartPreview(reason: "showCrescentClipMaskToggled")
     }
     
+    @IBAction func oversizeOverrideToggled(_ sender: Any) {
+        let enabled = (oversizeOverrideCheckbox.state == .on)
+        if enabled != lastOversizeOverrideEnabled {
+            logChange(changedKey: "darkMinorityOversizeOverrideEnabled",
+                      oldValue: lastOversizeOverrideEnabled ? "true" : "false",
+                      newValue: enabled ? "true" : "false")
+            lastOversizeOverrideEnabled = enabled
+        }
+        updateOversizeOverrideUIEnabled()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+        maybeClearAndRestartPreview(reason: "oversizeOverrideToggled")
+    }
+    
+    @IBAction func oversizeOverrideSliderChanged(_ sender: Any) {
+        let val = oversizeOverrideSlider.doubleValue
+        oversizeOverridePreview.stringValue = String(format: "%.2f", val)
+        if val != lastOversizeOverrideValue {
+            logChange(changedKey: "darkMinorityOversizeOverrideValue",
+                      oldValue: format(lastOversizeOverrideValue),
+                      newValue: format(val))
+            lastOversizeOverrideValue = val
+        }
+        if oversizeOverrideCheckbox.state == .on {
+            rebuildPreviewEngineIfNeeded()
+            updatePreviewConfig()
+            maybeClearAndRestartPreview(reason: "oversizeOverrideSliderChanged")
+        }
+    }
+    
     // MARK: - Preview Control Buttons
     
     @IBAction func previewTogglePause(_ sender: Any) {
@@ -216,7 +252,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         window?.delegate = self
         
-        // Sheet style: titled & closable only (no resizing).
         if let win = window {
             win.styleMask = [.titled, .closable]
             win.title = "Starry Excuses Configuration"
@@ -246,7 +281,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         showCrescentClipMaskCheckbox.state = defaultsManager.showCrescentClipMask ? .on : .off
         
-        // Initialize last-known snapshot for logging
+        oversizeOverrideCheckbox.state = defaultsManager.darkMinorityOversizeOverrideEnabled ? .on : .off
+        oversizeOverrideSlider.minValue = 0.5
+        oversizeOverrideSlider.maxValue = 5.0
+        oversizeOverrideSlider.doubleValue = defaultsManager.darkMinorityOversizeOverrideValue
+        oversizeOverridePreview.stringValue = String(format: "%.2f", oversizeOverrideSlider.doubleValue)
+        updateOversizeOverrideUIEnabled()
+        
+        // Snapshot last-known values
         lastStarsPerUpdate = starsPerUpdate.integerValue
         lastBuildingHeight = buildingHeightSlider.doubleValue
         lastSecsBetweenClears = secsBetweenClears.doubleValue
@@ -258,8 +300,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastMoonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         lastMoonPhaseOverrideValue = moonPhaseSlider.doubleValue
         lastShowCrescentClipMask = (showCrescentClipMaskCheckbox.state == .on)
+        lastOversizeOverrideEnabled = (oversizeOverrideCheckbox.state == .on)
+        lastOversizeOverrideValue = oversizeOverrideSlider.doubleValue
         
-        // Assign delegates
+        // Delegates
         starsPerUpdate.delegate = self
         secsBetweenClears.delegate = self
         moonTraversalMinutes.delegate = self
@@ -450,7 +494,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             moonPhaseOverrideEnabled: moonPhaseOverrideCheckbox.state == .on,
             moonPhaseOverrideValue: moonPhaseSlider.doubleValue,
             traceEnabled: false,
-            showCrescentClipMask: (showCrescentClipMaskCheckbox.state == .on)
+            showCrescentClipMask: (showCrescentClipMaskCheckbox.state == .on),
+            darkMinorityOversizeOverrideEnabled: (oversizeOverrideCheckbox.state == .on),
+            darkMinorityOversizeOverrideValue: oversizeOverrideSlider.doubleValue
         )
     }
     
@@ -464,6 +510,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         brightBrightnessPreview.stringValue = String(format: "%.2f", brightBrightnessSlider.doubleValue)
         darkBrightnessPreview.stringValue = String(format: "%.2f", darkBrightnessSlider.doubleValue)
         moonPhasePreview?.stringValue = formatPhase(moonPhaseSlider.doubleValue)
+        oversizeOverridePreview?.stringValue = String(format: "%.2f", oversizeOverrideSlider.doubleValue)
+    }
+    
+    private func updateOversizeOverrideUIEnabled() {
+        let enabled = oversizeOverrideCheckbox.state == .on
+        oversizeOverrideSlider.isEnabled = enabled
+        oversizeOverridePreview.isEnabled = enabled
+        oversizeOverridePreview.alphaValue = enabled ? 1.0 : 0.5
     }
     
     private func effectivePaused() -> Bool {
@@ -503,6 +557,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.moonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         defaultsManager.moonPhaseOverrideValue = moonPhaseSlider.doubleValue
         defaultsManager.showCrescentClipMask = (showCrescentClipMaskCheckbox.state == .on)
+        defaultsManager.darkMinorityOversizeOverrideEnabled = (oversizeOverrideCheckbox.state == .on)
+        defaultsManager.darkMinorityOversizeOverrideValue = oversizeOverrideSlider.doubleValue
         
         view?.settingsChanged()
         
@@ -544,7 +600,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                " moonDarkBrightness=\(format(darkBrightnessSlider.doubleValue))," +
                " moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)," +
                " moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))," +
-               " showCrescentClipMask=\(showCrescentClipMaskCheckbox.state == .on)"
+               " showCrescentClipMask=\(showCrescentClipMaskCheckbox.state == .on)," +
+               " darkMinorityOversizeOverrideEnabled=\(oversizeOverrideCheckbox.state == .on)," +
+               " darkMinorityOversizeOverrideValue=\(format(oversizeOverrideSlider.doubleValue))"
     }
     
     private func format(_ d: Double) -> String {
