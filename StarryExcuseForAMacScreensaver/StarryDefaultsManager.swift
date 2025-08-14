@@ -24,6 +24,8 @@ class StarryDefaultsManager {
     private let defaultMoonPhaseOverrideEnabled = false
     // 0 = New, 0.25 ≈ First Quarter, 0.5 = Full, 0.75 ≈ Last Quarter, 1.0 = New
     private let defaultMoonPhaseOverrideValue = 0.0
+    // Debug toggle default
+    private let defaultShowCrescentClipMask = false
     
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
@@ -148,6 +150,20 @@ class StarryDefaultsManager {
                 return defaultMoonPhaseOverrideValue
             }
             return v
+        }
+    }
+    
+    // Debug: show crescent clip mask
+    var showCrescentClipMask: Bool {
+        set {
+            defaults.set(newValue, forKey: "ShowCrescentClipMask")
+            defaults.synchronize()
+        }
+        get {
+            if defaults.object(forKey: "ShowCrescentClipMask") == nil {
+                return defaultShowCrescentClipMask
+            }
+            return defaults.bool(forKey: "ShowCrescentClipMask")
         }
     }
     
