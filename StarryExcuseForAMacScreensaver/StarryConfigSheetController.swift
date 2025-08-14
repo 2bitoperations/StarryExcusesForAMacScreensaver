@@ -44,7 +44,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
     private var isManuallyPaused = false
     private var isAutoPaused = false   // set when window resigns key while not manually paused
     
-    // Minimum window content size (width x height) UPDATED to 640 x 480
+    // Minimum window content size (width x height) for sheet compatibility
     private let minContentSize = NSSize(width: 640, height: 480)
     
     // MARK: - UI Actions (sliders)
@@ -95,17 +95,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         
         window?.delegate = self
         
-        // Ensure standard window chrome & resizable
-        if let styleMask = window?.styleMask {
-            window?.styleMask = styleMask
-                .union(.titled)
-                .union(.closable)
-                .union(.resizable)
-                .union(.miniaturizable)
+        // SHEET SANITIZATION:
+        // Limit style mask to sheet-friendly values (titled & closable only).
+        if let win = window {
+            win.styleMask = [.titled, .closable]
+            win.title = "Starry Excuses Configuration"
+            win.contentMinSize = minContentSize
+            enforceMinimumSizeIfNeeded()
         }
-        window?.title = "Starry Excuses Configuration"
-        window?.contentMinSize = minContentSize
-        enforceMinimumSizeIfNeeded()
         
         // Load defaults into UI
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
@@ -126,6 +123,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         
         setupPreviewEngine()
+        
+        os_log("Config sheet loaded (styleMask=%{public}@)",
+               log: log!, type: .info, window?.styleMask.debugDescription ?? "nil")
     }
     
     // Ensure window is at least min size on load
@@ -153,23 +153,18 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         
         if minVal >= maxVal {
             if changedControl === minMoonRadiusSlider {
-                // User moved min up to >= max; attempt to raise max first.
                 if maxVal < Int(maxMoonRadiusSlider.maxValue) {
                     maxVal = min(minVal + 1, Int(maxMoonRadiusSlider.maxValue))
                 } else {
-                    // Can't raise max; pull min down.
                     minVal = max(maxVal - 1, Int(minMoonRadiusSlider.minValue))
                 }
             } else if changedControl === maxMoonRadiusSlider {
-                // User moved max down to <= min; attempt to lower min.
                 if minVal > Int(minMoonRadiusSlider.minValue) {
                     minVal = max(minVal - 1, Int(minMoonRadiusSlider.minValue))
                 } else {
-                    // Can't lower min; push max up.
                     maxVal = min(minVal + 1, Int(maxMoonRadiusSlider.maxValue))
                 }
             } else {
-                // Initial load or unknown sender: prefer widening span by bumping max.
                 if maxVal <= minVal && maxVal < Int(maxMoonRadiusSlider.maxValue) {
                     maxVal = minVal + 1
                 } else {
@@ -178,12 +173,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
             }
         }
         
-        // Apply updates
         minMoonRadiusSlider.integerValue = minVal
         maxMoonRadiusSlider.integerValue = maxVal
         
-        // Dynamically adjust slider bounds to prevent equality on next drag:
-        // min slider cannot reach current max; max slider cannot reach current min.
+        // Prevent equality on subsequent drags
         minMoonRadiusSlider.maxValue = Double(maxVal - 1)
         maxMoonRadiusSlider.minValue = Double(minVal + 1)
     }
@@ -202,6 +195,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         }
     }
     
+    // (Resizing disabled by style mask; keep method if mask changes in future)
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         NSSize(width: max(minContentSize.width, frameSize.width),
                height: max(minContentSize.height, frameSize.height))
@@ -307,7 +301,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate {
         defaultsManager.moonMaxRadius = maxMoonRadiusSlider.integerValue
         defaultsManager.moonBrightBrightness = brightBrightnessSlider.doubleValue
         defaultsManager.moonDarkBrightness = darkBrightnessSlider.doubleValue
-        // Leaving defaultsManager.normalizeMoonRadiusBounds() as-is (min <= max) since UI guarantees strict.
         
         view?.settingsChanged()
         

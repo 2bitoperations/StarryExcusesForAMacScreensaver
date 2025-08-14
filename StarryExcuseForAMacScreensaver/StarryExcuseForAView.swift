@@ -1,4 +1,4 @@
-//
+﻿//
 //  StarryExcuseForAView.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -32,7 +32,8 @@ class StarryExcuseForAView: ScreenSaverView {
         if log == nil {
             log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         }
-        os_log("internal init", log: log!)
+        os_log("StarryExcuseForAView internal init (preview=%{public}@)",
+               log: log!, type: .info, isPreview ? "true" : "false")
         
         defaultsManager.validateAndCorrectMoonSettings(log: log!)
         animationTimeInterval = 0.1
@@ -42,8 +43,17 @@ class StarryExcuseForAView: ScreenSaverView {
     deinit { deallocateResources() }
     
     override var configureSheet: NSWindow? {
+        os_log("configureSheet requested", log: log!, type: .info)
         configSheetController.setView(view: self)
-        return configSheetController.window
+        // Force nib load
+        _ = configSheetController.window
+        
+        if let win = configSheetController.window {
+            return win
+        } else {
+            os_log("Nib-based config sheet failed to load, providing fallback sheet window", log: log!, type: .error)
+            return createFallbackSheetWindow()
+        }
     }
     
     override var hasConfigureSheet: Bool { true }
@@ -131,5 +141,28 @@ class StarryExcuseForAView: ScreenSaverView {
             name: Notification.Name("com.apple.screensaver.willstop"),
             object: nil
         )
+    }
+    
+    // Fallback plain sheet if nib fails (ensures Options button still appears)
+    private func createFallbackSheetWindow() -> NSWindow {
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
+                           styleMask: [.titled, .closable],
+                           backing: .buffered,
+                           defer: false)
+        win.title = "Starry Excuses (Fallback Config)"
+        let label = NSTextField(labelWithString: "Configuration sheet failed to load.\nPlease reinstall or report an issue.")
+        label.alignment = .center
+        label.frame = NSRect(x: 20, y: 60, width: 360, height: 120)
+        win.contentView?.addSubview(label)
+        let button = NSButton(title: "Close", target: self, action: #selector(closeFallbackSheet))
+        button.frame = NSRect(x: 160, y: 20, width: 80, height: 30)
+        win.contentView?.addSubview(button)
+        return win
+    }
+    
+    @objc private func closeFallbackSheet() {
+        if let sheetParent = self.window {
+            sheetParent.endSheet(sheetParent.attachedSheet ?? NSWindow())
+        }
     }
 }
