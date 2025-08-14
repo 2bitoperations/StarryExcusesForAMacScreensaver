@@ -216,6 +216,16 @@
                                     </button>
                                 </subviews>
                             </stackView>
+                            <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CLEAR">
+                                <rect key="frame" x="0.0" y="134" width="106" height="32"/>
+                                <buttonCell key="cell" type="push" title="Clear Preview" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CLEAR-CELL">
+                                    <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
+                                    <font key="font" metaFont="system"/>
+                                    <connections>
+                                        <action selector="previewClear:" target="-2" id="BTN-CLEAR-ACT"/>
+                                    </connections>
+                                </buttonCell>
+                            </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="irw-GB-QPa">
                                 <rect key="frame" x="0.0" y="120" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Save and Close" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="IyX-HG-idV">

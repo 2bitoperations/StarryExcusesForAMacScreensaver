@@ -74,11 +74,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
         validateInputs()
+        maybeClearAndRestartPreview(reason: "buildingHeightChanged")
     }
     
     @IBAction func moonSliderChanged(_ sender: Any) {
         // Do NOT auto-correct values; allow invalid state to be displayed.
-        // For each potentially changed slider, log if its value differs from last snapshot.
         if minMoonRadiusSlider.integerValue != lastMinMoonRadius {
             logChange(changedKey: "moonMinRadius",
                       oldValue: "\(lastMinMoonRadius)",
@@ -107,13 +107,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
         validateInputs()
+        maybeClearAndRestartPreview(reason: "moonSliderChanged")
     }
     
     // MARK: - Preview Control Buttons
     
     @IBAction func previewTogglePause(_ sender: Any) {
         if isManuallyPaused || effectivePaused() {
-            // Resume
             isManuallyPaused = false
             if !isAutoPaused {
                 resumePreview(auto: false)
@@ -122,7 +122,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                       oldValue: "paused",
                       newValue: "running")
         } else {
-            // Pause
             isManuallyPaused = true
             pausePreview(auto: false)
             logChange(changedKey: "previewPauseState",
@@ -133,7 +132,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     @IBAction func previewStep(_ sender: Any) {
-        // Single-step only when paused (manual or auto)
         if !effectivePaused() {
             isManuallyPaused = true
             pausePreview(auto: false)
@@ -144,6 +142,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         rebuildPreviewEngineIfNeeded()
         advancePreviewFrame()
         updatePauseToggleTitle()
+    }
+    
+    @IBAction func previewClear(_ sender: Any) {
+        logChange(changedKey: "previewClear", oldValue: "-", newValue: "requested")
+        clearAndRestartPreview(force: true, reason: "manualClearButton")
     }
     
     // MARK: - Sheet lifecycle
@@ -161,7 +164,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let win = window {
             win.styleMask = [.titled, .closable]
             win.title = "Starry Excuses Configuration"
-            // Explicit fixed size 800x600 (matching XIB)
             let desiredSize = NSSize(width: 800, height: 600)
             var frame = win.frame
             frame.origin.y -= (desiredSize.height - frame.size.height)
@@ -169,7 +171,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             win.setFrame(frame, display: true)
         }
         
-        // Load defaults into UI (do NOT auto-fix ordering; reflect raw stored values)
+        // Load defaults into UI
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
         buildingHeightSlider.doubleValue = defaultsManager.buildingHeight
         buildingHeightPreview.stringValue = String(format: "%.3f", defaultsManager.buildingHeight)
@@ -191,7 +193,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastBrightBrightness = brightBrightnessSlider.doubleValue
         lastDarkBrightness = darkBrightnessSlider.doubleValue
         
-        // Assign delegates to capture text field edits
+        // Assign delegates
         starsPerUpdate.delegate = self
         secsBetweenClears.delegate = self
         moonTraversalMinutes.delegate = self
@@ -212,7 +214,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // MARK: - Validation
     
-    // Determines if user input is valid. Current rule: min radius < max radius.
     private func inputsAreValid() -> Bool {
         return minMoonRadiusSlider.integerValue < maxMoonRadiusSlider.integerValue
     }
@@ -263,9 +264,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             }
         }
         validateInputs()
+        maybeClearAndRestartPreview(reason: "textFieldChanged")
     }
     
-    // MARK: - Window Delegate (auto pause/resume)
+    // MARK: - Window Delegate
     
     func windowDidResignKey(_ notification: Notification) {
         if !isManuallyPaused {
@@ -300,6 +302,38 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                                      config: currentPreviewRuntimeConfig())
         if !isManuallyPaused && !isAutoPaused {
             startPreviewTimer()
+        }
+    }
+    
+    private func clearAndRestartPreview(force: Bool, reason: String) {
+        guard let log = log else { return }
+        stopPreviewTimer()
+        previewEngine = nil
+        // Clear visual contents
+        if let iv = previewImageView {
+            iv.image = nil
+            // Fill black quickly
+            let size = moonPreviewView.bounds.size
+            if size.width > 0 && size.height > 0 {
+                let img = NSImage(size: size)
+                img.lockFocus()
+                NSColor.black.setFill()
+                NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
+                img.unlockFocus()
+                iv.image = img
+            }
+        }
+        os_log("Preview cleared (reason=%{public}@)", log: log, type: .info, reason)
+        // Reset pause flags only if forced clear (button or valid change) to restart rendering
+        isManuallyPaused = false
+        if previewEngine == nil {
+            setupPreviewEngine()
+        }
+    }
+    
+    private func maybeClearAndRestartPreview(reason: String) {
+        if inputsAreValid() {
+            clearAndRestartPreview(force: true, reason: reason)
         }
     }
     
@@ -377,7 +411,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // MARK: - Save / Close
     
     @IBAction func saveClose(_ sender: Any) {
-        // Guard against accidental triggering if disabled (should not happen).
         guard inputsAreValid() else {
             NSSound.beep()
             return
@@ -385,7 +418,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         os_log("hit saveClose", log: self.log!, type: .info)
         
-        // Persist current control values exactly as entered.
         defaultsManager.starsPerUpdate = starsPerUpdate.integerValue
         defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
         defaultsManager.secsBetweenClears = secsBetweenClears.doubleValue
