@@ -422,6 +422,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         applyAccessibility()
         applyButtonKeyEquivalents()
+        applySystemSymbolImages()   // ensure SF Symbols appear when not bundled
     }
     
     // MARK: - Styling / Accessibility
@@ -464,6 +465,65 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsTrailDecaySlider.setAccessibilityLabel("Shooting star trail decay")
         shootingStarsDebugSpawnBoundsCheckbox.setAccessibilityLabel("Debug: show spawn bounds")
         pauseToggleButton.setAccessibilityLabel("Pause or resume preview")
+    }
+    
+    // MARK: - SF Symbols injection
+    
+    // The XIB shows icons in IB via a resources section, but at runtime inside a
+    // ScreenSaver bundle those image names are not shipped as assets. We replace
+    // them with system SF Symbols here (macOS 11+).
+    private func applySystemSymbolImages() {
+        guard #available(macOS 11.0, *) else { return }
+        let symbolNames: Set<String> = [
+            "sparkles",
+            "arrow.clockwise",
+            "clock",
+            "building.2",
+            "building.2.fill",
+            "moonphase.new.moon",
+            "moonphase.full.moon",
+            "sun.min",
+            "sun.max",
+            "moon",
+            "circle.lefthalf.filled",
+            "timer",
+            "location.north.line",
+            "line.horizontal.3",
+            "line.horizontal.3.decrease",
+            "tortoise",
+            "hare",
+            "circle",
+            "circle.fill",
+            "cloud",
+            "cloud.rain"
+        ]
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular, scale: .medium)
+        if let root = window?.contentView {
+            replaceSymbolImages(in: root, symbolNames: symbolNames, config: config)
+        }
+    }
+    
+    private func replaceSymbolImages(in view: NSView,
+                                     symbolNames: Set<String>,
+                                     config: NSImage.SymbolConfiguration) {
+        for sub in view.subviews {
+            if let iv = sub as? NSImageView {
+                if let ident = iv.identifier?.rawValue, symbolNames.contains(ident) {
+                    if let sym = NSImage(systemSymbolName: ident, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+                        iv.image = sym
+                        iv.contentTintColor = .labelColor
+                    }
+                } else if let name = iv.image?.name(), symbolNames.contains(name) {
+                    // Fallback: if NIB gave us an (empty) named image, reassign
+                    if let sym = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+                        iv.image = sym
+                        iv.contentTintColor = .labelColor
+                    }
+                }
+            }
+            // Recurse
+            replaceSymbolImages(in: sub, symbolNames: symbolNames, config: config)
+        }
     }
     
     // MARK: - Validation
