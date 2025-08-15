@@ -32,16 +32,16 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var brightBrightnessPreview: NSTextField!
     @IBOutlet weak var darkBrightnessPreview: NSTextField!
     
-    // Phase override controls
-    @IBOutlet weak var moonPhaseOverrideCheckbox: NSButton!
+    // Phase override controls (modern toggle)
+    @IBOutlet weak var moonPhaseOverrideCheckbox: NSSwitch!
     @IBOutlet weak var moonPhaseSlider: NSSlider!
     @IBOutlet weak var moonPhasePreview: NSTextField!
     
-    // Debug / troubleshooting: show illuminated texture fill mask
-    @IBOutlet weak var showLightAreaTextureFillMaskCheckbox: NSButton!
+    // Debug / troubleshooting: show illuminated texture fill mask (modern toggle)
+    @IBOutlet weak var showLightAreaTextureFillMaskCheckbox: NSSwitch!
     
-    // Shooting Stars controls (Option Set C)
-    @IBOutlet weak var shootingStarsEnabledCheckbox: NSButton!
+    // Shooting Stars controls (Option Set C) including modern toggles
+    @IBOutlet weak var shootingStarsEnabledCheckbox: NSSwitch!
     @IBOutlet weak var shootingStarsAvgSecondsField: NSTextField!
     @IBOutlet weak var shootingStarsDirectionPopup: NSPopUpButton!
     @IBOutlet weak var shootingStarsLengthSlider: NSSlider!
@@ -55,7 +55,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var shootingStarsThicknessPreview: NSTextField!
     @IBOutlet weak var shootingStarsBrightnessPreview: NSTextField!
     @IBOutlet weak var shootingStarsTrailDecayPreview: NSTextField!
-    @IBOutlet weak var shootingStarsDebugSpawnBoundsCheckbox: NSButton!
+    @IBOutlet weak var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch!
     
     // Preview container (plain NSView).
     @IBOutlet weak var moonPreviewView: NSView!
@@ -429,14 +429,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func styleWindow() {
         guard let win = window else { return }
         win.title = "Starry Excuses Settings"
-        // Preference-style appearance
         if #available(macOS 11.0, *) {
             win.toolbarStyle = .preference
         }
         win.isMovableByWindowBackground = true
         win.standardWindowButton(.zoomButton)?.isHidden = true
         win.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        // Let nib intrinsic size drive; remove legacy manual size adjustments.
     }
     
     private func applyButtonKeyEquivalents() {
@@ -504,7 +502,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 logChange(changedKey: "secsBetweenClears",
                           oldValue: format(lastSecsBetweenClears),
                           newValue: format(newVal))
-            lastSecsBetweenClears = newVal
+                lastSecsBetweenClears = newVal
                 rebuildPreviewEngineIfNeeded()
                 updatePreviewConfig()
             }

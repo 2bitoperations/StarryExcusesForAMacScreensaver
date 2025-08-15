@@ -66,108 +66,104 @@
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
-                                <rect key="frame" x="0.0" y="809" width="214" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
+                                <rect key="frame" x="0.0" y="809" width="252" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="GEN-STARS-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="GEN-STARS-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="GEN-STARS-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" refusesFirstResponder="YES" alignment="left" imageScaling="proportionallyDown" image="sparkles"/>
+                                    </imageView>
                                     <textField identifier="StarsPerUpdateLabel" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Rih-ed-DK9">
-                                        <rect key="frame" x="-2" y="3" width="130" height="14"/>
+                                        <rect key="frame" x="22" y="3" width="130" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Stars per update" id="zUj-o7-ksX"/>
                                     </textField>
                                     <textField identifier="StarsPerUpdate" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="IjJ-g5-V0M">
-                                        <rect key="frame" x="134" y="1" width="80" height="19"/>
+                                        <rect key="frame" x="154" y="1" width="80" height="19"/>
                                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" borderStyle="bezel" title="120" id="9WR-VQ-vtH"/>
                                     </textField>
                                 </subviews>
-                                <constraints>
-                                    <constraint firstItem="Rih-ed-DK9" firstAttribute="centerY" secondItem="prf-z8-ln5" secondAttribute="centerY" id="1K4-zU-7qE"/>
-                                    <constraint firstItem="IjJ-g5-V0M" firstAttribute="baseline" secondItem="Rih-ed-DK9" secondAttribute="firstBaseline" id="SmJ-w8-7nX"/>
-                                </constraints>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
-                                <rect key="frame" x="0.0" y="778" width="256" height="19"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
+                                <rect key="frame" x="0.0" y="778" width="294" height="19"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="GEN-CLEAR-ICON">
+                                        <rect key="frame" x="0.0" y="1" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="GEN-CLEAR-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="GEN-CLEAR-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="arrow.clockwise" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="h3L-pH-175">
-                                        <rect key="frame" x="-2" y="2" width="172" height="15"/>
+                                        <rect key="frame" x="22" y="2" width="172" height="15"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Seconds between clears" id="9ZG-YA-dxa"/>
                                     </textField>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="CG8-TJ-hHM">
-                                        <rect key="frame" x="176" y="0.0" width="80" height="19"/>
+                                        <rect key="frame" x="196" y="0.0" width="80" height="19"/>
                                         <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" borderStyle="bezel" title="120" id="tUV-bq-piy"/>
                                     </textField>
                                 </subviews>
-                                <constraints>
-                                    <constraint firstItem="h3L-pH-175" firstAttribute="top" secondItem="ozG-gR-er8" secondAttribute="top" constant="2" id="aMi-nc-UGn"/>
-                                </constraints>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
-                                <rect key="frame" x="0.0" y="747" width="189" height="19"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
+                                <rect key="frame" x="0.0" y="747" width="233" height="19"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="GEN-TRAV-ICON">
+                                        <rect key="frame" x="0.0" y="1" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="GEN-TRAV-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="GEN-TRAV-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="clock" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Lbl-Moon-Time">
-                                        <rect key="frame" x="-2" y="2" width="129" height="15"/>
+                                        <rect key="frame" x="22" y="2" width="149" height="15"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Moon traversal minutes" id="Lbl-Moon-Time-Cell"/>
                                     </textField>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MTR-lb-Min">
-                                        <rect key="frame" x="133" y="0.0" width="56" height="19"/>
+                                        <rect key="frame" x="173" y="0.0" width="56" height="19"/>
                                         <textFieldCell key="cell" selectable="YES" editable="YES" borderStyle="bezel" title="60" id="MTR-lb-Min-Cell"/>
                                     </textField>
                                 </subviews>
-                                <constraints>
-                                    <constraint firstItem="Lbl-Moon-Time" firstAttribute="top" secondItem="mtR-vr-xyz" secondAttribute="top" constant="2" id="IBS-vZ-0QL"/>
-                                </constraints>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="a9U-nj-sTo">
-                                <rect key="frame" x="0.0" y="715" width="261" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="a9U-nj-sTo">
+                                <rect key="frame" x="0.0" y="715" width="283" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="BLD-LEFT-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="BLD-L-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="BLD-L-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="building.2" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="eaT-6Y-gvB">
-                                        <rect key="frame" x="-2" y="3" width="109" height="14"/>
+                                        <rect key="frame" x="22" y="3" width="109" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Building max height" id="kFS-zB-TFf"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="2pc-x6-KHb">
-                                        <rect key="frame" x="111" y="-6" width="120" height="28"/>
-                                        <sliderCell key="cell" state="on" minValue="0.050000000000000003" maxValue="1" doubleValue="0.34999999999999998" tickMarkPosition="above" sliderType="linear" id="4r4-Fk-bR3"/>
+                                        <rect key="frame" x="133" y="-6" width="120" height="28"/>
+                                        <sliderCell key="cell" state="on" minValue="0.050000000000000003" maxValue="1" doubleValue="0.34999999999999998" tickMarkPosition="below" sliderType="linear" id="4r4-Fk-bR3"/>
                                         <connections>
                                             <action selector="buildingHeightChanged:" target="-2" id="cJn-Ej-nh7"/>
                                         </connections>
                                     </slider>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="tfO-4a-uSm">
-                                        <rect key="frame" x="235" y="3" width="28" height="14"/>
+                                        <rect key="frame" x="257" y="3" width="28" height="14"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="0.35" id="8kT-Tr-HxT"/>
                                     </textField>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="BLD-RIGHT-ICON">
+                                        <rect key="frame" x="287" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="BLD-R-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="BLD-R-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="building.2.fill" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-MOON-LBL">
                                 <rect key="frame" x="-2" y="687" width="40" height="16"/>
@@ -175,197 +171,215 @@
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-STK">
-                                <rect key="frame" x="0.0" y="655" width="222" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-STK">
+                                <rect key="frame" x="0.0" y="655" width="246" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="MOON-MIN-L">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="MOON-MIN-L-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="MOON-MIN-L-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="moonphase.new.moon" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL-TXT">
-                                        <rect key="frame" x="-2" y="3" width="60" height="14"/>
+                                        <rect key="frame" x="20" y="3" width="60" height="14"/>
                                         <textFieldCell key="cell" title="Min radius" id="MIN-RAD-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-SL">
-                                        <rect key="frame" x="62" y="-6" width="140" height="28"/>
+                                        <rect key="frame" x="82" y="-6" width="140" height="28"/>
                                         <sliderCell key="cell" minValue="5" maxValue="200" doubleValue="15" tickMarkPosition="below" sliderType="linear" id="MIN-RAD-SL-CELL"/>
                                         <connections>
                                             <action selector="moonSliderChanged:" target="-2" id="MIN-RAD-SL-ACT"/>
                                         </connections>
                                     </slider>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL">
-                                        <rect key="frame" x="206" y="3" width="18" height="14"/>
+                                        <rect key="frame" x="224" y="3" width="18" height="14"/>
                                         <textFieldCell key="cell" title="15" id="MIN-RAD-LBL-CELL"/>
                                     </textField>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="MOON-MIN-R">
+                                        <rect key="frame" x="246" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="MOON-MIN-R-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="MOON-MIN-R-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="moonphase.full.moon" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-STK">
-                                <rect key="frame" x="0.0" y="623" width="225" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-STK">
+                                <rect key="frame" x="0.0" y="623" width="249" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="MOON-MAX-L">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="MOON-MAX-L-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="MOON-MAX-L-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="moonphase.new.moon" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL-TXT">
-                                        <rect key="frame" x="-2" y="3" width="63" height="14"/>
+                                        <rect key="frame" x="20" y="3" width="63" height="14"/>
                                         <textFieldCell key="cell" title="Max radius" id="MAX-RAD-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-SL">
-                                        <rect key="frame" x="65" y="-6" width="140" height="28"/>
+                                        <rect key="frame" x="85" y="-6" width="140" height="28"/>
                                         <sliderCell key="cell" minValue="5" maxValue="400" doubleValue="60" tickMarkPosition="below" sliderType="linear" id="MAX-RAD-SL-CELL"/>
                                         <connections>
                                             <action selector="moonSliderChanged:" target="-2" id="MAX-RAD-SL-ACT"/>
                                         </connections>
                                     </slider>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL">
-                                        <rect key="frame" x="209" y="3" width="18" height="14"/>
+                                        <rect key="frame" x="229" y="3" width="18" height="14"/>
                                         <textFieldCell key="cell" title="60" id="MAX-RAD-LBL-CELL"/>
                                     </textField>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="MOON-MAX-R">
+                                        <rect key="frame" x="249" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="MOON-MAX-R-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="MOON-MAX-R-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="moonphase.full.moon" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-STK">
-                                <rect key="frame" x="0.0" y="591" width="237" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-STK">
+                                <rect key="frame" x="0.0" y="591" width="261" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BRIGHT-L">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="MOON-BRIGHT-L-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="MOON-BRIGHT-L-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="sun.min" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL-TXT">
-                                        <rect key="frame" x="-2" y="3" width="95" height="14"/>
+                                        <rect key="frame" x="20" y="3" width="95" height="14"/>
                                         <textFieldCell key="cell" title="Bright brightness" id="BRI-B-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-SL">
-                                        <rect key="frame" x="97" y="-6" width="110" height="28"/>
+                                        <rect key="frame" x="117" y="-6" width="110" height="28"/>
                                         <sliderCell key="cell" minValue="0.20000000000000001" maxValue="1.2" doubleValue="1" tickMarkPosition="below" sliderType="linear" id="BRI-B-SL-CELL"/>
                                         <connections>
                                             <action selector="moonSliderChanged:" target="-2" id="BRI-B-SL-ACT"/>
                                         </connections>
                                     </slider>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL">
-                                        <rect key="frame" x="211" y="3" width="28" height="14"/>
+                                        <rect key="frame" x="231" y="3" width="28" height="14"/>
                                         <textFieldCell key="cell" title="1.00" id="BRI-B-LBL-CELL"/>
                                     </textField>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BRIGHT-R">
+                                        <rect key="frame" x="261" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="MOON-BRIGHT-R-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="MOON-BRIGHT-R-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="sun.max" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-STK">
-                                <rect key="frame" x="0.0" y="559" width="231" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-STK">
+                                <rect key="frame" x="0.0" y="559" width="255" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="MOON-DARK-L">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="MOON-DARK-L-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="MOON-DARK-L-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="moon" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL-TXT">
-                                        <rect key="frame" x="-2" y="3" width="89" height="14"/>
+                                        <rect key="frame" x="20" y="3" width="89" height="14"/>
                                         <textFieldCell key="cell" title="Dark brightness" id="DRK-B-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-SL">
-                                        <rect key="frame" x="91" y="-6" width="110" height="28"/>
+                                        <rect key="frame" x="111" y="-6" width="110" height="28"/>
                                         <sliderCell key="cell" maxValue="0.90000000000000002" doubleValue="0.14999999999999999" tickMarkPosition="below" sliderType="linear" id="DRK-B-SL-CELL"/>
                                         <connections>
                                             <action selector="moonSliderChanged:" target="-2" id="DRK-B-SL-ACT"/>
                                         </connections>
                                     </slider>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL">
-                                        <rect key="frame" x="205" y="3" width="28" height="14"/>
+                                        <rect key="frame" x="225" y="3" width="28" height="14"/>
                                         <textFieldCell key="cell" title="0.15" id="DRK-B-LBL-CELL"/>
                                     </textField>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="MOON-DARK-R">
+                                        <rect key="frame" x="255" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="MOON-DARK-R-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="MOON-DARK-R-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="circle.lefthalf.filled" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK-STK">
-                                <rect key="frame" x="0.0" y="511" width="111" height="36"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK-STK">
+                                <rect key="frame" x="0.0" y="511" width="200" height="24"/>
                                 <subviews>
-                                    <button ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK">
-                                        <rect key="frame" x="0.0" y="10" width="111" height="16"/>
-                                        <buttonCell key="cell" type="bevel" title="Lock moon phase" bezelStyle="regularSquare" imagePosition="left" inset="2" id="PHASE-CHK-CELL">
-                                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
-                                            <font key="font" metaFont="system"/>
-                                        </buttonCell>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK-LBL">
+                                        <rect key="frame" x="0.0" y="5" width="116" height="14"/>
+                                        <textFieldCell key="cell" title="Lock moon phase" id="PHASE-CHK-LBL-CELL"/>
+                                    </textField>
+                                    <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK">
+                                        <rect key="frame" x="124" y="0.0" width="49" height="24"/>
                                         <connections>
                                             <action selector="moonPhaseOverrideToggled:" target="-2" id="PHASE-CHK-ACT"/>
                                         </connections>
-                                    </button>
+                                    </switch>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-SL-STK">
-                                <rect key="frame" x="0.0" y="479" width="260" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-SL-STK">
+                                <rect key="frame" x="0.0" y="479" width="276" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-L-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="PHASE-L-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="PHASE-L-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="moonphase.new.moon" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-LBL-TXT">
-                                        <rect key="frame" x="-2" y="3" width="71" height="14"/>
+                                        <rect key="frame" x="20" y="3" width="71" height="14"/>
                                         <textFieldCell key="cell" title="Moon phase" id="PHASE-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-SL">
-                                        <rect key="frame" x="73" y="-6" width="150" height="28"/>
+                                        <rect key="frame" x="95" y="-6" width="150" height="28"/>
                                         <sliderCell key="cell" maxValue="1" tickMarkPosition="below" numberOfTickMarks="5" sliderType="linear" id="PHASE-SL-CELL"/>
                                         <connections>
                                             <action selector="moonPhaseSliderChanged:" target="-2" id="PHASE-SL-ACT"/>
                                         </connections>
                                     </slider>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-VAL-LBL">
-                                        <rect key="frame" x="227" y="3" width="35" height="14"/>
+                                        <rect key="frame" x="249" y="3" width="35" height="14"/>
                                         <textFieldCell key="cell" title="0.000" id="PHASE-VAL-LBL-CELL"/>
                                     </textField>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-R-ICON">
+                                        <rect key="frame" x="286" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="PHASE-R-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="PHASE-R-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="moonphase.full.moon" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-STK">
-                                <rect key="frame" x="0.0" y="451" width="249" height="16"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-STK">
+                                <rect key="frame" x="0.0" y="451" width="300" height="24"/>
                                 <subviews>
-                                    <button ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-CHK">
-                                        <rect key="frame" x="0.0" y="0.0" width="249" height="16"/>
-                                        <buttonCell key="cell" type="bevel" title="Show light area texture fill mask (debug)" bezelStyle="regularSquare" imagePosition="left" inset="2" id="CLIP-CHK-CELL">
-                                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
-                                            <font key="font" metaFont="system"/>
-                                        </buttonCell>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-LBL">
+                                        <rect key="frame" x="0.0" y="5" width="240" height="14"/>
+                                        <textFieldCell key="cell" title="Show light area texture fill mask (debug)" id="CLIP-LBL-CELL"/>
+                                    </textField>
+                                    <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-CHK">
+                                        <rect key="frame" x="248" y="0.0" width="49" height="24"/>
                                         <connections>
                                             <action selector="showLightAreaTextureFillMaskToggled:" target="-2" id="CLIP-CHK-ACT"/>
                                         </connections>
-                                    </button>
+                                    </switch>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
                             <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-SS-LBL">
                                 <rect key="frame" x="-2" y="423" width="100" height="16"/>
@@ -373,62 +387,63 @@
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-STK">
-                                <rect key="frame" x="0.0" y="395" width="135" height="16"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-STK">
+                                <rect key="frame" x="0.0" y="395" width="210" height="24"/>
                                 <subviews>
-                                    <button ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-CHK">
-                                        <rect key="frame" x="0.0" y="0.0" width="135" height="16"/>
-                                        <buttonCell key="cell" type="bevel" title="Enable shooting stars" bezelStyle="regularSquare" imagePosition="left" state="on" inset="2" id="SS-EN-CHK-CELL">
-                                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
-                                            <font key="font" metaFont="system"/>
-                                        </buttonCell>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-LBL">
+                                        <rect key="frame" x="0.0" y="5" width="140" height="14"/>
+                                        <textFieldCell key="cell" title="Enable shooting stars" id="SS-EN-LBL-CELL"/>
+                                    </textField>
+                                    <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-CHK">
+                                        <rect key="frame" x="148" y="0.0" width="49" height="24"/>
                                         <connections>
                                             <action selector="shootingStarsToggled:" target="-2" id="SS-EN-ACT"/>
                                         </connections>
-                                    </button>
+                                    </switch>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-STK">
-                                <rect key="frame" x="0.0" y="364" width="186" height="19"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-STK">
+                                <rect key="frame" x="0.0" y="364" width="212" height="19"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="SS-AVG-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="SS-AVG-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="timer" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-LBL">
-                                        <rect key="frame" x="-2" y="3" width="122" height="14"/>
+                                        <rect key="frame" x="20" y="3" width="122" height="14"/>
                                         <textFieldCell key="cell" title="Avg seconds between" id="SS-AVG-LBL-CELL"/>
                                     </textField>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-FLD">
-                                        <rect key="frame" x="126" y="0.0" width="60" height="19"/>
+                                        <rect key="frame" x="144" y="0.0" width="60" height="19"/>
                                         <textFieldCell key="cell" selectable="YES" editable="YES" borderStyle="bezel" title="7.0" id="SS-AVG-FLD-CELL"/>
                                         <connections>
                                             <action selector="shootingStarsAvgSecondsChanged:" target="-2" id="SS-AVG-FLD-ACT"/>
                                         </connections>
                                     </textField>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-STK">
-                                <rect key="frame" x="0.0" y="332" width="188" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-STK">
+                                <rect key="frame" x="0.0" y="332" width="212" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="SS-DIR-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="SS-DIR-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="location.north.line" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-LBL">
-                                        <rect key="frame" x="-2" y="3" width="85" height="14"/>
+                                        <rect key="frame" x="20" y="3" width="85" height="14"/>
                                         <textFieldCell key="cell" title="Direction mode" id="SS-DIR-LBL-CELL"/>
                                     </textField>
                                     <popUpButton translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-POP">
-                                        <rect key="frame" x="86" y="-4" width="106" height="25"/>
+                                        <rect key="frame" x="107" y="-4" width="106" height="25"/>
                                         <popUpButtonCell key="cell" type="push" bezelStyle="rounded" alignment="left" lineBreakMode="truncatingTail" borderStyle="borderAndBezel" imageScaling="proportionallyDown" inset="2" id="SS-DIR-POP-CELL">
-                                            <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                             <menu key="menu" id="SS-DIR-MENU">
                                                 <items>
                                                     <menuItem title="Random" id="SS-DIR-RND"/>
@@ -444,202 +459,206 @@
                                         </connections>
                                     </popUpButton>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-STK">
-                                <rect key="frame" x="0.0" y="300" width="234" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-STK">
+                                <rect key="frame" x="0.0" y="300" width="258" height="20"/>
                                 <subviews>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-L-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="SS-LEN-L-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="SS-LEN-L-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="line.horizontal.3" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-LBL-TXT">
-                                        <rect key="frame" x="-2" y="3" width="65" height="14"/>
+                                        <rect key="frame" x="20" y="3" width="65" height="14"/>
                                         <textFieldCell key="cell" title="Length (px)" id="SS-LEN-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-SL">
-                                        <rect key="frame" x="67" y="-6" width="140" height="28"/>
+                                        <rect key="frame" x="87" y="-6" width="140" height="28"/>
                                         <sliderCell key="cell" minValue="40" maxValue="300" doubleValue="160" tickMarkPosition="below" sliderType="linear" id="SS-LEN-SL-CELL"/>
                                         <connections>
                                             <action selector="shootingStarsSliderChanged:" target="-2" id="SS-LEN-SL-ACT"/>
                                         </connections>
                                     </slider>
-                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-LBL">
-                                        <rect key="frame" x="211" y="3" width="25" height="14"/>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-LBL">
+                                        <rect key="frame" x="231" y="3" width="25" height="14"/>
                                         <textFieldCell key="cell" title="160" id="SS-LEN-LBL-CELL"/>
                                     </textField>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-R-ICON">
+                                        <rect key="frame" x="258" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="SS-LEN-R-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="SS-LEN-R-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="line.horizontal.3.decrease" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-STK">
-                                <rect key="frame" x="0.0" y="268" width="242" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-STK">
+                                <rect key="frame" x="0.0" y="268" width="266" height="20"/>
                                 <subviews>
-                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-LBL-TXT">
-                                        <rect key="frame" x="-2" y="3" width="73" height="14"/>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-L-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="SS-SPD-L-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="SS-SPD-L-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="tortoise" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-LBL-TXT">
+                                        <rect key="frame" x="20" y="3" width="73" height="14"/>
                                         <textFieldCell key="cell" title="Speed (px/s)" id="SS-SPD-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-SL">
-                                        <rect key="frame" x="75" y="-6" width="140" height="28"/>
+                                        <rect key="frame" x="95" y="-6" width="140" height="28"/>
                                         <sliderCell key="cell" minValue="200" maxValue="1200" doubleValue="600" tickMarkPosition="below" sliderType="linear" id="SS-SPD-SL-CELL"/>
                                         <connections>
                                             <action selector="shootingStarsSliderChanged:" target="-2" id="SS-SPD-SL-ACT"/>
                                         </connections>
                                     </slider>
-                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-LBL">
-                                        <rect key="frame" x="219" y="3" width="25" height="14"/>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-LBL">
+                                        <rect key="frame" x="239" y="3" width="25" height="14"/>
                                         <textFieldCell key="cell" title="600" id="SS-SPD-LBL-CELL"/>
                                     </textField>
+                                    <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-R-ICON">
+                                        <rect key="frame" x="266" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="16" id="SS-SPD-R-ICON-W"/>
+                                            <constraint firstAttribute="height" constant="16" id="SS-SPD-R-ICON-H"/>
+                                        </constraints>
+                                        <imageCell key="cell" image="hare" alignment="left" imageScaling="proportionallyDown"/>
+                                    </imageView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="vertical" alignment="leading" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-MORE-STK">
-                                <rect key="frame" x="0.0" y="156" width="242" height="100"/>
+                                <rect key="frame" x="0.0" y="156" width="266" height="100"/>
                                 <subviews>
-                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-STK">
-                                        <rect key="frame" x="0.0" y="80" width="238" height="20"/>
+                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-STK">
+                                        <rect key="frame" x="0.0" y="80" width="262" height="20"/>
                                         <subviews>
-                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-LBL-TXT">
-                                                <rect key="frame" x="-2" y="3" width="83" height="14"/>
+                                            <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-L-ICON">
+                                                <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                                <constraints>
+                                                    <constraint firstAttribute="width" constant="16" id="SS-THK-L-ICON-W"/>
+                                                    <constraint firstAttribute="height" constant="16" id="SS-THK-L-ICON-H"/>
+                                                </constraints>
+                                                <imageCell key="cell" image="circle" alignment="left" imageScaling="proportionallyDown"/>
+                                            </imageView>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-LBL-TXT">
+                                                <rect key="frame" x="20" y="3" width="83" height="14"/>
                                                 <textFieldCell key="cell" title="Thickness (px)" id="SS-THK-LBL-TXT-CELL"/>
                                             </textField>
                                             <slider ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-SL">
-                                                <rect key="frame" x="85" y="-6" width="140" height="28"/>
+                                                <rect key="frame" x="107" y="-6" width="140" height="28"/>
                                                 <sliderCell key="cell" minValue="1" maxValue="4" doubleValue="2" tickMarkPosition="below" sliderType="linear" id="SS-THK-SL-CELL"/>
                                                 <connections>
                                                     <action selector="shootingStarsSliderChanged:" target="-2" id="SS-THK-SL-ACT"/>
                                                 </connections>
                                             </slider>
-                                            <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-LBL">
-                                                <rect key="frame" x="229" y="3" width="11" height="14"/>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-LBL">
+                                                <rect key="frame" x="251" y="3" width="11" height="14"/>
                                                 <textFieldCell key="cell" title="2" id="SS-THK-LBL-CELL"/>
                                             </textField>
+                                            <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-R-ICON">
+                                                <rect key="frame" x="262" y="2" width="16" height="16"/>
+                                                <constraints>
+                                                    <constraint firstAttribute="width" constant="16" id="SS-THK-R-ICON-W"/>
+                                                    <constraint firstAttribute="height" constant="16" id="SS-THK-R-ICON-H"/>
+                                                </constraints>
+                                                <imageCell key="cell" image="circle.fill" alignment="left" imageScaling="proportionallyDown"/>
+                                            </imageView>
                                         </subviews>
-                                        <visibilityPriorities>
-                                            <integer value="1000"/>
-                                            <integer value="1000"/>
-                                            <integer value="1000"/>
-                                        </visibilityPriorities>
-                                        <customSpacing>
-                                            <real value="3.4028234663852886e+38"/>
-                                            <real value="3.4028234663852886e+38"/>
-                                            <real value="3.4028234663852886e+38"/>
-                                        </customSpacing>
                                     </stackView>
-                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-STK">
-                                        <rect key="frame" x="0.0" y="52" width="233" height="20"/>
+                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-STK">
+                                        <rect key="frame" x="0.0" y="52" width="257" height="20"/>
                                         <subviews>
-                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-LBL-TXT">
-                                                <rect key="frame" x="-2" y="3" width="61" height="14"/>
+                                            <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-L-ICON">
+                                                <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                                <constraints>
+                                                    <constraint firstAttribute="width" constant="16" id="SS-BRI-L-ICON-W"/>
+                                                    <constraint firstAttribute="height" constant="16" id="SS-BRI-L-ICON-H"/>
+                                                </constraints>
+                                                <imageCell key="cell" image="sun.min" alignment="left" imageScaling="proportionallyDown"/>
+                                            </imageView>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-LBL-TXT">
+                                                <rect key="frame" x="20" y="3" width="61" height="14"/>
                                                 <textFieldCell key="cell" title="Brightness" id="SS-BRI-LBL-TXT-CELL"/>
                                             </textField>
                                             <slider ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-SL">
-                                                <rect key="frame" x="63" y="-6" width="140" height="28"/>
+                                                <rect key="frame" x="85" y="-6" width="140" height="28"/>
                                                 <sliderCell key="cell" minValue="0.29999999999999999" maxValue="1" doubleValue="0.90000000000000002" tickMarkPosition="below" sliderType="linear" id="SS-BRI-SL-CELL"/>
                                                 <connections>
                                                     <action selector="shootingStarsSliderChanged:" target="-2" id="SS-BRI-SL-ACT"/>
                                                 </connections>
                                             </slider>
-                                            <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-LBL">
-                                                <rect key="frame" x="207" y="3" width="28" height="14"/>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-LBL">
+                                                <rect key="frame" x="229" y="3" width="28" height="14"/>
                                                 <textFieldCell key="cell" title="0.90" id="SS-BRI-LBL-CELL"/>
                                             </textField>
+                                            <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-R-ICON">
+                                                <rect key="frame" x="257" y="2" width="16" height="16"/>
+                                                <constraints>
+                                                    <constraint firstAttribute="width" constant="16" id="SS-BRI-R-ICON-W"/>
+                                                    <constraint firstAttribute="height" constant="16" id="SS-BRI-R-ICON-H"/>
+                                                </constraints>
+                                                <imageCell key="cell" image="sun.max" alignment="left" imageScaling="proportionallyDown"/>
+                                            </imageView>
                                         </subviews>
-                                        <visibilityPriorities>
-                                            <integer value="1000"/>
-                                            <integer value="1000"/>
-                                            <integer value="1000"/>
-                                        </visibilityPriorities>
-                                        <customSpacing>
-                                            <real value="3.4028234663852886e+38"/>
-                                            <real value="3.4028234663852886e+38"/>
-                                            <real value="3.4028234663852886e+38"/>
-                                        </customSpacing>
                                     </stackView>
-                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-STK">
-                                        <rect key="frame" x="0.0" y="24" width="242" height="20"/>
+                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-STK">
+                                        <rect key="frame" x="0.0" y="24" width="266" height="20"/>
                                         <subviews>
-                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL-TXT">
-                                                <rect key="frame" x="-2" y="3" width="63" height="14"/>
+                                            <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-L-ICON">
+                                                <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                                <constraints>
+                                                    <constraint firstAttribute="width" constant="16" id="SS-DEC-L-ICON-W"/>
+                                                    <constraint firstAttribute="height" constant="16" id="SS-DEC-L-ICON-H"/>
+                                                </constraints>
+                                                <imageCell key="cell" image="cloud" alignment="left" imageScaling="proportionallyDown"/>
+                                            </imageView>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL-TXT">
+                                                <rect key="frame" x="20" y="3" width="63" height="14"/>
                                                 <textFieldCell key="cell" title="Trail decay" id="SS-DEC-LBL-TXT-CELL"/>
                                             </textField>
                                             <slider ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-SL">
-                                                <rect key="frame" x="65" y="-6" width="140" height="28"/>
+                                                <rect key="frame" x="85" y="-6" width="140" height="28"/>
                                                 <sliderCell key="cell" minValue="0.84999999999999998" maxValue="0.98999999999999999" doubleValue="0.92000000000000004" tickMarkPosition="below" sliderType="linear" id="SS-DEC-SL-CELL"/>
                                                 <connections>
                                                     <action selector="shootingStarsSliderChanged:" target="-2" id="SS-DEC-SL-ACT"/>
                                                 </connections>
                                             </slider>
-                                            <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL">
-                                                <rect key="frame" x="209" y="3" width="35" height="14"/>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL">
+                                                <rect key="frame" x="229" y="3" width="35" height="14"/>
                                                 <textFieldCell key="cell" title="0.920" id="SS-DEC-LBL-CELL"/>
                                             </textField>
+                                            <imageView translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-R-ICON">
+                                                <rect key="frame" x="266" y="2" width="16" height="16"/>
+                                                <constraints>
+                                                    <constraint firstAttribute="width" constant="16" id="SS-DEC-R-ICON-W"/>
+                                                    <constraint firstAttribute="height" constant="16" id="SS-DEC-R-ICON-H"/>
+                                                </constraints>
+                                                <imageCell key="cell" image="cloud.rain" alignment="left" imageScaling="proportionallyDown"/>
+                                            </imageView>
                                         </subviews>
-                                        <visibilityPriorities>
-                                            <integer value="1000"/>
-                                            <integer value="1000"/>
-                                            <integer value="1000"/>
-                                        </visibilityPriorities>
-                                        <customSpacing>
-                                            <real value="3.4028234663852886e+38"/>
-                                            <real value="3.4028234663852886e+38"/>
-                                            <real value="3.4028234663852886e+38"/>
-                                        </customSpacing>
                                     </stackView>
-                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DBG-STK">
-                                        <rect key="frame" x="0.0" y="0.0" width="175" height="16"/>
+                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DBG-STK">
+                                        <rect key="frame" x="0.0" y="0.0" width="250" height="24"/>
                                         <subviews>
-                                            <button ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DBG-CHK">
-                                                <rect key="frame" x="0.0" y="0.0" width="175" height="16"/>
-                                                <buttonCell key="cell" type="bevel" title="Debug: show spawn bounds" bezelStyle="regularSquare" imagePosition="left" inset="2" id="SS-DBG-CHK-CELL">
-                                                    <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
-                                                    <font key="font" metaFont="system"/>
-                                                </buttonCell>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-DBG-LBL">
+                                                <rect key="frame" x="0.0" y="5" width="180" height="14"/>
+                                                <textFieldCell key="cell" title="Debug: show spawn bounds" id="SS-DBG-LBL-CELL"/>
+                                            </textField>
+                                            <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DBG-CHK">
+                                                <rect key="frame" x="188" y="0.0" width="49" height="24"/>
                                                 <connections>
                                                     <action selector="shootingStarsDebugSpawnBoundsToggled:" target="-2" id="SS-DBG-CHK-ACT"/>
                                                 </connections>
-                                            </button>
+                                            </switch>
                                         </subviews>
-                                        <visibilityPriorities>
-                                            <integer value="1000"/>
-                                        </visibilityPriorities>
-                                        <customSpacing>
-                                            <real value="3.4028234663852886e+38"/>
-                                        </customSpacing>
                                     </stackView>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-PREV-LBL">
                                 <rect key="frame" x="-2" y="128" width="56" height="16"/>
@@ -647,8 +666,8 @@
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
-                            <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
-                                <rect key="frame" x="0.0" y="96" width="113" height="20"/>
+                            <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
+                                <rect key="frame" x="0.0" y="96" width="140" height="20"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-PAUSE">
                                         <rect key="frame" x="-7" y="-7" width="71" height="32"/>
@@ -671,14 +690,6 @@
                                         </connections>
                                     </button>
                                 </subviews>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CLEAR">
                                 <rect key="frame" x="-7" y="57" width="117" height="32"/>
@@ -711,65 +722,6 @@
                                 </buttonCell>
                             </button>
                         </subviews>
-                        <constraints>
-                            <constraint firstAttribute="trailing" secondItem="ozG-gR-er8" secondAttribute="trailing" constant="48" id="Zzo-Bh-vdT"/>
-                            <constraint firstAttribute="trailing" secondItem="mtR-vr-xyz" secondAttribute="trailing" constant="115" id="vhz-nl-lZk"/>
-                            <constraint firstAttribute="trailing" secondItem="prf-z8-ln5" secondAttribute="trailing" constant="90" id="zwY-kR-uvz"/>
-                        </constraints>
-                        <visibilityPriorities>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                        </visibilityPriorities>
-                        <customSpacing>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                        </customSpacing>
                     </stackView>
                     <customView translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-VIEW">
                         <rect key="frame" x="314" y="20" width="1048" height="817"/>
@@ -789,4 +741,27 @@
         </window>
         <userDefaultsController representsSharedInstance="YES" id="a09-0b-tT3"/>
     </objects>
+    <resources>
+        <image name="arrow.clockwise" width="128" height="128"/>
+        <image name="building.2" width="128" height="128"/>
+        <image name="building.2.fill" width="128" height="128"/>
+        <image name="circle" width="128" height="128"/>
+        <image name="circle.lefthalf.filled" width="128" height="128"/>
+        <image name="circle.fill" width="128" height="128"/>
+        <image name="clock" width="128" height="128"/>
+        <image name="cloud" width="128" height="128"/>
+        <image name="cloud.rain" width="128" height="128"/>
+        <image name="hare" width="128" height="128"/>
+        <image name="line.horizontal.3" width="128" height="128"/>
+        <image name="line.horizontal.3.decrease" width="128" height="128"/>
+        <image name="location.north.line" width="128" height="128"/>
+        <image name="moon" width="128" height="128"/>
+        <image name="moonphase.full.moon" width="128" height="128"/>
+        <image name="moonphase.new.moon" width="128" height="128"/>
+        <image name="sparkles" width="128" height="128"/>
+        <image name="sun.max" width="128" height="128"/>
+        <image name="sun.min" width="128" height="128"/>
+        <image name="timer" width="128" height="128"/>
+        <image name="tortoise" width="128" height="128"/>
+    </resources>
 </document>
