@@ -65,6 +65,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // Save & Close button (enable/disable based on validation)
     @IBOutlet weak var saveCloseButton: NSButton!
+    @IBOutlet weak var cancelButton: NSButton!
     
     // Shared preview engine + timer
     private var previewEngine: StarryEngine?
@@ -331,15 +332,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         window?.delegate = self
         
-        if let win = window {
-            win.styleMask = [.titled, .closable]
-            win.title = "Starry Excuses Configuration"
-            let desiredSize = NSSize(width: 800, height: 600)
-            var frame = win.frame
-            frame.origin.y -= (desiredSize.height - frame.size.height)
-            frame.size = desiredSize
-            win.setFrame(frame, display: true)
-        }
+        styleWindow()
         
         // Load defaults into UI
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
@@ -375,7 +368,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsTrailDecaySlider.doubleValue = defaultsManager.shootingStarsTrailDecay
         shootingStarsDebugSpawnBoundsCheckbox.state = defaultsManager.shootingStarsDebugShowSpawnBounds ? .on : .off
         
-        // Explicitly ensure key text fields are editable/selectable (in case IB flags were lost)
+        // Explicitly ensure key text fields are editable/selectable
         moonTraversalMinutes.isEditable = true
         moonTraversalMinutes.isSelectable = true
         moonTraversalMinutes.isEnabled = true
@@ -426,6 +419,53 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         } else {
             os_log("Config sheet loaded (no window style mask)", log: log!, type: .info)
         }
+        
+        applyAccessibility()
+        applyButtonKeyEquivalents()
+    }
+    
+    // MARK: - Styling / Accessibility
+    
+    private func styleWindow() {
+        guard let win = window else { return }
+        win.title = "Starry Excuses Settings"
+        // Preference-style appearance
+        if #available(macOS 11.0, *) {
+            win.toolbarStyle = .preference
+        }
+        win.isMovableByWindowBackground = true
+        win.standardWindowButton(.zoomButton)?.isHidden = true
+        win.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        // Let nib intrinsic size drive; remove legacy manual size adjustments.
+    }
+    
+    private func applyButtonKeyEquivalents() {
+        saveCloseButton.keyEquivalent = "\r"     // Return to save
+        cancelButton.keyEquivalent = "\u{1b}"    // Escape to cancel
+    }
+    
+    private func applyAccessibility() {
+        starsPerUpdate.setAccessibilityLabel("Stars per update")
+        buildingHeightSlider.setAccessibilityLabel("Maximum building height")
+        secsBetweenClears.setAccessibilityLabel("Seconds between clears")
+        moonTraversalMinutes.setAccessibilityLabel("Moon traversal minutes")
+        minMoonRadiusSlider.setAccessibilityLabel("Minimum moon radius")
+        maxMoonRadiusSlider.setAccessibilityLabel("Maximum moon radius")
+        brightBrightnessSlider.setAccessibilityLabel("Bright side brightness")
+        darkBrightnessSlider.setAccessibilityLabel("Dark side brightness")
+        moonPhaseOverrideCheckbox.setAccessibilityLabel("Lock moon phase")
+        moonPhaseSlider.setAccessibilityLabel("Moon phase slider")
+        showLightAreaTextureFillMaskCheckbox.setAccessibilityLabel("Show illuminated mask debug")
+        shootingStarsEnabledCheckbox.setAccessibilityLabel("Enable shooting stars")
+        shootingStarsAvgSecondsField.setAccessibilityLabel("Average seconds between shooting stars")
+        shootingStarsDirectionPopup.setAccessibilityLabel("Shooting star direction mode")
+        shootingStarsLengthSlider.setAccessibilityLabel("Shooting star length")
+        shootingStarsSpeedSlider.setAccessibilityLabel("Shooting star speed")
+        shootingStarsThicknessSlider.setAccessibilityLabel("Shooting star thickness")
+        shootingStarsBrightnessSlider.setAccessibilityLabel("Shooting star brightness")
+        shootingStarsTrailDecaySlider.setAccessibilityLabel("Shooting star trail decay")
+        shootingStarsDebugSpawnBoundsCheckbox.setAccessibilityLabel("Debug: show spawn bounds")
+        pauseToggleButton.setAccessibilityLabel("Pause or resume preview")
     }
     
     // MARK: - Validation
@@ -464,7 +504,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 logChange(changedKey: "secsBetweenClears",
                           oldValue: format(lastSecsBetweenClears),
                           newValue: format(newVal))
-                lastSecsBetweenClears = newVal
+            lastSecsBetweenClears = newVal
                 rebuildPreviewEngineIfNeeded()
                 updatePreviewConfig()
             }

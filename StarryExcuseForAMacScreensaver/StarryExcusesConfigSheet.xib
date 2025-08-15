@@ -11,6 +11,7 @@
                 <outlet property="brightBrightnessSlider" destination="BRI-B-SL" id="BRI-B-SL-ID"/>
                 <outlet property="buildingHeightPreview" destination="tfO-4a-uSm" id="Qh8-zi-05S"/>
                 <outlet property="buildingHeightSlider" destination="2pc-x6-KHb" id="d7R-00-4NT"/>
+                <outlet property="cancelButton" destination="BTN-CANCEL" id="CANCEL-BTN-OUTLET"/>
                 <outlet property="darkBrightnessPreview" destination="DRK-B-LBL" id="DRK-B-LBL-ID"/>
                 <outlet property="darkBrightnessSlider" destination="DRK-B-SL" id="DRK-B-SL-ID"/>
                 <outlet property="maxMoonRadiusPreview" destination="MAX-RAD-LBL" id="MAX-RAD-LBL-ID"/>
@@ -26,27 +27,27 @@
                 <outlet property="saveCloseButton" destination="irw-GB-QPa" id="SAVE-BTN-OUTLET"/>
                 <outlet property="secsBetweenClears" destination="CG8-TJ-hHM" id="5Fh-T7-gR5"/>
                 <outlet property="showLightAreaTextureFillMaskCheckbox" destination="CLIP-CHK" id="CLIP-CHK-OUTLET"/>
-                <outlet property="starsPerUpdate" destination="IjJ-g5-V0M" id="abn-RS-3YH"/>
-                <outlet property="shootingStarsEnabledCheckbox" destination="SS-EN-CHK" id="SS-EN-CHK-OUTLET"/>
                 <outlet property="shootingStarsAvgSecondsField" destination="SS-AVG-FLD" id="SS-AVG-FLD-OUTLET"/>
-                <outlet property="shootingStarsDirectionPopup" destination="SS-DIR-POP" id="SS-DIR-POP-OUTLET"/>
-                <outlet property="shootingStarsLengthSlider" destination="SS-LEN-SL" id="SS-LEN-SL-OUTLET"/>
-                <outlet property="shootingStarsSpeedSlider" destination="SS-SPD-SL" id="SS-SPD-SL-OUTLET"/>
-                <outlet property="shootingStarsThicknessSlider" destination="SS-THK-SL" id="SS-THK-SL-OUTLET"/>
-                <outlet property="shootingStarsBrightnessSlider" destination="SS-BRI-SL" id="SS-BRI-SL-OUTLET"/>
-                <outlet property="shootingStarsTrailDecaySlider" destination="SS-DEC-SL" id="SS-DEC-SL-OUTLET"/>
-                <outlet property="shootingStarsLengthPreview" destination="SS-LEN-LBL" id="SS-LEN-LBL-OUTLET"/>
-                <outlet property="shootingStarsSpeedPreview" destination="SS-SPD-LBL" id="SS-SPD-LBL-OUTLET"/>
-                <outlet property="shootingStarsThicknessPreview" destination="SS-THK-LBL" id="SS-THK-LBL-OUTLET"/>
                 <outlet property="shootingStarsBrightnessPreview" destination="SS-BRI-LBL" id="SS-BRI-LBL-OUTLET"/>
-                <outlet property="shootingStarsTrailDecayPreview" destination="SS-DEC-LBL" id="SS-DEC-LBL-OUTLET"/>
+                <outlet property="shootingStarsBrightnessSlider" destination="SS-BRI-SL" id="SS-BRI-SL-OUTLET"/>
                 <outlet property="shootingStarsDebugSpawnBoundsCheckbox" destination="SS-DBG-CHK" id="SS-DBG-CHK-OUTLET"/>
+                <outlet property="shootingStarsDirectionPopup" destination="SS-DIR-POP" id="SS-DIR-POP-OUTLET"/>
+                <outlet property="shootingStarsEnabledCheckbox" destination="SS-EN-CHK" id="SS-EN-CHK-OUTLET"/>
+                <outlet property="shootingStarsLengthPreview" destination="SS-LEN-LBL" id="SS-LEN-LBL-OUTLET"/>
+                <outlet property="shootingStarsLengthSlider" destination="SS-LEN-SL" id="SS-LEN-SL-OUTLET"/>
+                <outlet property="shootingStarsSpeedPreview" destination="SS-SPD-LBL" id="SS-SPD-LBL-OUTLET"/>
+                <outlet property="shootingStarsSpeedSlider" destination="SS-SPD-SL" id="SS-SPD-SL-OUTLET"/>
+                <outlet property="shootingStarsThicknessPreview" destination="SS-THK-LBL" id="SS-THK-LBL-OUTLET"/>
+                <outlet property="shootingStarsThicknessSlider" destination="SS-THK-SL" id="SS-THK-SL-OUTLET"/>
+                <outlet property="shootingStarsTrailDecayPreview" destination="SS-DEC-LBL" id="SS-DEC-LBL-OUTLET"/>
+                <outlet property="shootingStarsTrailDecaySlider" destination="SS-DEC-SL" id="SS-DEC-SL-OUTLET"/>
+                <outlet property="starsPerUpdate" destination="IjJ-g5-V0M" id="abn-RS-3YH"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
             </connections>
         </customObject>
         <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
         <customObject id="-3" userLabel="Application" customClass="NSObject"/>
-        <window title="Starry Excuses Configuration" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" visibleAtLaunch="NO" animationBehavior="default" id="QvC-M9-y7g">
+        <window title="Starry Excuses Settings" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" visibleAtLaunch="NO" animationBehavior="default" id="QvC-M9-y7g">
             <windowStyleMask key="styleMask" titled="YES" closable="YES"/>
             <windowCollectionBehavior key="collectionBehavior" fullScreenNone="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
@@ -56,15 +57,22 @@
                 <rect key="frame" x="0.0" y="0.0" width="800" height="600"/>
                 <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                 <subviews>
-                    <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="10" translatesAutoresizingMaskIntoConstraints="NO" id="Ab2-ul-qfO">
+                    <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="12" translatesAutoresizingMaskIntoConstraints="NO" id="Ab2-ul-qfO">
                         <rect key="frame" x="0.0" y="0.0" width="300" height="600"/>
                         <subviews>
+                            <!-- Section: General -->
+                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SEC-GEN-LBL">
+                                <rect key="frame" x="0.0" y="560" width="120" height="20"/>
+                                <textFieldCell key="cell" title="General" id="SEC-GEN-LBL-CELL">
+                                    <font key="font" metaFont="systemBold" size="13"/>
+                                </textFieldCell>
+                            </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
                                 <rect key="frame" x="0.0" y="482" width="181" height="216"/>
                                 <subviews>
                                     <textField identifier="StarsPerUpdateLabel" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Rih-ed-DK9">
                                         <rect key="frame" x="-2" y="101" width="97" height="14"/>
-                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Stars Per Update" id="zUj-o7-ksX"/>
+                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Stars per update" id="zUj-o7-ksX"/>
                                     </textField>
                                     <textField identifier="StarsPerUpdate" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="IjJ-g5-V0M">
                                         <rect key="frame" x="101" y="99" width="80" height="19"/>
@@ -81,7 +89,7 @@
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="h3L-pH-175">
                                         <rect key="frame" x="-2" y="2" width="139" height="15"/>
-                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Seconds Between Clears" id="9ZG-YA-dxa"/>
+                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Seconds between clears" id="9ZG-YA-dxa"/>
                                     </textField>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="CG8-TJ-hHM">
                                         <rect key="frame" x="143" y="0.0" width="80" height="19"/>
@@ -97,7 +105,7 @@
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Lbl-Moon-Time">
                                         <rect key="frame" x="-2" y="2" width="130" height="15"/>
-                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Moon Traverse Minutes" id="Lbl-Moon-Time-Cell"/>
+                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Moon traversal minutes" id="Lbl-Moon-Time-Cell"/>
                                     </textField>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MTR-lb-Min">
                                         <rect key="frame" x="134" y="0.0" width="56" height="19"/>
@@ -113,7 +121,7 @@
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="eaT-6Y-gvB">
                                         <rect key="frame" x="-2" y="3" width="111" height="14"/>
-                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Building Max Height" id="kFS-zB-TFf"/>
+                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Building max height" id="kFS-zB-TFf"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="2pc-x6-KHb">
                                         <rect key="frame" x="113" y="-6" width="120" height="28"/>
@@ -128,12 +136,19 @@
                                     </textField>
                                 </subviews>
                             </stackView>
+                            <!-- Section: Moon -->
+                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SEC-MOON-LBL">
+                                <rect key="frame" x="0.0" y="372" width="120" height="20"/>
+                                <textFieldCell key="cell" title="Moon" id="SEC-MOON-LBL-CELL">
+                                    <font key="font" metaFont="systemBold" size="13"/>
+                                </textFieldCell>
+                            </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-STK">
                                 <rect key="frame" x="0.0" y="364" width="260" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="98" height="14"/>
-                                        <textFieldCell key="cell" title="Min Moon Radius" id="MIN-RAD-LBL-TXT-CELL"/>
+                                        <textFieldCell key="cell" title="Min radius" id="MIN-RAD-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="MIN-RAD-SL">
                                         <rect key="frame" x="100" y="-6" width="140" height="28"/>
@@ -153,7 +168,7 @@
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="101" height="14"/>
-                                        <textFieldCell key="cell" title="Max Moon Radius" id="MAX-RAD-LBL-TXT-CELL"/>
+                                        <textFieldCell key="cell" title="Max radius" id="MAX-RAD-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="MAX-RAD-SL">
                                         <rect key="frame" x="103" y="-6" width="140" height="28"/>
@@ -173,7 +188,7 @@
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="129" height="14"/>
-                                        <textFieldCell key="cell" title="Moon Bright Brightness" id="BRI-B-LBL-TXT-CELL"/>
+                                        <textFieldCell key="cell" title="Bright brightness" id="BRI-B-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-SL">
                                         <rect key="frame" x="131" y="-6" width="110" height="28"/>
@@ -193,7 +208,7 @@
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-LBL-TXT">
                                         <rect key="frame" x="-2" y="3" width="123" height="14"/>
-                                        <textFieldCell key="cell" title="Moon Dark Brightness" id="DRK-B-LBL-TXT-CELL"/>
+                                        <textFieldCell key="cell" title="Dark brightness" id="DRK-B-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-SL">
                                         <rect key="frame" x="125" y="-6" width="110" height="28"/>
@@ -213,7 +228,7 @@
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK">
                                         <rect key="frame" x="-2" y="0.0" width="140" height="22"/>
-                                        <buttonCell key="cell" type="switch" title="Lock Moon Phase" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="PHASE-CHK-CELL">
+                                        <buttonCell key="cell" type="switch" title="Lock moon phase" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="PHASE-CHK-CELL">
                                             <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
                                             <font key="font" metaFont="system"/>
                                         </buttonCell>
@@ -228,7 +243,7 @@
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-LBL-TXT">
                                         <rect key="frame" x="-2" y="4" width="70" height="14"/>
-                                        <textFieldCell key="cell" title="Moon Phase" id="PHASE-LBL-TXT-CELL"/>
+                                        <textFieldCell key="cell" title="Moon phase" id="PHASE-LBL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-SL">
                                         <rect key="frame" x="72" y="-6" width="150" height="28"/>
@@ -248,7 +263,7 @@
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-CHK">
                                         <rect key="frame" x="-2" y="0.0" width="320" height="22"/>
-                                        <buttonCell key="cell" type="switch" title="Show Light Area Texture Fill Mask (debug)" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="CLIP-CHK-CELL">
+                                        <buttonCell key="cell" type="switch" title="Show light area texture fill mask (debug)" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="CLIP-CHK-CELL">
                                             <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
                                             <font key="font" metaFont="system"/>
                                         </buttonCell>
@@ -258,12 +273,19 @@
                                     </button>
                                 </subviews>
                             </stackView>
+                            <!-- Section: Shooting Stars -->
+                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SEC-SS-LBL">
+                                <rect key="frame" x="0.0" y="160" width="140" height="20"/>
+                                <textFieldCell key="cell" title="Shooting Stars" id="SEC-SS-LBL-CELL">
+                                    <font key="font" metaFont="systemBold" size="13"/>
+                                </textFieldCell>
+                            </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-STK">
                                 <rect key="frame" x="0.0" y="154" width="250" height="22"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-CHK">
                                         <rect key="frame" x="-2" y="0.0" width="160" height="22"/>
-                                        <buttonCell key="cell" type="switch" title="Enable Shooting Stars" bezelStyle="regularSquare" imagePosition="left" state="on" inset="2" id="SS-EN-CHK-CELL">
+                                        <buttonCell key="cell" type="switch" title="Enable shooting stars" bezelStyle="regularSquare" imagePosition="left" state="on" inset="2" id="SS-EN-CHK-CELL">
                                             <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
                                             <font key="font" metaFont="system"/>
                                         </buttonCell>
@@ -278,7 +300,7 @@
                                 <subviews>
                                     <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-LBL">
                                         <rect key="frame" x="-2" y="3" width="140" height="14"/>
-                                        <textFieldCell key="cell" title="Avg Seconds Between" id="SS-AVG-LBL-CELL"/>
+                                        <textFieldCell key="cell" title="Avg seconds between" id="SS-AVG-LBL-CELL"/>
                                     </textField>
                                     <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-FLD">
                                         <rect key="frame" x="142" y="0.0" width="60" height="19"/>
@@ -294,7 +316,7 @@
                                 <subviews>
                                     <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-LBL">
                                         <rect key="frame" x="-2" y="3" width="90" height="14"/>
-                                        <textFieldCell key="cell" title="Direction Mode" id="SS-DIR-LBL-CELL"/>
+                                        <textFieldCell key="cell" title="Direction mode" id="SS-DIR-LBL-CELL"/>
                                     </textField>
                                     <popUpButton translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-POP">
                                         <rect key="frame" x="92" y="-1" width="140" height="26"/>
@@ -403,7 +425,7 @@
                                         <subviews>
                                             <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL-TXT">
                                                 <rect key="frame" x="-2" y="3" width="95" height="14"/>
-                                                <textFieldCell key="cell" title="Trail Decay" id="SS-DEC-LBL-TXT-CELL"/>
+                                                <textFieldCell key="cell" title="Trail decay" id="SS-DEC-LBL-TXT-CELL"/>
                                             </textField>
                                             <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-SL">
                                                 <rect key="frame" x="97" y="-6" width="140" height="28"/>
@@ -423,7 +445,7 @@
                                         <subviews>
                                             <button translatesAutoresizingMaskIntoConstraints="NO" id="SS-DBG-CHK">
                                                 <rect key="frame" x="-2" y="0.0" width="280" height="22"/>
-                                                <buttonCell key="cell" type="switch" title="Debug: Show Spawn Bounds" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="SS-DBG-CHK-CELL">
+                                                <buttonCell key="cell" type="switch" title="Debug: show spawn bounds" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="SS-DBG-CHK-CELL">
                                                     <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
                                                     <font key="font" metaFont="system"/>
                                                 </buttonCell>
@@ -435,6 +457,13 @@
                                     </stackView>
                                 </subviews>
                             </stackView>
+                            <!-- Section: Preview -->
+                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SEC-PREV-LBL">
+                                <rect key="frame" x="0.0" y="-6" width="120" height="20"/>
+                                <textFieldCell key="cell" title="Preview" id="SEC-PREV-LBL-CELL">
+                                    <font key="font" metaFont="systemBold" size="13"/>
+                                </textFieldCell>
+                            </textField>
                             <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
                                 <rect key="frame" x="0.0" y="-26" width="130" height="20"/>
                                 <subviews>
@@ -471,8 +500,8 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="irw-GB-QPa">
-                                <rect key="frame" x="0.0" y="-72" width="106" height="32"/>
-                                <buttonCell key="cell" type="push" title="Save and Close" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="IyX-HG-idV">
+                                <rect key="frame" x="0.0" y="-72" width="80" height="32"/>
+                                <buttonCell key="cell" type="push" title="Save" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="IyX-HG-idV">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
                                     <connections>
@@ -481,7 +510,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CANCEL">
-                                <rect key="frame" x="0.0" y="-106" width="106" height="32"/>
+                                <rect key="frame" x="90" y="-72" width="80" height="32"/>
                                 <buttonCell key="cell" type="push" title="Cancel" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CANCEL-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
