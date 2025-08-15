@@ -113,9 +113,7 @@ class StarryExcuseForAView: ScreenSaverView {
             moonPhaseOverrideEnabled: defaultsManager.moonPhaseOverrideEnabled,
             moonPhaseOverrideValue: defaultsManager.moonPhaseOverrideValue,
             traceEnabled: traceEnabled,
-            showLightAreaTextureFillMask: defaultsManager.showLightAreaTextureFillMask,
-            darkMinorityOversizeOverrideEnabled: defaultsManager.darkMinorityOversizeOverrideEnabled, // retained (no-op in renderer now)
-            darkMinorityOversizeOverrideValue: defaultsManager.darkMinorityOversizeOverrideValue      // retained (no-op)
+            showLightAreaTextureFillMask: defaultsManager.showLightAreaTextureFillMask
         )
     }
     

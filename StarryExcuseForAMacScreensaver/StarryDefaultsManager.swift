@@ -26,8 +26,6 @@ class StarryDefaultsManager {
     private let defaultMoonPhaseOverrideValue = 0.0
     // Debug toggle defaults
     private let defaultShowLightAreaTextureFillMask = false
-    private let defaultDarkMinorityOversizeOverrideEnabled = false   // retained (deprecated – renderer ignores)
-    private let defaultDarkMinorityOversizeOverrideValue = 1.25      // retained (deprecated)
     
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
@@ -45,6 +43,13 @@ class StarryDefaultsManager {
             defaults.set(legacy, forKey: "ShowLightAreaTextureFillMask")
             defaults.removeObject(forKey: "ShowCrescentClipMask")
             defaults.synchronize()
+        }
+        // Remove deprecated oversize keys if present
+        if defaults.object(forKey: "DarkMinorityOversizeOverrideEnabled") != nil {
+            defaults.removeObject(forKey: "DarkMinorityOversizeOverrideEnabled")
+        }
+        if defaults.object(forKey: "DarkMinorityOversizeOverrideValue") != nil {
+            defaults.removeObject(forKey: "DarkMinorityOversizeOverrideValue")
         }
     }
     
@@ -183,36 +188,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Override for dark minority oversize (deprecated, retained for compatibility)
-    var darkMinorityOversizeOverrideEnabled: Bool {
-        set {
-            defaults.set(newValue, forKey: "DarkMinorityOversizeOverrideEnabled")
-            defaults.synchronize()
-        }
-        get {
-            if defaults.object(forKey: "DarkMinorityOversizeOverrideEnabled") == nil {
-                return defaultDarkMinorityOversizeOverrideEnabled
-            }
-            return defaults.bool(forKey: "DarkMinorityOversizeOverrideEnabled")
-        }
-    }
-    
-    // Value used when override is enabled (deprecated). 0.5 .. 5.0
-    var darkMinorityOversizeOverrideValue: Double {
-        set {
-            let clamped = max(0.5, min(5.0, newValue))
-            defaults.set(clamped, forKey: "DarkMinorityOversizeOverrideValue")
-            defaults.synchronize()
-        }
-        get {
-            let v = defaults.double(forKey: "DarkMinorityOversizeOverrideValue")
-            if v.isNaN || v < 0.5 || v > 5.0 {
-                return defaultDarkMinorityOversizeOverrideValue
-            }
-            return v
-        }
-    }
-    
     // Ensure logical relation when saving (called by config UI)
     func normalizeMoonRadiusBounds() {
         if moonMinRadius > moonMaxRadius {
@@ -270,15 +245,6 @@ class StarryDefaultsManager {
             os_log("Out-of-range MoonPhaseOverrideValue %.3f detected. Resetting to %.3f.",
                    log: log, type: .error, phaseOverride, defaultMoonPhaseOverrideValue)
             defaults.set(defaultMoonPhaseOverrideValue, forKey: "MoonPhaseOverrideValue")
-            corrected = true
-        }
-        
-        // 5. Oversize override value sanity (deprecated)
-        let oversizeOverride = defaults.double(forKey: "DarkMinorityOversizeOverrideValue")
-        if oversizeOverride.isNaN || oversizeOverride < 0.5 || oversizeOverride > 5.0 {
-            os_log("Out-of-range DarkMinorityOversizeOverrideValue %.3f detected. Resetting to %.3f.",
-                   log: log, type: .error, oversizeOverride, defaultDarkMinorityOversizeOverrideValue)
-            defaults.set(defaultDarkMinorityOversizeOverrideValue, forKey: "DarkMinorityOversizeOverrideValue")
             corrected = true
         }
         

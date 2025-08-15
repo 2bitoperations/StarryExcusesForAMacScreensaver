@@ -27,9 +27,6 @@
                 <outlet property="saveCloseButton" destination="irw-GB-QPa" id="SAVE-BTN-OUTLET"/>
                 <outlet property="secsBetweenClears" destination="CG8-TJ-hHM" id="5Fh-T7-gR5"/>
                 <outlet property="showLightAreaTextureFillMaskCheckbox" destination="CLIP-CHK" id="CLIP-CHK-OUTLET"/>
-                <outlet property="oversizeOverrideCheckbox" destination="OVR-OZ-CHK" id="OVR-OZ-CHK-OUTLET"/>
-                <outlet property="oversizeOverrideSlider" destination="OVR-OZ-SL" id="OVR-OZ-SL-OUTLET"/>
-                <outlet property="oversizeOverridePreview" destination="OVR-OZ-VAL-LBL" id="OVR-OZ-VAL-LBL-OUTLET"/>
                 <outlet property="starsPerUpdate" destination="IjJ-g5-V0M" id="abn-RS-3YH"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
             </connections>
@@ -236,46 +233,9 @@
                                     </textField>
                                 </subviews>
                             </stackView>
-                            <!-- Oversize override checkbox row -->
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="OVR-OZ-CHK-STK">
-                                <rect key="frame" x="0.0" y="184" width="300" height="22"/>
-                                <subviews>
-                                    <button translatesAutoresizingMaskIntoConstraints="NO" id="OVR-OZ-CHK">
-                                        <rect key="frame" x="-2" y="0.0" width="230" height="22"/>
-                                        <buttonCell key="cell" type="switch" title="Override Dark Minority Oversize" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="OVR-OZ-CHK-CELL">
-                                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
-                                            <font key="font" metaFont="system"/>
-                                        </buttonCell>
-                                        <connections>
-                                            <action selector="oversizeOverrideToggled:" target="-2" id="OVR-OZ-CHK-ACT"/>
-                                        </connections>
-                                    </button>
-                                </subviews>
-                            </stackView>
-                            <!-- Oversize override slider row -->
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="OVR-OZ-SL-STK">
-                                <rect key="frame" x="0.0" y="154" width="300" height="22"/>
-                                <subviews>
-                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="OVR-OZ-LBL-TXT">
-                                        <rect key="frame" x="-2" y="4" width="142" height="14"/>
-                                        <textFieldCell key="cell" title="Dark Oversize" id="OVR-OZ-LBL-TXT-CELL"/>
-                                    </textField>
-                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="OVR-OZ-SL">
-                                        <rect key="frame" x="144" y="-6" width="120" height="28"/>
-                                        <sliderCell key="cell" minValue="0.5" maxValue="5" doubleValue="1.25" tickMarkPosition="below" sliderType="linear" id="OVR-OZ-SL-CELL"/>
-                                        <connections>
-                                            <action selector="oversizeOverrideSliderChanged:" target="-2" id="OVR-OZ-SL-ACT"/>
-                                        </connections>
-                                    </slider>
-                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="OVR-OZ-VAL-LBL">
-                                        <rect key="frame" x="268" y="4" width="32" height="14"/>
-                                        <textFieldCell key="cell" title="1.25" id="OVR-OZ-VAL-LBL-CELL"/>
-                                    </textField>
-                                </subviews>
-                            </stackView>
                             <!-- Debug illuminated mask checkbox row -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-STK">
-                                <rect key="frame" x="0.0" y="124" width="330" height="22"/>
+                                <rect key="frame" x="0.0" y="184" width="330" height="22"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-CHK">
                                         <rect key="frame" x="-2" y="0.0" width="320" height="22"/>
@@ -290,7 +250,7 @@
                                 </subviews>
                             </stackView>
                             <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
-                                <rect key="frame" x="0.0" y="94" width="130" height="20"/>
+                                <rect key="frame" x="0.0" y="154" width="130" height="20"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-PAUSE">
                                         <rect key="frame" x="-7" y="-7" width="71" height="32"/>
@@ -315,7 +275,7 @@
                                 </subviews>
                             </stackView>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CLEAR">
-                                <rect key="frame" x="0.0" y="82" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="142" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Clear Preview" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CLEAR-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -325,7 +285,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="irw-GB-QPa">
-                                <rect key="frame" x="0.0" y="48" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="108" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Save and Close" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="IyX-HG-idV">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -335,7 +295,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CANCEL">
-                                <rect key="frame" x="0.0" y="14" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="74" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Cancel" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CANCEL-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>

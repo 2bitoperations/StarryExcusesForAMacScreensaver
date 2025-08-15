@@ -20,15 +20,12 @@ struct StarryRuntimeConfig {
     var traceEnabled: Bool
     // Debug: show the illuminated region mask (in red) instead of bright texture
     var showLightAreaTextureFillMask: Bool
-    // Deprecated / retained (now ignored) dark minority oversize controls
-    var darkMinorityOversizeOverrideEnabled: Bool
-    var darkMinorityOversizeOverrideValue: Double
 }
 
 final class StarryEngine {
     // Base (persistent) star/building/backdrop context
     private(set) var baseContext: CGContext
-    // Moon overlay (transparent) updated at most once per second
+    // Moon overlay (transparent) rewritten each frame (content internally cached)
     private var moonLayerContext: CGContext
     // Temporary compositing context (reused) used to produce final frame
     private var compositeContext: CGContext
@@ -42,8 +39,6 @@ final class StarryEngine {
     
     private var size: CGSize
     private var lastInitSize: CGSize
-    
-    private var lastMoonRenderTime: TimeInterval = 0 // monotonic time
     
     init(size: CGSize,
          log: OSLog,
@@ -118,9 +113,7 @@ final class StarryEngine {
             config.moonDarkBrightness != newConfig.moonDarkBrightness ||
             config.moonPhaseOverrideEnabled != newConfig.moonPhaseOverrideEnabled ||
             config.moonPhaseOverrideValue != newConfig.moonPhaseOverrideValue ||
-            config.showLightAreaTextureFillMask != newConfig.showLightAreaTextureFillMask ||
-            config.darkMinorityOversizeOverrideEnabled != newConfig.darkMinorityOversizeOverrideEnabled ||
-            config.darkMinorityOversizeOverrideValue != newConfig.darkMinorityOversizeOverrideValue {
+            config.showLightAreaTextureFillMask != newConfig.showLightAreaTextureFillMask {
             skyline = nil
             skylineRenderer = nil
             moonRenderer = nil
@@ -157,8 +150,6 @@ final class StarryEngine {
                                                  brightBrightness: CGFloat(config.moonBrightBrightness),
                                                  darkBrightness: CGFloat(config.moonDarkBrightness),
                                                  showLightAreaTextureFillMask: config.showLightAreaTextureFillMask)
-                // force first moon render immediately
-                lastMoonRenderTime = 0
             }
         } catch {
             os_log("StarryEngine: unable to init skyline %{public}@", log: log, type: .fault, "\(error)")
@@ -176,14 +167,10 @@ final class StarryEngine {
         moonLayerContext.clear(CGRect(origin: .zero, size: size))
     }
     
-    // MARK: - Moon Rendering Rate Limiting
+    // MARK: - Moon Rendering
     
-    private func maybeUpdateMoonLayer() {
+    private func updateMoonLayer() {
         guard let renderer = moonRenderer else { return }
-        let now = CACurrentMediaTime()
-        // Update at most once per second
-        if now - lastMoonRenderTime < 1.0 { return }
-        lastMoonRenderTime = now
         clearMoonLayer()
         renderer.renderMoon(into: moonLayerContext)
     }
@@ -212,8 +199,8 @@ final class StarryEngine {
         // Draw incremental stars/building lights/flasher onto base (persistent)
         skylineRenderer.drawSingleFrame(context: baseContext)
         
-        // Possibly update moon layer (overlay not baked into base)
-        maybeUpdateMoonLayer()
+        // Update moon layer (renderer internally caches shading pattern)
+        updateMoonLayer()
         
         // Composite: base first, then moon overlay
         compositeContext.setFillColor(CGColor(gray: 0, alpha: 1))
