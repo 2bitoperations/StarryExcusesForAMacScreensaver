@@ -26,7 +26,7 @@
                 <outlet property="pauseToggleButton" destination="BTN-PAUSE" id="PAUSE-BTN-OUTLET"/>
                 <outlet property="saveCloseButton" destination="irw-GB-QPa" id="SAVE-BTN-OUTLET"/>
                 <outlet property="secsBetweenClears" destination="CG8-TJ-hHM" id="5Fh-T7-gR5"/>
-                <outlet property="showCrescentClipMaskCheckbox" destination="CLIP-CHK" id="CLIP-CHK-OUTLET"/>
+                <outlet property="showLightAreaTextureFillMaskCheckbox" destination="CLIP-CHK" id="CLIP-CHK-OUTLET"/>
                 <outlet property="oversizeOverrideCheckbox" destination="OVR-OZ-CHK" id="OVR-OZ-CHK-OUTLET"/>
                 <outlet property="oversizeOverrideSlider" destination="OVR-OZ-SL" id="OVR-OZ-SL-OUTLET"/>
                 <outlet property="oversizeOverridePreview" destination="OVR-OZ-VAL-LBL" id="OVR-OZ-VAL-LBL-OUTLET"/>
@@ -273,18 +273,18 @@
                                     </textField>
                                 </subviews>
                             </stackView>
-                            <!-- Debug crescent clip mask checkbox row -->
+                            <!-- Debug illuminated mask checkbox row -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-STK">
-                                <rect key="frame" x="0.0" y="124" width="280" height="22"/>
+                                <rect key="frame" x="0.0" y="124" width="330" height="22"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-CHK">
-                                        <rect key="frame" x="-2" y="0.0" width="250" height="22"/>
-                                        <buttonCell key="cell" type="switch" title="Show Crescent Clip Mask (debug)" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="CLIP-CHK-CELL">
+                                        <rect key="frame" x="-2" y="0.0" width="320" height="22"/>
+                                        <buttonCell key="cell" type="switch" title="Show Light Area Texture Fill Mask (debug)" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="CLIP-CHK-CELL">
                                             <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
                                             <font key="font" metaFont="system"/>
                                         </buttonCell>
                                         <connections>
-                                            <action selector="showCrescentClipMaskToggled:" target="-2" id="CLIP-CHK-ACT"/>
+                                            <action selector="showLightAreaTextureFillMaskToggled:" target="-2" id="CLIP-CHK-ACT"/>
                                         </connections>
                                     </button>
                                 </subviews>

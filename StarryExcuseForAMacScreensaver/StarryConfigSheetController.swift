@@ -37,10 +37,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var moonPhaseSlider: NSSlider!
     @IBOutlet weak var moonPhasePreview: NSTextField!
     
-    // Debug / troubleshooting: show crescent clip mask (bright red) checkbox
-    @IBOutlet weak var showCrescentClipMaskCheckbox: NSButton!
+    // Debug / troubleshooting: show illuminated texture fill mask
+    @IBOutlet weak var showLightAreaTextureFillMaskCheckbox: NSButton!
     
-    // Oversize override controls
+    // Oversize override controls (deprecated, still shown)
     @IBOutlet weak var oversizeOverrideCheckbox: NSButton!
     @IBOutlet weak var oversizeOverrideSlider: NSSlider!
     @IBOutlet weak var oversizeOverridePreview: NSTextField!
@@ -74,7 +74,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastDarkBrightness: Double = 0
     private var lastMoonPhaseOverrideEnabled: Bool = false
     private var lastMoonPhaseOverrideValue: Double = 0.0
-    private var lastShowCrescentClipMask: Bool = false
+    private var lastShowLightAreaTextureFillMask: Bool = false
     private var lastOversizeOverrideEnabled: Bool = false
     private var lastOversizeOverrideValue: Double = 1.25
     
@@ -159,17 +159,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         }
     }
     
-    @IBAction func showCrescentClipMaskToggled(_ sender: Any) {
-        let newVal = (showCrescentClipMaskCheckbox.state == .on)
-        if newVal != lastShowCrescentClipMask {
-            logChange(changedKey: "showCrescentClipMask",
-                      oldValue: lastShowCrescentClipMask ? "true" : "false",
+    @IBAction func showLightAreaTextureFillMaskToggled(_ sender: Any) {
+        let newVal = (showLightAreaTextureFillMaskCheckbox.state == .on)
+        if newVal != lastShowLightAreaTextureFillMask {
+            logChange(changedKey: "showLightAreaTextureFillMask",
+                      oldValue: lastShowLightAreaTextureFillMask ? "true" : "false",
                       newValue: newVal ? "true" : "false")
-            lastShowCrescentClipMask = newVal
+            lastShowLightAreaTextureFillMask = newVal
         }
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
-        maybeClearAndRestartPreview(reason: "showCrescentClipMaskToggled")
+        maybeClearAndRestartPreview(reason: "showLightAreaTextureFillMaskToggled")
     }
     
     @IBAction func oversizeOverrideToggled(_ sender: Any) {
@@ -279,7 +279,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonPhasePreview.stringValue = formatPhase(moonPhaseSlider.doubleValue)
         updatePhaseOverrideUIEnabled()
         
-        showCrescentClipMaskCheckbox.state = defaultsManager.showCrescentClipMask ? .on : .off
+        showLightAreaTextureFillMaskCheckbox.state = defaultsManager.showLightAreaTextureFillMask ? .on : .off
         
         oversizeOverrideCheckbox.state = defaultsManager.darkMinorityOversizeOverrideEnabled ? .on : .off
         oversizeOverrideSlider.minValue = 0.5
@@ -299,7 +299,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastDarkBrightness = darkBrightnessSlider.doubleValue
         lastMoonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         lastMoonPhaseOverrideValue = moonPhaseSlider.doubleValue
-        lastShowCrescentClipMask = (showCrescentClipMaskCheckbox.state == .on)
+        lastShowLightAreaTextureFillMask = (showLightAreaTextureFillMaskCheckbox.state == .on)
         lastOversizeOverrideEnabled = (oversizeOverrideCheckbox.state == .on)
         lastOversizeOverrideValue = oversizeOverrideSlider.doubleValue
         
@@ -494,7 +494,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             moonPhaseOverrideEnabled: moonPhaseOverrideCheckbox.state == .on,
             moonPhaseOverrideValue: moonPhaseSlider.doubleValue,
             traceEnabled: false,
-            showCrescentClipMask: (showCrescentClipMaskCheckbox.state == .on),
+            showLightAreaTextureFillMask: (showLightAreaTextureFillMaskCheckbox.state == .on),
             darkMinorityOversizeOverrideEnabled: (oversizeOverrideCheckbox.state == .on),
             darkMinorityOversizeOverrideValue: oversizeOverrideSlider.doubleValue
         )
@@ -556,7 +556,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.moonDarkBrightness = darkBrightnessSlider.doubleValue
         defaultsManager.moonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         defaultsManager.moonPhaseOverrideValue = moonPhaseSlider.doubleValue
-        defaultsManager.showCrescentClipMask = (showCrescentClipMaskCheckbox.state == .on)
+        defaultsManager.showLightAreaTextureFillMask = (showLightAreaTextureFillMaskCheckbox.state == .on)
         defaultsManager.darkMinorityOversizeOverrideEnabled = (oversizeOverrideCheckbox.state == .on)
         defaultsManager.darkMinorityOversizeOverrideValue = oversizeOverrideSlider.doubleValue
         
@@ -600,7 +600,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                " moonDarkBrightness=\(format(darkBrightnessSlider.doubleValue))," +
                " moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)," +
                " moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))," +
-               " showCrescentClipMask=\(showCrescentClipMaskCheckbox.state == .on)," +
+               " showLightAreaTextureFillMask=\(showLightAreaTextureFillMaskCheckbox.state == .on)," +
                " darkMinorityOversizeOverrideEnabled=\(oversizeOverrideCheckbox.state == .on)," +
                " darkMinorityOversizeOverrideValue=\(format(oversizeOverrideSlider.doubleValue))"
     }

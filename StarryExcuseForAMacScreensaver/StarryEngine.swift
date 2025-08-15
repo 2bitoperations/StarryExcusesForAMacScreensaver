@@ -18,9 +18,9 @@ struct StarryRuntimeConfig {
     // 0.0 -> New, 0.5 -> Full, 1.0 -> New (wrap)
     var moonPhaseOverrideValue: Double
     var traceEnabled: Bool
-    // Troubleshooting: show the crescent clip region (bright or dark minority) in red
-    var showCrescentClipMask: Bool
-    // Override for dark minority oversize
+    // Debug: show the illuminated region mask (in red) instead of bright texture
+    var showLightAreaTextureFillMask: Bool
+    // Deprecated / retained (now ignored) dark minority oversize controls
     var darkMinorityOversizeOverrideEnabled: Bool
     var darkMinorityOversizeOverrideValue: Double
 }
@@ -118,7 +118,7 @@ final class StarryEngine {
             config.moonDarkBrightness != newConfig.moonDarkBrightness ||
             config.moonPhaseOverrideEnabled != newConfig.moonPhaseOverrideEnabled ||
             config.moonPhaseOverrideValue != newConfig.moonPhaseOverrideValue ||
-            config.showCrescentClipMask != newConfig.showCrescentClipMask ||
+            config.showLightAreaTextureFillMask != newConfig.showLightAreaTextureFillMask ||
             config.darkMinorityOversizeOverrideEnabled != newConfig.darkMinorityOversizeOverrideEnabled ||
             config.darkMinorityOversizeOverrideValue != newConfig.darkMinorityOversizeOverrideValue {
             skyline = nil
@@ -156,9 +156,7 @@ final class StarryEngine {
                                                  log: log,
                                                  brightBrightness: CGFloat(config.moonBrightBrightness),
                                                  darkBrightness: CGFloat(config.moonDarkBrightness),
-                                                 showCrescentClipMask: config.showCrescentClipMask,
-                                                 oversizeOverrideEnabled: config.darkMinorityOversizeOverrideEnabled,
-                                                 oversizeOverrideValue: CGFloat(config.darkMinorityOversizeOverrideValue))
+                                                 showLightAreaTextureFillMask: config.showLightAreaTextureFillMask)
                 // force first moon render immediately
                 lastMoonRenderTime = 0
             }

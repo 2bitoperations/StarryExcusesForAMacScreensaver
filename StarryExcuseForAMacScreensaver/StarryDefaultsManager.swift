@@ -25,13 +25,27 @@ class StarryDefaultsManager {
     // 0 = New, 0.25 ≈ First Quarter, 0.5 = Full, 0.75 ≈ Last Quarter, 1.0 = New
     private let defaultMoonPhaseOverrideValue = 0.0
     // Debug toggle defaults
-    private let defaultShowCrescentClipMask = false
-    private let defaultDarkMinorityOversizeOverrideEnabled = false
-    private let defaultDarkMinorityOversizeOverrideValue = 1.25  // starting point of dynamic range
+    private let defaultShowLightAreaTextureFillMask = false
+    private let defaultDarkMinorityOversizeOverrideEnabled = false   // retained (deprecated – renderer ignores)
+    private let defaultDarkMinorityOversizeOverrideValue = 1.25      // retained (deprecated)
     
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
         defaults = ScreenSaverDefaults.init(forModuleWithName: identifier!)!
+        migrateLegacyKeysIfNeeded()
+    }
+    
+    // MARK: - Migration
+    
+    private func migrateLegacyKeysIfNeeded() {
+        // Legacy key: ShowCrescentClipMask -> ShowLightAreaTextureFillMask
+        if defaults.object(forKey: "ShowLightAreaTextureFillMask") == nil,
+           defaults.object(forKey: "ShowCrescentClipMask") != nil {
+            let legacy = defaults.bool(forKey: "ShowCrescentClipMask")
+            defaults.set(legacy, forKey: "ShowLightAreaTextureFillMask")
+            defaults.removeObject(forKey: "ShowCrescentClipMask")
+            defaults.synchronize()
+        }
     }
     
     // MARK: - Stored properties (with range enforcement)
@@ -155,21 +169,21 @@ class StarryDefaultsManager {
         }
     }
     
-    // Debug: show crescent clip mask
-    var showCrescentClipMask: Bool {
+    // Debug: show illuminated mask (instead of bright texture)
+    var showLightAreaTextureFillMask: Bool {
         set {
-            defaults.set(newValue, forKey: "ShowCrescentClipMask")
+            defaults.set(newValue, forKey: "ShowLightAreaTextureFillMask")
             defaults.synchronize()
         }
         get {
-            if defaults.object(forKey: "ShowCrescentClipMask") == nil {
-                return defaultShowCrescentClipMask
+            if defaults.object(forKey: "ShowLightAreaTextureFillMask") == nil {
+                return defaultShowLightAreaTextureFillMask
             }
-            return defaults.bool(forKey: "ShowCrescentClipMask")
+            return defaults.bool(forKey: "ShowLightAreaTextureFillMask")
         }
     }
     
-    // Override for dark minority oversize (when true, renderer uses provided value)
+    // Override for dark minority oversize (deprecated, retained for compatibility)
     var darkMinorityOversizeOverrideEnabled: Bool {
         set {
             defaults.set(newValue, forKey: "DarkMinorityOversizeOverrideEnabled")
@@ -183,7 +197,7 @@ class StarryDefaultsManager {
         }
     }
     
-    // Value used when override is enabled. Allow a practical range 0.5 .. 5.0
+    // Value used when override is enabled (deprecated). 0.5 .. 5.0
     var darkMinorityOversizeOverrideValue: Double {
         set {
             let clamped = max(0.5, min(5.0, newValue))
@@ -259,7 +273,7 @@ class StarryDefaultsManager {
             corrected = true
         }
         
-        // 5. Oversize override value sanity
+        // 5. Oversize override value sanity (deprecated)
         let oversizeOverride = defaults.double(forKey: "DarkMinorityOversizeOverrideValue")
         if oversizeOverride.isNaN || oversizeOverride < 0.5 || oversizeOverride > 5.0 {
             os_log("Out-of-range DarkMinorityOversizeOverrideValue %.3f detected. Resetting to %.3f.",
