@@ -44,7 +44,7 @@ final class ShootingStarsLayerRenderer {
     private weak var skyline: Skyline?
     private let log: OSLog
     
-    // Config (dynamic; may be replaced by new renderer if changed)
+    // Config
     private var avgSeconds: Double
     private var directionMode: ShootingStarDirectionMode
     private var baseLength: CGFloat
@@ -55,11 +55,7 @@ final class ShootingStarsLayerRenderer {
     private var debugShowSpawnBounds: Bool
     
     private var active: [ShootingStar] = []
-    
     private var rng = SystemRandomNumberGenerator()
-    
-    // For Poisson process
-    private var timeAccumulator: CFTimeInterval = 0
     
     // Spawn constraints
     private var safeMinY: CGFloat = 0
@@ -89,18 +85,16 @@ final class ShootingStarsLayerRenderer {
         self.brightness = brightness
         self.trailDecay = trailDecay
         self.debugShowSpawnBounds = debugShowSpawnBounds
-        
         computeSafeMinY()
     }
     
     func reset() {
         active.removeAll()
-        timeAccumulator = 0
     }
     
     private func computeSafeMinY() {
         if let sk = skyline {
-            // Buildings rise from y=0 upward – keep path completely above buildingMaxHeight + margin
+            // Keep paths fully above tops of buildings (+ margin)
             safeMinY = CGFloat(sk.buildingMaxHeight + 4)
         } else {
             safeMinY = 0
@@ -110,40 +104,47 @@ final class ShootingStarsLayerRenderer {
     // MARK: - Update
     
     func update(into ctx: CGContext, dt: CFTimeInterval) {
-        // Apply decay (multiplicative) to existing layer to fade trails
+        // Fade existing streaks WITHOUT darkening the background behind layer.
         applyTrailDecay(into: ctx)
         
         spawnIfNeeded(dt: dt)
         
-        // Update existing stars
+        // Advance positions
         for i in 0..<active.count {
             var s = active[i]
             s.advance(dt: dt)
             active[i] = s
         }
         
-        // Remove finished
+        // Remove old
         active.removeAll { $0.done }
         
-        // Draw each active star (additive-ish by drawing bright strokes)
+        // Draw
         for s in active {
             drawStar(s, into: ctx)
         }
         
-        // Debug overlay
         if debugShowSpawnBounds {
             drawSpawnBounds(into: ctx)
         }
     }
     
-    // MARK: - Decay
-    
+    // MARK: - Decay (alpha attenuation only)
+    //
+    // Previous implementation filled semi-transparent BLACK using normal blend,
+    // which over the composite dimmed the scene below. Here we instead multiply
+    // existing pixels (both color & alpha) by trailDecay by drawing an opaque
+    // WHITE rect with alpha=trailDecay in destinationIn blend mode:
+    //
+    // dest.rgb = dest.rgb * src.alpha  (≈ trailDecay)
+    // dest.a   = dest.a   * src.alpha  (≈ trailDecay)
+    //
+    // Transparent regions stay transparent (not darkened).
     private func applyTrailDecay(into ctx: CGContext) {
-        // Multiply existing pixels by trailDecay by filling black with alpha = (1 - trailDecay)
         ctx.saveGState()
-        let alpha = 1.0 - trailDecay
-        ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: alpha))
-        ctx.setBlendMode(.normal)
+        ctx.setBlendMode(.destinationIn)
+        // Use white so we keep RGB proportionally (black would zero them out).
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: trailDecay))
         ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
         ctx.restoreGState()
     }
@@ -152,7 +153,6 @@ final class ShootingStarsLayerRenderer {
     
     private func spawnIfNeeded(dt: CFTimeInterval) {
         guard avgSeconds > 0 else { return }
-        // Poisson arrival: p = dt / mean
         let p = dt / avgSeconds
         if Double.random(in: 0...1, using: &rng) < p {
             attemptSpawn()
@@ -173,7 +173,7 @@ final class ShootingStarsLayerRenderer {
         let lengthJitter = baseLength * CGFloat.random(in: 0.85...1.15, using: &rng)
         let lifetime = CFTimeInterval(lengthJitter / speed)
         
-        // Need head0 such that head0 - dir*length and head0 + dir*length are both within safe area
+        // Head position constraints so both ends remain in safe area.
         let margin: CGFloat = 4
         let minX = margin + lengthJitter
         let maxX = CGFloat(width) - margin - lengthJitter
@@ -192,12 +192,11 @@ final class ShootingStarsLayerRenderer {
             let extremity2 = CGPoint(x: head0.x + dir.dx * lengthJitter,
                                      y: head0.y + dir.dy * lengthJitter)
             if inside(extremity1) && inside(extremity2) {
-                let t = thickness
                 return ShootingStar(head: head0,
                                     dir: dir,
                                     speed: speed,
                                     length: lengthJitter,
-                                    thickness: max(0.5, t),
+                                    thickness: max(0.5, thickness),
                                     brightness: brightness,
                                     lifetime: lifetime)
             }
@@ -217,8 +216,6 @@ final class ShootingStarsLayerRenderer {
             if len == 0 { return CGVector(dx: 1, dy: -0.3) }
             return CGVector(dx: dx/len, dy: dy/len)
         }
-        
-        // Slight downward tendency so stars drift toward horizon
         switch directionMode {
         case .leftToRight:
             return addJitter(norm(1, -0.25))
@@ -229,7 +226,6 @@ final class ShootingStarsLayerRenderer {
         case .topRightToBottomLeft:
             return addJitter(norm(-1, -1))
         case .random:
-            // Curated list
             let candidates: [CGVector] = [
                 norm(1, -0.3),
                 norm(-1, -0.3),
@@ -256,31 +252,25 @@ final class ShootingStarsLayerRenderer {
     // MARK: - Drawing
     
     private func drawStar(_ s: ShootingStar, into ctx: CGContext) {
-        let head = s.head
         let tail = s.tailPosition()
         let dir = s.dir
         let len = s.length
         
-        // Fade-in at start (first 15% lifetime)
         var brightnessFactor = s.brightness
         if s.age < s.lifetime * 0.15 {
             brightnessFactor *= CGFloat(s.age / (s.lifetime * 0.15))
         }
         
-        // Segment-based rendering
         let segments = 18
         for i in 0..<segments {
             let t = CGFloat(i) / CGFloat(segments - 1) // 0 tail -> 1 head
             let px = tail.x + dir.dx * len * t
             let py = tail.y + dir.dy * len * t
             
-            // Intensity falls off toward tail (quadratic)
             let intensity = brightnessFactor * pow(t, 2.0)
-            
-            // Thickness tapers: tail thinner
             let radius = (s.thickness * 0.3) + (s.thickness * 0.7 * t)
             
-            // Color: head warm tint, tail white
+            // Blend color from tail white to warm head
             let warmHead = (r: CGFloat(1.0), g: CGFloat(0.95), b: CGFloat(0.85))
             let tailWhite = (r: CGFloat(1.0), g: CGFloat(1.0), b: CGFloat(1.0))
             let blend = t
