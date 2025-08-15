@@ -97,7 +97,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastShootingStarsThickness: Double = 0
     private var lastShootingStarsBrightness: Double = 0
     private var lastShootingStarsTrailDecay: Double = 0
-    private var lastShootingStarsDebugSpawnBounds: Bool = false
+    private var lastShootingStarsDebugSpawnBounds: Bool = 0 != 0
     
     // MARK: - UI Actions (sliders / controls)
     
@@ -374,6 +374,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsBrightnessSlider.doubleValue = defaultsManager.shootingStarsBrightness
         shootingStarsTrailDecaySlider.doubleValue = defaultsManager.shootingStarsTrailDecay
         shootingStarsDebugSpawnBoundsCheckbox.state = defaultsManager.shootingStarsDebugShowSpawnBounds ? .on : .off
+        
+        // Explicitly ensure key text fields are editable/selectable (in case IB flags were lost)
+        moonTraversalMinutes.isEditable = true
+        moonTraversalMinutes.isSelectable = true
+        moonTraversalMinutes.isEnabled = true
+        
+        shootingStarsAvgSecondsField.isEditable = true
+        shootingStarsAvgSecondsField.isSelectable = true
+        shootingStarsAvgSecondsField.isEnabled = (shootingStarsEnabledCheckbox.state == .on)
         
         // Snapshot last-known values
         lastStarsPerUpdate = starsPerUpdate.integerValue

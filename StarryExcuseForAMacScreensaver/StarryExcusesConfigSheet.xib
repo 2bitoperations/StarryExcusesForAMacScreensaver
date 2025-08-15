@@ -27,7 +27,6 @@
                 <outlet property="secsBetweenClears" destination="CG8-TJ-hHM" id="5Fh-T7-gR5"/>
                 <outlet property="showLightAreaTextureFillMaskCheckbox" destination="CLIP-CHK" id="CLIP-CHK-OUTLET"/>
                 <outlet property="starsPerUpdate" destination="IjJ-g5-V0M" id="abn-RS-3YH"/>
-                <!-- Shooting star outlets -->
                 <outlet property="shootingStarsEnabledCheckbox" destination="SS-EN-CHK" id="SS-EN-CHK-OUTLET"/>
                 <outlet property="shootingStarsAvgSecondsField" destination="SS-AVG-FLD" id="SS-AVG-FLD-OUTLET"/>
                 <outlet property="shootingStarsDirectionPopup" destination="SS-DIR-POP" id="SS-DIR-POP-OUTLET"/>
@@ -60,7 +59,6 @@
                     <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="10" translatesAutoresizingMaskIntoConstraints="NO" id="Ab2-ul-qfO">
                         <rect key="frame" x="0.0" y="0.0" width="300" height="600"/>
                         <subviews>
-                            <!-- Existing rows (unchanged above) -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
                                 <rect key="frame" x="0.0" y="482" width="181" height="216"/>
                                 <subviews>
@@ -95,15 +93,15 @@
                                 </constraints>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
-                                <rect key="frame" x="0.0" y="424" width="156" height="19"/>
+                                <rect key="frame" x="0.0" y="424" width="190" height="19"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="Lbl-Moon-Time">
                                         <rect key="frame" x="-2" y="2" width="130" height="15"/>
                                         <textFieldCell key="cell" lineBreakMode="clipping" title="Moon Traverse Minutes" id="Lbl-Moon-Time-Cell"/>
                                     </textField>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MTR-lb-Min">
-                                        <rect key="frame" x="134" y="0.0" width="22" height="19"/>
-                                        <textFieldCell key="cell" borderStyle="bezel" title="60" id="MTR-lb-Min-Cell"/>
+                                        <rect key="frame" x="134" y="0.0" width="56" height="19"/>
+                                        <textFieldCell key="cell" borderStyle="bezel" title="60" selectable="YES" editable="YES" id="MTR-lb-Min-Cell"/>
                                     </textField>
                                 </subviews>
                                 <constraints>
@@ -210,7 +208,6 @@
                                     </textField>
                                 </subviews>
                             </stackView>
-                            <!-- Phase override checkbox row -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK-STK">
                                 <rect key="frame" x="0.0" y="244" width="250" height="22"/>
                                 <subviews>
@@ -226,7 +223,6 @@
                                     </button>
                                 </subviews>
                             </stackView>
-                            <!-- Phase slider row -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-SL-STK">
                                 <rect key="frame" x="0.0" y="214" width="270" height="22"/>
                                 <subviews>
@@ -247,7 +243,6 @@
                                     </textField>
                                 </subviews>
                             </stackView>
-                            <!-- Debug illuminated mask checkbox row -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-STK">
                                 <rect key="frame" x="0.0" y="184" width="330" height="22"/>
                                 <subviews>
@@ -263,7 +258,6 @@
                                     </button>
                                 </subviews>
                             </stackView>
-                            <!-- Shooting Stars Enable -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-STK">
                                 <rect key="frame" x="0.0" y="154" width="250" height="22"/>
                                 <subviews>
@@ -279,7 +273,6 @@
                                     </button>
                                 </subviews>
                             </stackView>
-                            <!-- Shooting Stars Avg Seconds -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-STK">
                                 <rect key="frame" x="0.0" y="124" width="250" height="22"/>
                                 <subviews>
@@ -289,14 +282,13 @@
                                     </textField>
                                     <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-FLD">
                                         <rect key="frame" x="142" y="0.0" width="60" height="19"/>
-                                        <textFieldCell key="cell" borderStyle="bezel" title="7.0" id="SS-AVG-FLD-CELL"/>
+                                        <textFieldCell key="cell" borderStyle="bezel" title="7.0" selectable="YES" editable="YES" id="SS-AVG-FLD-CELL"/>
                                         <connections>
                                             <action selector="shootingStarsAvgSecondsChanged:" target="-2" id="SS-AVG-FLD-ACT"/>
                                         </connections>
                                     </textField>
                                 </subviews>
                             </stackView>
-                            <!-- Direction popup -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-STK">
                                 <rect key="frame" x="0.0" y="94" width="250" height="22"/>
                                 <subviews>
@@ -323,7 +315,6 @@
                                     </popUpButton>
                                 </subviews>
                             </stackView>
-                            <!-- Length slider -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-STK">
                                 <rect key="frame" x="0.0" y="64" width="270" height="22"/>
                                 <subviews>
@@ -344,7 +335,6 @@
                                     </textField>
                                 </subviews>
                             </stackView>
-                            <!-- Speed slider -->
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-STK">
                                 <rect key="frame" x="0.0" y="34" width="270" height="22"/>
                                 <subviews>
@@ -365,7 +355,6 @@
                                     </textField>
                                 </subviews>
                             </stackView>
-                            <!-- Thickness / Brightness / Decay -->
                             <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="SS-MORE-STK">
                                 <rect key="frame" x="0.0" y="0.0" width="270" height="30"/>
                                 <subviews>
