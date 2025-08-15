@@ -680,7 +680,7 @@
                                         </constraints>
                                         <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="tortoise" id="2aX-Vf-NeM"/>
                                     </imageView>
-                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-LBL-TXT">
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-LBL-TXT">
                                         <rect key="frame" x="18" y="3" width="73" height="14"/>
                                         <textFieldCell key="cell" title="Speed (px/s)" id="SS-SPD-LBL-TXT-CELL"/>
                                     </textField>
