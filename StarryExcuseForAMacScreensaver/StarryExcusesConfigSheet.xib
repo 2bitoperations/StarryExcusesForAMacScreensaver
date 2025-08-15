@@ -9,7 +9,6 @@
             <connections>
                 <outlet property="brightBrightnessPreview" destination="BRI-B-LBL" id="BRI-B-LBL-ID"/>
                 <outlet property="brightBrightnessSlider" destination="BRI-B-SL" id="BRI-B-SL-ID"/>
-                <outlet property="buildingHeight" destination="a9U-nj-sTo" id="ds1-m3-SUH"/>
                 <outlet property="buildingHeightPreview" destination="tfO-4a-uSm" id="Qh8-zi-05S"/>
                 <outlet property="buildingHeightSlider" destination="2pc-x6-KHb" id="d7R-00-4NT"/>
                 <outlet property="darkBrightnessPreview" destination="DRK-B-LBL" id="DRK-B-LBL-ID"/>
@@ -28,6 +27,21 @@
                 <outlet property="secsBetweenClears" destination="CG8-TJ-hHM" id="5Fh-T7-gR5"/>
                 <outlet property="showLightAreaTextureFillMaskCheckbox" destination="CLIP-CHK" id="CLIP-CHK-OUTLET"/>
                 <outlet property="starsPerUpdate" destination="IjJ-g5-V0M" id="abn-RS-3YH"/>
+                <!-- Shooting star outlets -->
+                <outlet property="shootingStarsEnabledCheckbox" destination="SS-EN-CHK" id="SS-EN-CHK-OUTLET"/>
+                <outlet property="shootingStarsAvgSecondsField" destination="SS-AVG-FLD" id="SS-AVG-FLD-OUTLET"/>
+                <outlet property="shootingStarsDirectionPopup" destination="SS-DIR-POP" id="SS-DIR-POP-OUTLET"/>
+                <outlet property="shootingStarsLengthSlider" destination="SS-LEN-SL" id="SS-LEN-SL-OUTLET"/>
+                <outlet property="shootingStarsSpeedSlider" destination="SS-SPD-SL" id="SS-SPD-SL-OUTLET"/>
+                <outlet property="shootingStarsThicknessSlider" destination="SS-THK-SL" id="SS-THK-SL-OUTLET"/>
+                <outlet property="shootingStarsBrightnessSlider" destination="SS-BRI-SL" id="SS-BRI-SL-OUTLET"/>
+                <outlet property="shootingStarsTrailDecaySlider" destination="SS-DEC-SL" id="SS-DEC-SL-OUTLET"/>
+                <outlet property="shootingStarsLengthPreview" destination="SS-LEN-LBL" id="SS-LEN-LBL-OUTLET"/>
+                <outlet property="shootingStarsSpeedPreview" destination="SS-SPD-LBL" id="SS-SPD-LBL-OUTLET"/>
+                <outlet property="shootingStarsThicknessPreview" destination="SS-THK-LBL" id="SS-THK-LBL-OUTLET"/>
+                <outlet property="shootingStarsBrightnessPreview" destination="SS-BRI-LBL" id="SS-BRI-LBL-OUTLET"/>
+                <outlet property="shootingStarsTrailDecayPreview" destination="SS-DEC-LBL" id="SS-DEC-LBL-OUTLET"/>
+                <outlet property="shootingStarsDebugSpawnBoundsCheckbox" destination="SS-DBG-CHK" id="SS-DBG-CHK-OUTLET"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
             </connections>
         </customObject>
@@ -249,8 +263,191 @@
                                     </button>
                                 </subviews>
                             </stackView>
+                            <!-- Shooting Stars Enable -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-STK">
+                                <rect key="frame" x="0.0" y="154" width="250" height="22"/>
+                                <subviews>
+                                    <button translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-CHK">
+                                        <rect key="frame" x="-2" y="0.0" width="160" height="22"/>
+                                        <buttonCell key="cell" type="switch" title="Enable Shooting Stars" bezelStyle="regularSquare" imagePosition="left" state="on" inset="2" id="SS-EN-CHK-CELL">
+                                            <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
+                                            <font key="font" metaFont="system"/>
+                                        </buttonCell>
+                                        <connections>
+                                            <action selector="shootingStarsToggled:" target="-2" id="SS-EN-ACT"/>
+                                        </connections>
+                                    </button>
+                                </subviews>
+                            </stackView>
+                            <!-- Shooting Stars Avg Seconds -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-STK">
+                                <rect key="frame" x="0.0" y="124" width="250" height="22"/>
+                                <subviews>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-LBL">
+                                        <rect key="frame" x="-2" y="3" width="140" height="14"/>
+                                        <textFieldCell key="cell" title="Avg Seconds Between" id="SS-AVG-LBL-CELL"/>
+                                    </textField>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-FLD">
+                                        <rect key="frame" x="142" y="0.0" width="60" height="19"/>
+                                        <textFieldCell key="cell" borderStyle="bezel" title="7.0" id="SS-AVG-FLD-CELL"/>
+                                        <connections>
+                                            <action selector="shootingStarsAvgSecondsChanged:" target="-2" id="SS-AVG-FLD-ACT"/>
+                                        </connections>
+                                    </textField>
+                                </subviews>
+                            </stackView>
+                            <!-- Direction popup -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-STK">
+                                <rect key="frame" x="0.0" y="94" width="250" height="22"/>
+                                <subviews>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-LBL">
+                                        <rect key="frame" x="-2" y="3" width="90" height="14"/>
+                                        <textFieldCell key="cell" title="Direction Mode" id="SS-DIR-LBL-CELL"/>
+                                    </textField>
+                                    <popUpButton translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-POP">
+                                        <rect key="frame" x="92" y="-1" width="140" height="26"/>
+                                        <popUpButtonCell key="cell" type="push" bezelStyle="rounded" alignment="left" lineBreakMode="truncatingTail" state="on" borderStyle="borderAndBezel" imageScaling="proportionallyDown" inset="2" pullsDown="NO" id="SS-DIR-POP-CELL">
+                                            <menu key="menu" id="SS-DIR-MENU">
+                                                <items>
+                                                    <menuItem title="Random" id="SS-DIR-RND"/>
+                                                    <menuItem title="Left→Right" id="SS-DIR-LR"/>
+                                                    <menuItem title="Right→Left" id="SS-DIR-RL"/>
+                                                    <menuItem title="TL→BR" id="SS-DIR-TLBR"/>
+                                                    <menuItem title="TR→BL" id="SS-DIR-TRBL"/>
+                                                </items>
+                                            </menu>
+                                        </popUpButtonCell>
+                                        <connections>
+                                            <action selector="shootingStarsDirectionChanged:" target="-2" id="SS-DIR-ACT"/>
+                                        </connections>
+                                    </popUpButton>
+                                </subviews>
+                            </stackView>
+                            <!-- Length slider -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-STK">
+                                <rect key="frame" x="0.0" y="64" width="270" height="22"/>
+                                <subviews>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-LBL-TXT">
+                                        <rect key="frame" x="-2" y="3" width="90" height="14"/>
+                                        <textFieldCell key="cell" title="Length (px)" id="SS-LEN-LBL-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-SL">
+                                        <rect key="frame" x="92" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="40" maxValue="300" doubleValue="160" tickMarkPosition="below" sliderType="linear" id="SS-LEN-SL-CELL"/>
+                                        <connections>
+                                            <action selector="shootingStarsSliderChanged:" target="-2" id="SS-LEN-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-LBL">
+                                        <rect key="frame" x="236" y="3" width="30" height="14"/>
+                                        <textFieldCell key="cell" title="160" id="SS-LEN-LBL-CELL"/>
+                                    </textField>
+                                </subviews>
+                            </stackView>
+                            <!-- Speed slider -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-STK">
+                                <rect key="frame" x="0.0" y="34" width="270" height="22"/>
+                                <subviews>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-LBL-TXT">
+                                        <rect key="frame" x="-2" y="3" width="90" height="14"/>
+                                        <textFieldCell key="cell" title="Speed (px/s)" id="SS-SPD-LBL-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-SL">
+                                        <rect key="frame" x="92" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="200" maxValue="1200" doubleValue="600" tickMarkPosition="below" sliderType="linear" id="SS-SPD-SL-CELL"/>
+                                        <connections>
+                                            <action selector="shootingStarsSliderChanged:" target="-2" id="SS-SPD-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-LBL">
+                                        <rect key="frame" x="236" y="3" width="30" height="14"/>
+                                        <textFieldCell key="cell" title="600" id="SS-SPD-LBL-CELL"/>
+                                    </textField>
+                                </subviews>
+                            </stackView>
+                            <!-- Thickness / Brightness / Decay -->
+                            <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="SS-MORE-STK">
+                                <rect key="frame" x="0.0" y="0.0" width="270" height="30"/>
+                                <subviews>
+                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-STK">
+                                        <rect key="frame" x="0.0" y="8" width="270" height="22"/>
+                                        <subviews>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-LBL-TXT">
+                                                <rect key="frame" x="-2" y="3" width="95" height="14"/>
+                                                <textFieldCell key="cell" title="Thickness (px)" id="SS-THK-LBL-TXT-CELL"/>
+                                            </textField>
+                                            <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-SL">
+                                                <rect key="frame" x="97" y="-6" width="140" height="28"/>
+                                                <sliderCell key="cell" minValue="1" maxValue="4" doubleValue="2" tickMarkPosition="below" sliderType="linear" id="SS-THK-SL-CELL"/>
+                                                <connections>
+                                                    <action selector="shootingStarsSliderChanged:" target="-2" id="SS-THK-SL-ACT"/>
+                                                </connections>
+                                            </slider>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-LBL">
+                                                <rect key="frame" x="241" y="3" width="20" height="14"/>
+                                                <textFieldCell key="cell" title="2" id="SS-THK-LBL-CELL"/>
+                                            </textField>
+                                        </subviews>
+                                    </stackView>
+                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-STK">
+                                        <rect key="frame" x="0.0" y="-14" width="270" height="22"/>
+                                        <subviews>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-LBL-TXT">
+                                                <rect key="frame" x="-2" y="3" width="95" height="14"/>
+                                                <textFieldCell key="cell" title="Brightness" id="SS-BRI-LBL-TXT-CELL"/>
+                                            </textField>
+                                            <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-SL">
+                                                <rect key="frame" x="97" y="-6" width="140" height="28"/>
+                                                <sliderCell key="cell" minValue="0.29999999999999999" maxValue="1" doubleValue="0.90000000000000002" tickMarkPosition="below" sliderType="linear" id="SS-BRI-SL-CELL"/>
+                                                <connections>
+                                                    <action selector="shootingStarsSliderChanged:" target="-2" id="SS-BRI-SL-ACT"/>
+                                                </connections>
+                                            </slider>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-BRI-LBL">
+                                                <rect key="frame" x="241" y="3" width="30" height="14"/>
+                                                <textFieldCell key="cell" title="0.90" id="SS-BRI-LBL-CELL"/>
+                                            </textField>
+                                        </subviews>
+                                    </stackView>
+                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-STK">
+                                        <rect key="frame" x="0.0" y="-36" width="270" height="22"/>
+                                        <subviews>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL-TXT">
+                                                <rect key="frame" x="-2" y="3" width="95" height="14"/>
+                                                <textFieldCell key="cell" title="Trail Decay" id="SS-DEC-LBL-TXT-CELL"/>
+                                            </textField>
+                                            <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-SL">
+                                                <rect key="frame" x="97" y="-6" width="140" height="28"/>
+                                                <sliderCell key="cell" minValue="0.84999999999999998" maxValue="0.98999999999999999" doubleValue="0.92000000000000004" tickMarkPosition="below" sliderType="linear" id="SS-DEC-SL-CELL"/>
+                                                <connections>
+                                                    <action selector="shootingStarsSliderChanged:" target="-2" id="SS-DEC-SL-ACT"/>
+                                                </connections>
+                                            </slider>
+                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL">
+                                                <rect key="frame" x="241" y="3" width="40" height="14"/>
+                                                <textFieldCell key="cell" title="0.920" id="SS-DEC-LBL-CELL"/>
+                                            </textField>
+                                        </subviews>
+                                    </stackView>
+                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DBG-STK">
+                                        <rect key="frame" x="0.0" y="-58" width="300" height="22"/>
+                                        <subviews>
+                                            <button translatesAutoresizingMaskIntoConstraints="NO" id="SS-DBG-CHK">
+                                                <rect key="frame" x="-2" y="0.0" width="280" height="22"/>
+                                                <buttonCell key="cell" type="switch" title="Debug: Show Spawn Bounds" bezelStyle="regularSquare" imagePosition="left" state="off" inset="2" id="SS-DBG-CHK-CELL">
+                                                    <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
+                                                    <font key="font" metaFont="system"/>
+                                                </buttonCell>
+                                                <connections>
+                                                    <action selector="shootingStarsDebugSpawnBoundsToggled:" target="-2" id="SS-DBG-CHK-ACT"/>
+                                                </connections>
+                                            </button>
+                                        </subviews>
+                                    </stackView>
+                                </subviews>
+                            </stackView>
                             <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
-                                <rect key="frame" x="0.0" y="154" width="130" height="20"/>
+                                <rect key="frame" x="0.0" y="-26" width="130" height="20"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-PAUSE">
                                         <rect key="frame" x="-7" y="-7" width="71" height="32"/>
@@ -275,7 +472,7 @@
                                 </subviews>
                             </stackView>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CLEAR">
-                                <rect key="frame" x="0.0" y="142" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="-38" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Clear Preview" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CLEAR-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -285,7 +482,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="irw-GB-QPa">
-                                <rect key="frame" x="0.0" y="108" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="-72" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Save and Close" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="IyX-HG-idV">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -295,7 +492,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CANCEL">
-                                <rect key="frame" x="0.0" y="74" width="106" height="32"/>
+                                <rect key="frame" x="0.0" y="-106" width="106" height="32"/>
                                 <buttonCell key="cell" type="push" title="Cancel" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CANCEL-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>

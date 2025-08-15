@@ -113,7 +113,16 @@ class StarryExcuseForAView: ScreenSaverView {
             moonPhaseOverrideEnabled: defaultsManager.moonPhaseOverrideEnabled,
             moonPhaseOverrideValue: defaultsManager.moonPhaseOverrideValue,
             traceEnabled: traceEnabled,
-            showLightAreaTextureFillMask: defaultsManager.showLightAreaTextureFillMask
+            showLightAreaTextureFillMask: defaultsManager.showLightAreaTextureFillMask,
+            shootingStarsEnabled: defaultsManager.shootingStarsEnabled,
+            shootingStarsAvgSeconds: defaultsManager.shootingStarsAvgSeconds,
+            shootingStarsDirectionMode: defaultsManager.shootingStarsDirectionMode,
+            shootingStarsLength: defaultsManager.shootingStarsLength,
+            shootingStarsSpeed: defaultsManager.shootingStarsSpeed,
+            shootingStarsThickness: defaultsManager.shootingStarsThickness,
+            shootingStarsBrightness: defaultsManager.shootingStarsBrightness,
+            shootingStarsTrailDecay: defaultsManager.shootingStarsTrailDecay,
+            shootingStarsDebugShowSpawnBounds: defaultsManager.shootingStarsDebugShowSpawnBounds
         )
     }
     

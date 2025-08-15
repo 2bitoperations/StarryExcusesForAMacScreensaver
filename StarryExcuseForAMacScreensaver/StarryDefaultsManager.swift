@@ -27,6 +27,19 @@ class StarryDefaultsManager {
     // Debug toggle defaults
     private let defaultShowLightAreaTextureFillMask = false
     
+    // Shooting Stars (Option Set C) defaults
+    private let defaultShootingStarsEnabled = true
+    private let defaultShootingStarsAvgSeconds = 7.0
+    // Direction mode raw mapping:
+    // 0 Random, 1 LtoR, 2 RtoL, 3 TL->BR, 4 TR->BL
+    private let defaultShootingStarsDirectionMode = 0
+    private let defaultShootingStarsLength: Double = 160
+    private let defaultShootingStarsSpeed: Double = 600
+    private let defaultShootingStarsThickness: Double = 2
+    private let defaultShootingStarsBrightness: Double = 0.9
+    private let defaultShootingStarsTrailDecay: Double = 0.92
+    private let defaultShootingStarsDebugSpawnBounds = false
+    
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
         defaults = ScreenSaverDefaults.init(forModuleWithName: identifier!)!
@@ -185,6 +198,115 @@ class StarryDefaultsManager {
                 return defaultShowLightAreaTextureFillMask
             }
             return defaults.bool(forKey: "ShowLightAreaTextureFillMask")
+        }
+    }
+    
+    // MARK: - Shooting Stars Settings
+    
+    var shootingStarsEnabled: Bool {
+        set { defaults.set(newValue, forKey: "ShootingStarsEnabled"); defaults.synchronize() }
+        get {
+            if defaults.object(forKey: "ShootingStarsEnabled") == nil {
+                return defaultShootingStarsEnabled
+            }
+            return defaults.bool(forKey: "ShootingStarsEnabled")
+        }
+    }
+    
+    var shootingStarsAvgSeconds: Double {
+        set {
+            let clamped = max(0.5, min(600.0, newValue))
+            defaults.set(clamped, forKey: "ShootingStarsAvgSeconds")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "ShootingStarsAvgSeconds")
+            return (v >= 0.5 && v <= 600) ? v : defaultShootingStarsAvgSeconds
+        }
+    }
+    
+    var shootingStarsDirectionMode: Int {
+        set {
+            let clamped = max(0, min(4, newValue))
+            defaults.set(clamped, forKey: "ShootingStarsDirectionMode")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.integer(forKey: "ShootingStarsDirectionMode")
+            return (0...4).contains(v) ? v : defaultShootingStarsDirectionMode
+        }
+    }
+    
+    var shootingStarsLength: Double {
+        set {
+            let clamped = max(40, min(300, newValue))
+            defaults.set(clamped, forKey: "ShootingStarsLength")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "ShootingStarsLength")
+            return (v >= 40 && v <= 300) ? v : defaultShootingStarsLength
+        }
+    }
+    
+    var shootingStarsSpeed: Double {
+        set {
+            let clamped = max(200, min(1200, newValue))
+            defaults.set(clamped, forKey: "ShootingStarsSpeed")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "ShootingStarsSpeed")
+            return (v >= 200 && v <= 1200) ? v : defaultShootingStarsSpeed
+        }
+    }
+    
+    var shootingStarsThickness: Double {
+        set {
+            let clamped = max(1, min(4, newValue))
+            defaults.set(clamped, forKey: "ShootingStarsThickness")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "ShootingStarsThickness")
+            return (v >= 1 && v <= 4) ? v : defaultShootingStarsThickness
+        }
+    }
+    
+    var shootingStarsBrightness: Double {
+        set {
+            let clamped = max(0.3, min(1.0, newValue))
+            defaults.set(clamped, forKey: "ShootingStarsBrightness")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "ShootingStarsBrightness")
+            return (v >= 0.3 && v <= 1.0) ? v : defaultShootingStarsBrightness
+        }
+    }
+    
+    var shootingStarsTrailDecay: Double {
+        set {
+            let clamped = max(0.85, min(0.99, newValue))
+            defaults.set(clamped, forKey: "ShootingStarsTrailDecay")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "ShootingStarsTrailDecay")
+            return (v >= 0.85 && v <= 0.99) ? v : defaultShootingStarsTrailDecay
+        }
+    }
+    
+    var shootingStarsDebugShowSpawnBounds: Bool {
+        set {
+            defaults.set(newValue, forKey: "ShootingStarsDebugShowSpawnBounds")
+            defaults.synchronize()
+        }
+        get {
+            if defaults.object(forKey: "ShootingStarsDebugShowSpawnBounds") == nil {
+                return defaultShootingStarsDebugSpawnBounds
+            }
+            return defaults.bool(forKey: "ShootingStarsDebugShowSpawnBounds")
         }
     }
     

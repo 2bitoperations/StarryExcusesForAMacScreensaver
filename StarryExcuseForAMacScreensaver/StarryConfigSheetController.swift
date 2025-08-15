@@ -40,6 +40,23 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // Debug / troubleshooting: show illuminated texture fill mask
     @IBOutlet weak var showLightAreaTextureFillMaskCheckbox: NSButton!
     
+    // Shooting Stars controls (Option Set C)
+    @IBOutlet weak var shootingStarsEnabledCheckbox: NSButton!
+    @IBOutlet weak var shootingStarsAvgSecondsField: NSTextField!
+    @IBOutlet weak var shootingStarsDirectionPopup: NSPopUpButton!
+    @IBOutlet weak var shootingStarsLengthSlider: NSSlider!
+    @IBOutlet weak var shootingStarsSpeedSlider: NSSlider!
+    @IBOutlet weak var shootingStarsThicknessSlider: NSSlider!
+    @IBOutlet weak var shootingStarsBrightnessSlider: NSSlider!
+    @IBOutlet weak var shootingStarsTrailDecaySlider: NSSlider!
+    
+    @IBOutlet weak var shootingStarsLengthPreview: NSTextField!
+    @IBOutlet weak var shootingStarsSpeedPreview: NSTextField!
+    @IBOutlet weak var shootingStarsThicknessPreview: NSTextField!
+    @IBOutlet weak var shootingStarsBrightnessPreview: NSTextField!
+    @IBOutlet weak var shootingStarsTrailDecayPreview: NSTextField!
+    @IBOutlet weak var shootingStarsDebugSpawnBoundsCheckbox: NSButton!
+    
     // Preview container (plain NSView).
     @IBOutlet weak var moonPreviewView: NSView!
     
@@ -70,6 +87,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastMoonPhaseOverrideEnabled: Bool = false
     private var lastMoonPhaseOverrideValue: Double = 0.0
     private var lastShowLightAreaTextureFillMask: Bool = false
+    
+    // Shooting stars last-known
+    private var lastShootingStarsEnabled: Bool = false
+    private var lastShootingStarsAvgSeconds: Double = 0
+    private var lastShootingStarsDirectionMode: Int = 0
+    private var lastShootingStarsLength: Double = 0
+    private var lastShootingStarsSpeed: Double = 0
+    private var lastShootingStarsThickness: Double = 0
+    private var lastShootingStarsBrightness: Double = 0
+    private var lastShootingStarsTrailDecay: Double = 0
+    private var lastShootingStarsDebugSpawnBounds: Bool = false
     
     // MARK: - UI Actions (sliders / controls)
     
@@ -165,6 +193,94 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         maybeClearAndRestartPreview(reason: "showLightAreaTextureFillMaskToggled")
     }
     
+    // MARK: - Shooting Stars Actions
+    
+    @IBAction func shootingStarsToggled(_ sender: Any) {
+        let enabled = shootingStarsEnabledCheckbox.state == .on
+        if enabled != lastShootingStarsEnabled {
+            logChange(changedKey: "shootingStarsEnabled",
+                      oldValue: lastShootingStarsEnabled ? "true" : "false",
+                      newValue: enabled ? "true" : "false")
+            lastShootingStarsEnabled = enabled
+        }
+        updateShootingStarsUIEnabled()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+        maybeClearAndRestartPreview(reason: "shootingStarsToggled")
+    }
+    
+    @IBAction func shootingStarsDirectionChanged(_ sender: Any) {
+        let mode = shootingStarsDirectionPopup.indexOfSelectedItem
+        if mode != lastShootingStarsDirectionMode {
+            logChange(changedKey: "shootingStarsDirectionMode",
+                      oldValue: "\(lastShootingStarsDirectionMode)",
+                      newValue: "\(mode)")
+            lastShootingStarsDirectionMode = mode
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+    
+    @IBAction func shootingStarsSliderChanged(_ sender: Any) {
+        if shootingStarsLengthSlider.doubleValue != lastShootingStarsLength {
+            logChange(changedKey: "shootingStarsLength",
+                      oldValue: format(lastShootingStarsLength),
+                      newValue: format(shootingStarsLengthSlider.doubleValue))
+            lastShootingStarsLength = shootingStarsLengthSlider.doubleValue
+        }
+        if shootingStarsSpeedSlider.doubleValue != lastShootingStarsSpeed {
+            logChange(changedKey: "shootingStarsSpeed",
+                      oldValue: format(lastShootingStarsSpeed),
+                      newValue: format(shootingStarsSpeedSlider.doubleValue))
+            lastShootingStarsSpeed = shootingStarsSpeedSlider.doubleValue
+        }
+        if shootingStarsThicknessSlider.doubleValue != lastShootingStarsThickness {
+            logChange(changedKey: "shootingStarsThickness",
+                      oldValue: format(lastShootingStarsThickness),
+                      newValue: format(shootingStarsThicknessSlider.doubleValue))
+            lastShootingStarsThickness = shootingStarsThicknessSlider.doubleValue
+        }
+        if shootingStarsBrightnessSlider.doubleValue != lastShootingStarsBrightness {
+            logChange(changedKey: "shootingStarsBrightness",
+                      oldValue: format(lastShootingStarsBrightness),
+                      newValue: format(shootingStarsBrightnessSlider.doubleValue))
+            lastShootingStarsBrightness = shootingStarsBrightnessSlider.doubleValue
+        }
+        if shootingStarsTrailDecaySlider.doubleValue != lastShootingStarsTrailDecay {
+            logChange(changedKey: "shootingStarsTrailDecay",
+                      oldValue: format(lastShootingStarsTrailDecay),
+                      newValue: format(shootingStarsTrailDecaySlider.doubleValue))
+            lastShootingStarsTrailDecay = shootingStarsTrailDecaySlider.doubleValue
+        }
+        updatePreviewLabels()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+    
+    @IBAction func shootingStarsAvgSecondsChanged(_ sender: Any) {
+        let val = shootingStarsAvgSecondsField.doubleValue
+        if val != lastShootingStarsAvgSeconds {
+            logChange(changedKey: "shootingStarsAvgSeconds",
+                      oldValue: format(lastShootingStarsAvgSeconds),
+                      newValue: format(val))
+            lastShootingStarsAvgSeconds = val
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+    
+    @IBAction func shootingStarsDebugSpawnBoundsToggled(_ sender: Any) {
+        let newVal = shootingStarsDebugSpawnBoundsCheckbox.state == .on
+        if newVal != lastShootingStarsDebugSpawnBounds {
+            logChange(changedKey: "shootingStarsDebugSpawnBounds",
+                      oldValue: lastShootingStarsDebugSpawnBounds ? "true" : "false",
+                      newValue: newVal ? "true" : "false")
+            lastShootingStarsDebugSpawnBounds = newVal
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+    
     // MARK: - Preview Control Buttons
     
     @IBAction func previewTogglePause(_ sender: Any) {
@@ -244,6 +360,21 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         showLightAreaTextureFillMaskCheckbox.state = defaultsManager.showLightAreaTextureFillMask ? .on : .off
         
+        // Shooting stars
+        shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
+        shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
+        shootingStarsDirectionPopup.removeAllItems()
+        shootingStarsDirectionPopup.addItems(withTitles: [
+            "Random", "Left→Right", "Right→Left", "TL→BR", "TR→BL"
+        ])
+        shootingStarsDirectionPopup.selectItem(at: defaultsManager.shootingStarsDirectionMode)
+        shootingStarsLengthSlider.doubleValue = defaultsManager.shootingStarsLength
+        shootingStarsSpeedSlider.doubleValue = defaultsManager.shootingStarsSpeed
+        shootingStarsThicknessSlider.doubleValue = defaultsManager.shootingStarsThickness
+        shootingStarsBrightnessSlider.doubleValue = defaultsManager.shootingStarsBrightness
+        shootingStarsTrailDecaySlider.doubleValue = defaultsManager.shootingStarsTrailDecay
+        shootingStarsDebugSpawnBoundsCheckbox.state = defaultsManager.shootingStarsDebugShowSpawnBounds ? .on : .off
+        
         // Snapshot last-known values
         lastStarsPerUpdate = starsPerUpdate.integerValue
         lastBuildingHeight = buildingHeightSlider.doubleValue
@@ -257,12 +388,24 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastMoonPhaseOverrideValue = moonPhaseSlider.doubleValue
         lastShowLightAreaTextureFillMask = (showLightAreaTextureFillMaskCheckbox.state == .on)
         
+        lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
+        lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
+        lastShootingStarsDirectionMode = shootingStarsDirectionPopup.indexOfSelectedItem
+        lastShootingStarsLength = shootingStarsLengthSlider.doubleValue
+        lastShootingStarsSpeed = shootingStarsSpeedSlider.doubleValue
+        lastShootingStarsThickness = shootingStarsThicknessSlider.doubleValue
+        lastShootingStarsBrightness = shootingStarsBrightnessSlider.doubleValue
+        lastShootingStarsTrailDecay = shootingStarsTrailDecaySlider.doubleValue
+        lastShootingStarsDebugSpawnBounds = (shootingStarsDebugSpawnBoundsCheckbox.state == .on)
+        
         // Delegates
         starsPerUpdate.delegate = self
         secsBetweenClears.delegate = self
         moonTraversalMinutes.delegate = self
+        shootingStarsAvgSecondsField.delegate = self
         
         updatePreviewLabels()
+        updateShootingStarsUIEnabled()
         self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         
         setupPreviewEngine()
@@ -326,6 +469,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 rebuildPreviewEngineIfNeeded()
                 updatePreviewConfig()
             }
+        } else if field == shootingStarsAvgSecondsField {
+            shootingStarsAvgSecondsChanged(field)
         }
         validateInputs()
         maybeClearAndRestartPreview(reason: "textFieldChanged")
@@ -448,7 +593,16 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             moonPhaseOverrideEnabled: moonPhaseOverrideCheckbox.state == .on,
             moonPhaseOverrideValue: moonPhaseSlider.doubleValue,
             traceEnabled: false,
-            showLightAreaTextureFillMask: (showLightAreaTextureFillMaskCheckbox.state == .on)
+            showLightAreaTextureFillMask: (showLightAreaTextureFillMaskCheckbox.state == .on),
+            shootingStarsEnabled: (shootingStarsEnabledCheckbox.state == .on),
+            shootingStarsAvgSeconds: shootingStarsAvgSecondsField.doubleValue,
+            shootingStarsDirectionMode: shootingStarsDirectionPopup.indexOfSelectedItem,
+            shootingStarsLength: shootingStarsLengthSlider.doubleValue,
+            shootingStarsSpeed: shootingStarsSpeedSlider.doubleValue,
+            shootingStarsThickness: shootingStarsThicknessSlider.doubleValue,
+            shootingStarsBrightness: shootingStarsBrightnessSlider.doubleValue,
+            shootingStarsTrailDecay: shootingStarsTrailDecaySlider.doubleValue,
+            shootingStarsDebugShowSpawnBounds: (shootingStarsDebugSpawnBoundsCheckbox.state == .on)
         )
     }
     
@@ -462,6 +616,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         brightBrightnessPreview.stringValue = String(format: "%.2f", brightBrightnessSlider.doubleValue)
         darkBrightnessPreview.stringValue = String(format: "%.2f", darkBrightnessSlider.doubleValue)
         moonPhasePreview?.stringValue = formatPhase(moonPhaseSlider.doubleValue)
+        
+        shootingStarsLengthPreview?.stringValue = "\(Int(shootingStarsLengthSlider.doubleValue))"
+        shootingStarsSpeedPreview?.stringValue = "\(Int(shootingStarsSpeedSlider.doubleValue))"
+        shootingStarsThicknessPreview?.stringValue = String(format: "%.0f", shootingStarsThicknessSlider.doubleValue)
+        shootingStarsBrightnessPreview?.stringValue = String(format: "%.2f", shootingStarsBrightnessSlider.doubleValue)
+        shootingStarsTrailDecayPreview?.stringValue = String(format: "%.3f", shootingStarsTrailDecaySlider.doubleValue)
     }
     
     private func effectivePaused() -> Bool {
@@ -478,6 +638,27 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonPhaseSlider.isEnabled = enabled
         moonPhasePreview.isEnabled = enabled
         moonPhasePreview.alphaValue = enabled ? 1.0 : 0.5
+    }
+    
+    private func updateShootingStarsUIEnabled() {
+        let enabled = shootingStarsEnabledCheckbox.state == .on
+        shootingStarsAvgSecondsField.isEnabled = enabled
+        shootingStarsDirectionPopup.isEnabled = enabled
+        shootingStarsLengthSlider.isEnabled = enabled
+        shootingStarsSpeedSlider.isEnabled = enabled
+        shootingStarsThicknessSlider.isEnabled = enabled
+        shootingStarsBrightnessSlider.isEnabled = enabled
+        shootingStarsTrailDecaySlider.isEnabled = enabled
+        shootingStarsDebugSpawnBoundsCheckbox.isEnabled = enabled
+        let alpha: CGFloat = enabled ? 1.0 : 0.4
+        shootingStarsAvgSecondsField.alphaValue = alpha
+        shootingStarsDirectionPopup.alphaValue = alpha
+        shootingStarsLengthSlider.alphaValue = alpha
+        shootingStarsSpeedSlider.alphaValue = alpha
+        shootingStarsThicknessSlider.alphaValue = alpha
+        shootingStarsBrightnessSlider.alphaValue = alpha
+        shootingStarsTrailDecaySlider.alphaValue = alpha
+        shootingStarsDebugSpawnBoundsCheckbox.alphaValue = alpha
     }
     
     // MARK: - Save / Close / Cancel
@@ -501,6 +682,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.moonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         defaultsManager.moonPhaseOverrideValue = moonPhaseSlider.doubleValue
         defaultsManager.showLightAreaTextureFillMask = (showLightAreaTextureFillMaskCheckbox.state == .on)
+        
+        // Shooting stars
+        defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
+        defaultsManager.shootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
+        defaultsManager.shootingStarsDirectionMode = shootingStarsDirectionPopup.indexOfSelectedItem
+        defaultsManager.shootingStarsLength = shootingStarsLengthSlider.doubleValue
+        defaultsManager.shootingStarsSpeed = shootingStarsSpeedSlider.doubleValue
+        defaultsManager.shootingStarsThickness = shootingStarsThicknessSlider.doubleValue
+        defaultsManager.shootingStarsBrightness = shootingStarsBrightnessSlider.doubleValue
+        defaultsManager.shootingStarsTrailDecay = shootingStarsTrailDecaySlider.doubleValue
+        defaultsManager.shootingStarsDebugShowSpawnBounds = (shootingStarsDebugSpawnBoundsCheckbox.state == .on)
         
         view?.settingsChanged()
         
@@ -542,7 +734,16 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                " moonDarkBrightness=\(format(darkBrightnessSlider.doubleValue))," +
                " moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)," +
                " moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))," +
-               " showLightAreaTextureFillMask=\(showLightAreaTextureFillMaskCheckbox.state == .on)"
+               " showLightAreaTextureFillMask=\(showLightAreaTextureFillMaskCheckbox.state == .on)," +
+               " shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)," +
+               " shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))," +
+               " shootingStarsDirectionMode=\(shootingStarsDirectionPopup.indexOfSelectedItem)," +
+               " shootingStarsLength=\(format(shootingStarsLengthSlider.doubleValue))," +
+               " shootingStarsSpeed=\(format(shootingStarsSpeedSlider.doubleValue))," +
+               " shootingStarsThickness=\(format(shootingStarsThicknessSlider.doubleValue))," +
+               " shootingStarsBrightness=\(format(shootingStarsBrightnessSlider.doubleValue))," +
+               " shootingStarsTrailDecay=\(format(shootingStarsTrailDecaySlider.doubleValue))," +
+               " shootingStarsDebugSpawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox.state == .on)"
     }
     
     private func format(_ d: Double) -> String {
