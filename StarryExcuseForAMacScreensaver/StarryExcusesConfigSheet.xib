@@ -9,6 +9,8 @@
             <connections>
                 <outlet property="brightBrightnessPreview" destination="BRI-B-LBL" id="BRI-B-LBL-ID"/>
                 <outlet property="brightBrightnessSlider" destination="BRI-B-SL" id="BRI-B-SL-ID"/>
+                <outlet property="buildingFrequencyPreview" destination="BLD-FREQ-LBL" id="BLD-FREQ-LBL-OUTLET"/>
+                <outlet property="buildingFrequencySlider" destination="BLD-FREQ-SL" id="BLD-FREQ-SL-OUTLET"/>
                 <outlet property="buildingHeightPreview" destination="tfO-4a-uSm" id="Qh8-zi-05S"/>
                 <outlet property="buildingHeightSlider" destination="2pc-x6-KHb" id="d7R-00-4NT"/>
                 <outlet property="cancelButton" destination="BTN-CANCEL" id="CANCEL-BTN-OUTLET"/>
@@ -172,6 +174,47 @@
                                 </visibilityPriorities>
                                 <customSpacing>
                                     <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
+                            <!-- New Building Frequency Stack -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="BLD-FREQ-STK">
+                                <rect key="frame" x="0.0" y="718" width="285" height="19"/>
+                                <subviews>
+                                    <imageView identifier="building.2" translatesAutoresizingMaskIntoConstraints="NO" id="BLD-FREQ-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="BLD-FREQ-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="BLD-FREQ-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="building.2" id="BLD-FREQ-ICON-CELL"/>
+                                    </imageView>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BLD-FREQ-LBL-TXT">
+                                        <rect key="frame" x="20" y="3" width="109" height="14"/>
+                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Building frequency" id="BLD-FREQ-LBL-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="BLD-FREQ-SL">
+                                        <rect key="frame" x="131" y="-6" width="120" height="28"/>
+                                        <sliderCell key="cell" minValue="0.001000000000000000" maxValue="0.20000000000000001" doubleValue="0.033000000000000002" tickMarkPosition="below" sliderType="linear" id="BLD-FREQ-SL-CELL"/>
+                                        <connections>
+                                            <action selector="buildingFrequencyChanged:" target="-2" id="BLD-FREQ-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BLD-FREQ-LBL">
+                                        <rect key="frame" x="253" y="3" width="32" height="14"/>
+                                        <textFieldCell key="cell" lineBreakMode="clipping" title="0.033" id="BLD-FREQ-LBL-CELL"/>
+                                    </textField>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
                                     <real value="3.4028234663852886e+38"/>
                                     <real value="3.4028234663852886e+38"/>
                                     <real value="3.4028234663852886e+38"/>
@@ -1018,7 +1061,6 @@
                             <integer value="1000"/>
                         </visibilityPriorities>
                         <customSpacing>
-                            <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
