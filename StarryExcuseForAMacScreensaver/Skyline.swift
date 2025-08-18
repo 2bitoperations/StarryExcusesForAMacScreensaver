@@ -33,10 +33,14 @@ class Skyline {
     private let moon: Moon?
     let moonBrightBrightness: Double
     let moonDarkBrightness: Double
+    // Original min/max radius properties are retained for compatibility,
+    // but they will both be set from moonDiameterScreenWidthPercent.
     let moonMinRadius: Int
     let moonMaxRadius: Int
     let moonPhaseOverrideEnabled: Bool
     let moonPhaseOverrideValue: Double
+    // New: diameter of the moon as a percentage of the screen width (0.0 - 1.0)
+    let moonDiameterScreenWidthPercent: Double
     
     init(screenXMax: Int,
          screenYMax: Int,
@@ -53,10 +57,14 @@ class Skyline {
          clearAfterDuration: TimeInterval = 120,
          traceEnabled: Bool = false,
          moonTraversalSeconds: Double = 3600.0,
+         // Legacy parameters (now ignored in favor of percentage-based sizing)
          moonMinRadius: Int = 15,
          moonMaxRadius: Int = 60,
          moonBrightBrightness: Double = 1.0,
          moonDarkBrightness: Double = 0.15,
+         // New parameter: target moon diameter as % of screen width.
+         // Default chosen so on a 3000px wide screen you get ~80px diameter (80/3000 ≈ 0.0266667).
+         moonDiameterScreenWidthPercent: Double = (80.0 / 3000.0),
          moonPhaseOverrideEnabled: Bool = false,
          moonPhaseOverrideValue: Double = 0.0) throws {
         self.log = log
@@ -76,13 +84,20 @@ class Skyline {
         self.traceEnabled = traceEnabled
         self.moonBrightBrightness = moonBrightBrightness
         self.moonDarkBrightness = moonDarkBrightness
-        self.moonMinRadius = moonMinRadius
-        self.moonMaxRadius = moonMaxRadius
+        self.moonDiameterScreenWidthPercent = moonDiameterScreenWidthPercent
         self.moonPhaseOverrideEnabled = moonPhaseOverrideEnabled
         self.moonPhaseOverrideValue = min(max(moonPhaseOverrideValue, 0.0), 1.0)
         
+        // Compute moon radius from percentage of screen width.
+        let clampedPercent = max(0.001, min(0.25, self.moonDiameterScreenWidthPercent)) // clamp to sane bounds (0.1% - 25%)
+        let moonDiameter = Double(screenXMax) * clampedPercent
+        let computedRadius = max(1, Int(round(moonDiameter / 2.0)))
+        self.moonMinRadius = computedRadius
+        self.moonMaxRadius = computedRadius
+        
         os_log("invoking skyline init, screen %{PUBLIC}dx%{PUBLIC}d", log: log, type: .info, screenXMax, screenYMax)
         os_log("found %{PUBLIC}d styles", log: log, type: .debug, styles.count)
+        os_log("moon size percent=%{PUBLIC}.5f diameter≈%{PUBLIC}.1fpx radius=%{PUBLIC}d", log: log, type: .info, clampedPercent, moonDiameter, computedRadius)
         
         // Compute building count from frequency and screen width.
         let computedBuildingCount = max(0, Int(Double(screenXMax) * buildingFrequency))
@@ -112,8 +127,8 @@ class Skyline {
                          screenHeight: screenYMax,
                          buildingMaxHeight: self.buildingMaxHeight,
                          log: log,
-                         minRadius: moonMinRadius,
-                         maxRadius: moonMaxRadius,
+                         minRadius: self.moonMinRadius,
+                         maxRadius: self.moonMaxRadius,
                          traversalSeconds: moonTraversalSeconds,
                          phaseOverrideEnabled: moonPhaseOverrideEnabled,
                          phaseOverrideValue: self.moonPhaseOverrideValue)
