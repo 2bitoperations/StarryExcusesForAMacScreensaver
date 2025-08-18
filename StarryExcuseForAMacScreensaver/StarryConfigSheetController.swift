@@ -1,4 +1,4 @@
-﻿//
+//
 //  ConfigurationSheetManager.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -710,9 +710,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         StarryRuntimeConfig(
             starsPerUpdate: starsPerUpdate.integerValue,
             buildingHeight: buildingHeightSlider.doubleValue,
+            buildingFrequency: buildingFrequencySlider.doubleValue,
             secsBetweenClears: secsBetweenClears.doubleValue,
             moonTraversalMinutes: moonTraversalMinutes.integerValue,
-            buildingFrequency: buildingFrequencySlider.doubleValue,
             moonMinRadius: minMoonRadiusSlider.integerValue,
             moonMaxRadius: maxMoonRadiusSlider.integerValue,
             moonBrightBrightness: brightBrightnessSlider.doubleValue,

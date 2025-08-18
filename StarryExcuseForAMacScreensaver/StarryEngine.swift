@@ -8,9 +8,9 @@ import QuartzCore   // For CACurrentMediaTime()
 struct StarryRuntimeConfig {
     var starsPerUpdate: Int
     var buildingHeight: Double
+    var buildingFrequency: Double
     var secsBetweenClears: Double
     var moonTraversalMinutes: Int
-    var buildingFrequency: Double
     var moonMinRadius: Int
     var moonMaxRadius: Int
     var moonBrightBrightness: Double

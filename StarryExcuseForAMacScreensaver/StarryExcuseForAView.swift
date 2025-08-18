@@ -1,4 +1,4 @@
-﻿//
+//
 //  StarryExcuseForAView.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -104,6 +104,7 @@ class StarryExcuseForAView: ScreenSaverView {
         StarryRuntimeConfig(
             starsPerUpdate: defaultsManager.starsPerUpdate,
             buildingHeight: defaultsManager.buildingHeight,
+            buildingFrequency: defaultsManager.buildingFrequency,
             secsBetweenClears: defaultsManager.secsBetweenClears,
             moonTraversalMinutes: defaultsManager.moonTraversalMinutes,
             moonMinRadius: defaultsManager.moonMinRadius,
