@@ -21,30 +21,28 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var secsBetweenClears: NSTextField!
     @IBOutlet weak var moonTraversalMinutes: NSTextField!
     
-    // NEW: Building frequency controls
+    // Building frequency controls
     @IBOutlet weak var buildingFrequencySlider: NSSlider!
     @IBOutlet weak var buildingFrequencyPreview: NSTextField!
     
-    // Moon sizing & brightness sliders
-    @IBOutlet weak var minMoonRadiusSlider: NSSlider!
-    @IBOutlet weak var maxMoonRadiusSlider: NSSlider!
+    // Moon sizing (unified percentage) & brightness sliders
+    @IBOutlet weak var moonSizePercentSlider: NSSlider!
     @IBOutlet weak var brightBrightnessSlider: NSSlider!
     @IBOutlet weak var darkBrightnessSlider: NSSlider!
     
-    @IBOutlet weak var minMoonRadiusPreview: NSTextField!
-    @IBOutlet weak var maxMoonRadiusPreview: NSTextField!
+    @IBOutlet weak var moonSizePercentPreview: NSTextField!
     @IBOutlet weak var brightBrightnessPreview: NSTextField!
     @IBOutlet weak var darkBrightnessPreview: NSTextField!
     
-    // Phase override controls (modern toggle)
+    // Phase override controls
     @IBOutlet weak var moonPhaseOverrideCheckbox: NSSwitch!
     @IBOutlet weak var moonPhaseSlider: NSSlider!
     @IBOutlet weak var moonPhasePreview: NSTextField!
     
-    // Debug / troubleshooting: show illuminated texture fill mask (modern toggle)
+    // Debug toggle
     @IBOutlet weak var showLightAreaTextureFillMaskCheckbox: NSSwitch!
     
-    // Shooting Stars controls (Option Set C) including modern toggles
+    // Shooting Stars controls
     @IBOutlet weak var shootingStarsEnabledCheckbox: NSSwitch!
     @IBOutlet weak var shootingStarsAvgSecondsField: NSTextField!
     @IBOutlet weak var shootingStarsDirectionPopup: NSPopUpButton!
@@ -61,24 +59,24 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var shootingStarsTrailDecayPreview: NSTextField!
     @IBOutlet weak var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch!
     
-    // Preview container (plain NSView).
+    // Preview container
     @IBOutlet weak var moonPreviewView: NSView!
     
-    // Pause/Resume toggle button outlet (to update its title)
+    // Pause toggle
     @IBOutlet weak var pauseToggleButton: NSButton!
     
-    // Save & Close button (enable/disable based on validation)
+    // Save & Cancel
     @IBOutlet weak var saveCloseButton: NSButton!
     @IBOutlet weak var cancelButton: NSButton!
     
-    // Shared preview engine + timer
+    // Preview engine
     private var previewEngine: StarryEngine?
     private var previewTimer: Timer?
     private var previewImageView: NSImageView?
     
-    // Pause state tracking
+    // Pause state
     private var isManuallyPaused = false
-    private var isAutoPaused = false   // set when window resigns key while not manually paused
+    private var isAutoPaused = false
     
     // Last-known values for change logging
     private var lastStarsPerUpdate: Int = 0
@@ -86,8 +84,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastSecsBetweenClears: Double = 0
     private var lastMoonTraversalMinutes: Int = 0
     private var lastBuildingFrequency: Double = 0
-    private var lastMinMoonRadius: Int = 0
-    private var lastMaxMoonRadius: Int = 0
+    private var lastMoonSizePercent: Double = 0
     private var lastBrightBrightness: Double = 0
     private var lastDarkBrightness: Double = 0
     private var lastMoonPhaseOverrideEnabled: Bool = false
@@ -103,7 +100,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastShootingStarsThickness: Double = 0
     private var lastShootingStarsBrightness: Double = 0
     private var lastShootingStarsTrailDecay: Double = 0
-    private var lastShootingStarsDebugSpawnBounds: Bool = 0 != 0
+    private var lastShootingStarsDebugSpawnBounds: Bool = false
     
     // MARK: - UI Actions (sliders / controls)
     
@@ -138,17 +135,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     @IBAction func moonSliderChanged(_ sender: Any) {
-        if minMoonRadiusSlider.integerValue != lastMinMoonRadius {
-            logChange(changedKey: "moonMinRadius",
-                      oldValue: "\(lastMinMoonRadius)",
-                      newValue: "\(minMoonRadiusSlider.integerValue)")
-            lastMinMoonRadius = minMoonRadiusSlider.integerValue
-        }
-        if maxMoonRadiusSlider.integerValue != lastMaxMoonRadius {
-            logChange(changedKey: "moonMaxRadius",
-                      oldValue: "\(lastMaxMoonRadius)",
-                      newValue: "\(maxMoonRadiusSlider.integerValue)")
-            lastMaxMoonRadius = maxMoonRadiusSlider.integerValue
+        if sender as AnyObject === moonSizePercentSlider {
+            let val = moonSizePercentSlider.doubleValue
+            if val != lastMoonSizePercent {
+                logChange(changedKey: "moonDiameterScreenWidthPercent",
+                          oldValue: format(lastMoonSizePercent),
+                          newValue: format(val))
+                lastMoonSizePercent = val
+            }
         }
         if brightBrightnessSlider.doubleValue != lastBrightBrightness {
             logChange(changedKey: "moonBrightBrightness",
@@ -166,7 +160,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
         validateInputs()
-        maybeClearAndRestartPreview(reason: "moonSliderChanged")
+        maybeClearAndRestartPreview(reason: "moonControlsChanged")
     }
     
     @IBAction func moonPhaseOverrideToggled(_ sender: Any) {
@@ -351,7 +345,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         super.windowDidLoad()
         
         window?.delegate = self
-        
         styleWindow()
         
         // Load defaults into UI
@@ -363,8 +356,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         buildingFrequencySlider.doubleValue = defaultsManager.buildingFrequency
         buildingFrequencyPreview.stringValue = String(format: "%.3f", defaultsManager.buildingFrequency)
         
-        minMoonRadiusSlider.integerValue = defaultsManager.moonMinRadius
-        maxMoonRadiusSlider.integerValue = defaultsManager.moonMaxRadius
+        moonSizePercentSlider.doubleValue = defaultsManager.moonDiameterScreenWidthPercent
         brightBrightnessSlider.doubleValue = defaultsManager.moonBrightBrightness
         darkBrightnessSlider.doubleValue = defaultsManager.moonDarkBrightness
         
@@ -390,7 +382,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsTrailDecaySlider.doubleValue = defaultsManager.shootingStarsTrailDecay
         shootingStarsDebugSpawnBoundsCheckbox.state = defaultsManager.shootingStarsDebugShowSpawnBounds ? .on : .off
         
-        // Explicitly ensure key text fields are editable/selectable
+        // Editable fields
         moonTraversalMinutes.isEditable = true
         moonTraversalMinutes.isSelectable = true
         moonTraversalMinutes.isEnabled = true
@@ -405,8 +397,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastSecsBetweenClears = secsBetweenClears.doubleValue
         lastMoonTraversalMinutes = moonTraversalMinutes.integerValue
         lastBuildingFrequency = buildingFrequencySlider.doubleValue
-        lastMinMoonRadius = minMoonRadiusSlider.integerValue
-        lastMaxMoonRadius = maxMoonRadiusSlider.integerValue
+        lastMoonSizePercent = moonSizePercentSlider.doubleValue
         lastBrightBrightness = brightBrightnessSlider.doubleValue
         lastDarkBrightness = darkBrightnessSlider.doubleValue
         lastMoonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
@@ -445,7 +436,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         applyAccessibility()
         applyButtonKeyEquivalents()
-        applySystemSymbolImages()   // ensure SF Symbols appear when not bundled
+        applySystemSymbolImages()
     }
     
     // MARK: - Styling / Accessibility
@@ -462,8 +453,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func applyButtonKeyEquivalents() {
-        saveCloseButton.keyEquivalent = "\r"     // Return to save
-        cancelButton.keyEquivalent = "\u{1b}"    // Escape to cancel
+        saveCloseButton.keyEquivalent = "\r"
+        cancelButton.keyEquivalent = "\u{1b}"
     }
     
     private func applyAccessibility() {
@@ -472,8 +463,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         buildingFrequencySlider.setAccessibilityLabel("Building frequency")
         secsBetweenClears.setAccessibilityLabel("Seconds between clears")
         moonTraversalMinutes.setAccessibilityLabel("Moon traversal minutes")
-        minMoonRadiusSlider.setAccessibilityLabel("Minimum moon radius")
-        maxMoonRadiusSlider.setAccessibilityLabel("Maximum moon radius")
+        moonSizePercentSlider.setAccessibilityLabel("Moon size as percent of screen width")
         brightBrightnessSlider.setAccessibilityLabel("Bright side brightness")
         darkBrightnessSlider.setAccessibilityLabel("Dark side brightness")
         moonPhaseOverrideCheckbox.setAccessibilityLabel("Lock moon phase")
@@ -548,7 +538,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // MARK: - Validation
     
     private func inputsAreValid() -> Bool {
-        return minMoonRadiusSlider.integerValue < maxMoonRadiusSlider.integerValue
+        // Single moon size slider always valid (enforced by slider range)
+        return true
     }
     
     private func validateInputs() {
@@ -713,8 +704,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             buildingFrequency: buildingFrequencySlider.doubleValue,
             secsBetweenClears: secsBetweenClears.doubleValue,
             moonTraversalMinutes: moonTraversalMinutes.integerValue,
-            moonMinRadius: minMoonRadiusSlider.integerValue,
-            moonMaxRadius: maxMoonRadiusSlider.integerValue,
+            moonDiameterScreenWidthPercent: moonSizePercentSlider.doubleValue,
             moonBrightBrightness: brightBrightnessSlider.doubleValue,
             moonDarkBrightness: darkBrightnessSlider.doubleValue,
             moonPhaseOverrideEnabled: moonPhaseOverrideCheckbox.state == .on,
@@ -739,8 +729,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func updatePreviewLabels() {
         buildingFrequencyPreview?.stringValue = format(buildingFrequencySlider.doubleValue)
-        minMoonRadiusPreview.stringValue = "\(minMoonRadiusSlider.integerValue)"
-        maxMoonRadiusPreview.stringValue = "\(maxMoonRadiusSlider.integerValue)"
+        let percent = moonSizePercentSlider.doubleValue * 100.0
+        moonSizePercentPreview.stringValue = String(format: "%.2f%%", percent)
         brightBrightnessPreview.stringValue = String(format: "%.2f", brightBrightnessSlider.doubleValue)
         darkBrightnessPreview.stringValue = String(format: "%.2f", darkBrightnessSlider.doubleValue)
         moonPhasePreview?.stringValue = formatPhase(moonPhaseSlider.doubleValue)
@@ -804,8 +794,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.secsBetweenClears = secsBetweenClears.doubleValue
         defaultsManager.moonTraversalMinutes = moonTraversalMinutes.integerValue
         defaultsManager.buildingFrequency = buildingFrequencySlider.doubleValue
-        defaultsManager.moonMinRadius = minMoonRadiusSlider.integerValue
-        defaultsManager.moonMaxRadius = maxMoonRadiusSlider.integerValue
+        defaultsManager.moonDiameterScreenWidthPercent = moonSizePercentSlider.doubleValue
         defaultsManager.moonBrightBrightness = brightBrightnessSlider.doubleValue
         defaultsManager.moonDarkBrightness = darkBrightnessSlider.doubleValue
         defaultsManager.moonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
@@ -858,8 +847,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                " buildingFrequency=\(format(buildingFrequencySlider.doubleValue))," +
                " secsBetweenClears=\(format(secsBetweenClears.doubleValue))," +
                " moonTraversalMinutes=\(moonTraversalMinutes.integerValue)," +
-               " moonMinRadius=\(minMoonRadiusSlider.integerValue)," +
-               " moonMaxRadius=\(maxMoonRadiusSlider.integerValue)," +
+               " moonSizePercent=\(format(moonSizePercentSlider.doubleValue))," +
                " moonBrightBrightness=\(format(brightBrightnessSlider.doubleValue))," +
                " moonDarkBrightness=\(format(darkBrightnessSlider.doubleValue))," +
                " moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)," +
