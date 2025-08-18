@@ -1,4 +1,4 @@
-//
+﻿//
 //  Skyline.swift
 //  StarryExcusesForAMacScreensaver
 //
@@ -43,7 +43,7 @@ class Skyline {
          buildingHeightPercentMax: Double = 0.35,
          buildingWidthMin: Int = 40,
          buildingWidthMax: Int = 300,
-         buildingCount: Int = 100,
+         buildingFrequency: Double = 0.033, // ~100 buildings on a 3000px wide screen (since loop is inclusive)
          starsPerUpdate: Int = 50,
          buildingLightsPerUpdate: Int = 15,
          buildingColor: Color = Color(red: 0.972, green: 0.945, blue: 0.012),
@@ -84,7 +84,10 @@ class Skyline {
         os_log("invoking skyline init, screen %{PUBLIC}dx%{PUBLIC}d", log: log, type: .info, screenXMax, screenYMax)
         os_log("found %{PUBLIC}d styles", log: log, type: .debug, styles.count)
         
-        for buildingZIndex in 0...buildingCount {
+        // Compute building count from frequency and screen width.
+        let computedBuildingCount = max(0, Int(Double(screenXMax) * buildingFrequency))
+        
+        for buildingZIndex in 0...computedBuildingCount {
             let style = styles[Int.random(in: 0...styles.count - 1)]
             let height = Skyline.getWeightedRandomHeight(maxHeight: buildingMaxHeight)
             let buildingXStart = Int.random(in: 0...screenXMax - 1)
