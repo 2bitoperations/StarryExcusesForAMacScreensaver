@@ -17,6 +17,7 @@ class StarryDefaultsManager {
     private let defaultBuildingHeight = 0.35
     private let defaultSecsBetweenClears = 120.0
     private let defaultMoonTraversalMinutes = 60
+    private let defaultBuildingFrequency = 0.033
     private let defaultMoonMinRadius = 15
     private let defaultMoonMaxRadius = 60
     private let defaultMoonBrightBrightness = 1.0
@@ -102,6 +103,21 @@ class StarryDefaultsManager {
         get {
             let v = defaults.integer(forKey: "MoonTraversalMinutes")
             return (1...720).contains(v) ? v : defaultMoonTraversalMinutes
+        }
+    }
+    
+    // Building frequency (buildings per pixel width, used to derive count).
+    // Practical range: >0 – about 0.2 (very dense). Clamp to 0.001 ... 1.0 for sanity.
+    var buildingFrequency: Double {
+        set {
+            let clamped = max(0.001, min(1.0, newValue))
+            defaults.set(clamped, forKey: "BuildingFrequency")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "BuildingFrequency")
+            if v.isNaN || v <= 0 { return defaultBuildingFrequency }
+            return v
         }
     }
     

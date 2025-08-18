@@ -21,6 +21,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var secsBetweenClears: NSTextField!
     @IBOutlet weak var moonTraversalMinutes: NSTextField!
     
+    // NEW: Building frequency controls
+    @IBOutlet weak var buildingFrequencySlider: NSSlider!
+    @IBOutlet weak var buildingFrequencyPreview: NSTextField!
+    
     // Moon sizing & brightness sliders
     @IBOutlet weak var minMoonRadiusSlider: NSSlider!
     @IBOutlet weak var maxMoonRadiusSlider: NSSlider!
@@ -81,6 +85,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastBuildingHeight: Double = 0
     private var lastSecsBetweenClears: Double = 0
     private var lastMoonTraversalMinutes: Int = 0
+    private var lastBuildingFrequency: Double = 0
     private var lastMinMoonRadius: Int = 0
     private var lastMaxMoonRadius: Int = 0
     private var lastBrightBrightness: Double = 0
@@ -115,6 +120,21 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         updatePreviewConfig()
         validateInputs()
         maybeClearAndRestartPreview(reason: "buildingHeightChanged")
+    }
+    
+    @IBAction func buildingFrequencyChanged(_ sender: Any) {
+        let newVal = buildingFrequencySlider.doubleValue
+        if newVal != lastBuildingFrequency {
+            logChange(changedKey: "buildingFrequency",
+                      oldValue: format(lastBuildingFrequency),
+                      newValue: format(newVal))
+            lastBuildingFrequency = newVal
+        }
+        updatePreviewLabels()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+        validateInputs()
+        maybeClearAndRestartPreview(reason: "buildingFrequencyChanged")
     }
     
     @IBAction func moonSliderChanged(_ sender: Any) {
@@ -340,6 +360,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         buildingHeightPreview.stringValue = String(format: "%.3f", defaultsManager.buildingHeight)
         secsBetweenClears.doubleValue = defaultsManager.secsBetweenClears
         moonTraversalMinutes.integerValue = defaultsManager.moonTraversalMinutes
+        buildingFrequencySlider.doubleValue = defaultsManager.buildingFrequency
+        buildingFrequencyPreview.stringValue = String(format: "%.3f", defaultsManager.buildingFrequency)
         
         minMoonRadiusSlider.integerValue = defaultsManager.moonMinRadius
         maxMoonRadiusSlider.integerValue = defaultsManager.moonMaxRadius
@@ -382,6 +404,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastBuildingHeight = buildingHeightSlider.doubleValue
         lastSecsBetweenClears = secsBetweenClears.doubleValue
         lastMoonTraversalMinutes = moonTraversalMinutes.integerValue
+        lastBuildingFrequency = buildingFrequencySlider.doubleValue
         lastMinMoonRadius = minMoonRadiusSlider.integerValue
         lastMaxMoonRadius = maxMoonRadiusSlider.integerValue
         lastBrightBrightness = brightBrightnessSlider.doubleValue
@@ -446,6 +469,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func applyAccessibility() {
         starsPerUpdate.setAccessibilityLabel("Stars per update")
         buildingHeightSlider.setAccessibilityLabel("Maximum building height")
+        buildingFrequencySlider.setAccessibilityLabel("Building frequency")
         secsBetweenClears.setAccessibilityLabel("Seconds between clears")
         moonTraversalMinutes.setAccessibilityLabel("Moon traversal minutes")
         minMoonRadiusSlider.setAccessibilityLabel("Minimum moon radius")
@@ -469,9 +493,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // MARK: - SF Symbols injection
     
-    // The XIB shows icons in IB via a resources section, but at runtime inside a
-    // ScreenSaver bundle those image names are not shipped as assets. We replace
-    // them with system SF Symbols here (macOS 11+).
     private func applySystemSymbolImages() {
         guard #available(macOS 11.0, *) else { return }
         let symbolNames: Set<String> = [
@@ -514,14 +535,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                         iv.contentTintColor = .labelColor
                     }
                 } else if let name = iv.image?.name(), symbolNames.contains(name) {
-                    // Fallback: if NIB gave us an (empty) named image, reassign
                     if let sym = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
                         iv.image = sym
                         iv.contentTintColor = .labelColor
                     }
                 }
             }
-            // Recurse
             replaceSymbolImages(in: sub, symbolNames: symbolNames, config: config)
         }
     }
@@ -693,6 +712,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             buildingHeight: buildingHeightSlider.doubleValue,
             secsBetweenClears: secsBetweenClears.doubleValue,
             moonTraversalMinutes: moonTraversalMinutes.integerValue,
+            buildingFrequency: buildingFrequencySlider.doubleValue,
             moonMinRadius: minMoonRadiusSlider.integerValue,
             moonMaxRadius: maxMoonRadiusSlider.integerValue,
             moonBrightBrightness: brightBrightnessSlider.doubleValue,
@@ -718,6 +738,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func updatePreviewLabels() {
+        buildingFrequencyPreview?.stringValue = format(buildingFrequencySlider.doubleValue)
         minMoonRadiusPreview.stringValue = "\(minMoonRadiusSlider.integerValue)"
         maxMoonRadiusPreview.stringValue = "\(maxMoonRadiusSlider.integerValue)"
         brightBrightnessPreview.stringValue = String(format: "%.2f", brightBrightnessSlider.doubleValue)
@@ -782,6 +803,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
         defaultsManager.secsBetweenClears = secsBetweenClears.doubleValue
         defaultsManager.moonTraversalMinutes = moonTraversalMinutes.integerValue
+        defaultsManager.buildingFrequency = buildingFrequencySlider.doubleValue
         defaultsManager.moonMinRadius = minMoonRadiusSlider.integerValue
         defaultsManager.moonMaxRadius = maxMoonRadiusSlider.integerValue
         defaultsManager.moonBrightBrightness = brightBrightnessSlider.doubleValue
@@ -833,6 +855,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func stateSummaryString() -> String {
         return "starsPerUpdate=\(starsPerUpdate.integerValue)," +
                " buildingHeight=\(format(buildingHeightSlider.doubleValue))," +
+               " buildingFrequency=\(format(buildingFrequencySlider.doubleValue))," +
                " secsBetweenClears=\(format(secsBetweenClears.doubleValue))," +
                " moonTraversalMinutes=\(moonTraversalMinutes.integerValue)," +
                " moonMinRadius=\(minMoonRadiusSlider.integerValue)," +

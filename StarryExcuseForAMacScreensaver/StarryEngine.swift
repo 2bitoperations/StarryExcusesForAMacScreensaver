@@ -10,6 +10,7 @@ struct StarryRuntimeConfig {
     var buildingHeight: Double
     var secsBetweenClears: Double
     var moonTraversalMinutes: Int
+    var buildingFrequency: Double
     var moonMinRadius: Int
     var moonMaxRadius: Int
     var moonBrightBrightness: Double
@@ -129,6 +130,7 @@ final class StarryEngine {
         let skylineAffecting =
             config.starsPerUpdate != newConfig.starsPerUpdate ||
             config.buildingHeight != newConfig.buildingHeight ||
+            config.buildingFrequency != newConfig.buildingFrequency ||
             config.moonTraversalMinutes != newConfig.moonTraversalMinutes ||
             config.moonMinRadius != newConfig.moonMinRadius ||
             config.moonMaxRadius != newConfig.moonMaxRadius ||
@@ -175,6 +177,7 @@ final class StarryEngine {
             skyline = try Skyline(screenXMax: Int(size.width),
                                   screenYMax: Int(size.height),
                                   buildingHeightPercentMax: config.buildingHeight,
+                                  buildingFrequency: config.buildingFrequency,
                                   starsPerUpdate: config.starsPerUpdate,
                                   log: log,
                                   clearAfterDuration: config.secsBetweenClears,
