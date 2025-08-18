@@ -18,8 +18,8 @@ class StarryDefaultsManager {
     private let defaultSecsBetweenClears = 120.0
     private let defaultMoonTraversalMinutes = 60
     private let defaultBuildingFrequency = 0.033
-    private let defaultMoonMinRadius = 15
-    private let defaultMoonMaxRadius = 60
+    // New unified moon size setting (% of screen width) ~80px on 3000px screen.
+    private let defaultMoonDiameterScreenWidthPercent = 80.0 / 3000.0
     private let defaultMoonBrightBrightness = 1.0
     private let defaultMoonDarkBrightness = 0.15
     private let defaultMoonPhaseOverrideEnabled = false
@@ -64,6 +64,13 @@ class StarryDefaultsManager {
         }
         if defaults.object(forKey: "DarkMinorityOversizeOverrideValue") != nil {
             defaults.removeObject(forKey: "DarkMinorityOversizeOverrideValue")
+        }
+        // Remove old per-pixel moon size keys (now superseded by percent).
+        if defaults.object(forKey: "MoonMinRadius") != nil {
+            defaults.removeObject(forKey: "MoonMinRadius")
+        }
+        if defaults.object(forKey: "MoonMaxRadius") != nil {
+            defaults.removeObject(forKey: "MoonMaxRadius")
         }
     }
     
@@ -121,29 +128,20 @@ class StarryDefaultsManager {
         }
     }
     
-    // Moon min radius (pixels). 5 .. 200.
-    var moonMinRadius: Int {
+    // Unified moon size: diameter as % of screen width.
+    // Clamp 0.001 (0.1%) .. 0.25 (25%).
+    var moonDiameterScreenWidthPercent: Double {
         set {
-            let clamped = max(5, min(200, newValue))
-            defaults.set(clamped, forKey: "MoonMinRadius")
+            let clamped = max(0.001, min(0.25, newValue))
+            defaults.set(clamped, forKey: "MoonDiameterScreenWidthPercent")
             defaults.synchronize()
         }
         get {
-            let v = defaults.integer(forKey: "MoonMinRadius")
-            return (5...200).contains(v) ? v : defaultMoonMinRadius
-        }
-    }
-    
-    // Moon max radius (pixels). 5 .. 400.
-    var moonMaxRadius: Int {
-        set {
-            let clamped = max(5, min(400, newValue))
-            defaults.set(clamped, forKey: "MoonMaxRadius")
-            defaults.synchronize()
-        }
-        get {
-            let v = defaults.integer(forKey: "MoonMaxRadius")
-            return (5...400).contains(v) ? v : defaultMoonMaxRadius
+            let v = defaults.double(forKey: "MoonDiameterScreenWidthPercent")
+            if v.isNaN || v < 0.001 || v > 0.25 {
+                return defaultMoonDiameterScreenWidthPercent
+            }
+            return v
         }
     }
     
@@ -326,31 +324,11 @@ class StarryDefaultsManager {
         }
     }
     
-    // Ensure logical relation when saving (called by config UI)
-    func normalizeMoonRadiusBounds() {
-        if moonMinRadius > moonMaxRadius {
-            let minR = moonMinRadius
-            defaults.set(minR, forKey: "MoonMaxRadius")
-            defaults.synchronize()
-        }
-    }
-    
     // MARK: - Runtime validation (screensaver start-time)
     func validateAndCorrectMoonSettings(log: OSLog) {
         var corrected = false
         
-        // 1. Radius ordering
-        if moonMinRadius > moonMaxRadius {
-            os_log("Invalid moon size settings detected (min %d > max %d). Reverting to defaults (%d, %d).",
-                   log: log, type: .error,
-                   moonMinRadius, moonMaxRadius,
-                   defaultMoonMinRadius, defaultMoonMaxRadius)
-            defaults.set(defaultMoonMinRadius, forKey: "MoonMinRadius")
-            defaults.set(defaultMoonMaxRadius, forKey: "MoonMaxRadius")
-            corrected = true
-        }
-        
-        // 2. Brightness ordering
+        // 1. Brightness ordering
         if moonBrightBrightness < moonDarkBrightness {
             os_log("Invalid moon brightness settings (bright %.3f < dark %.3f). Reverting to defaults (bright %.2f, dark %.2f).",
                    log: log, type: .error,
@@ -361,28 +339,21 @@ class StarryDefaultsManager {
             corrected = true
         }
         
-        // 3. Radius hard range revalidation
-        let minR = defaults.integer(forKey: "MoonMinRadius")
-        if !(5...200).contains(minR) {
-            os_log("Out-of-range MoonMinRadius %d detected at runtime. Resetting to %d.",
-                   log: log, type: .error, minR, defaultMoonMinRadius)
-            defaults.set(defaultMoonMinRadius, forKey: "MoonMinRadius")
-            corrected = true
-        }
-        let maxR = defaults.integer(forKey: "MoonMaxRadius")
-        if !(5...400).contains(maxR) {
-            os_log("Out-of-range MoonMaxRadius %d detected at runtime. Resetting to %d.",
-                   log: log, type: .error, maxR, defaultMoonMaxRadius)
-            defaults.set(defaultMoonMaxRadius, forKey: "MoonMaxRadius")
-            corrected = true
-        }
-        
-        // 4. Phase override sanity
+        // 2. Phase override sanity
         let phaseOverride = defaults.double(forKey: "MoonPhaseOverrideValue")
         if phaseOverride.isNaN || phaseOverride < 0.0 || phaseOverride > 1.0 {
             os_log("Out-of-range MoonPhaseOverrideValue %.3f detected. Resetting to %.3f.",
                    log: log, type: .error, phaseOverride, defaultMoonPhaseOverrideValue)
             defaults.set(defaultMoonPhaseOverrideValue, forKey: "MoonPhaseOverrideValue")
+            corrected = true
+        }
+        
+        // 3. Percent sanity
+        let percent = defaults.double(forKey: "MoonDiameterScreenWidthPercent")
+        if percent.isNaN || percent < 0.001 || percent > 0.25 {
+            os_log("Out-of-range MoonDiameterScreenWidthPercent %.5f detected. Resetting to default %.5f.",
+                   log: log, type: .error, percent, defaultMoonDiameterScreenWidthPercent)
+            defaults.set(defaultMoonDiameterScreenWidthPercent, forKey: "MoonDiameterScreenWidthPercent")
             corrected = true
         }
         

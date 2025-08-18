@@ -3,16 +3,12 @@ import CoreGraphics
 import os
 
 // Represents the moon, its phase, and traversal across the screen.
-// Incorporates configurable traversal duration and radius range (from defaults).
+// Now uses a single fixed radius provided by the caller (already derived
+// from a percentage of the screen width).
 // Phase behavior:
 // - If phaseOverrideEnabled == true, the override slider value (0.0 -> 1.0) maps
 //   to an illuminated fraction as before (0=new, 0.5=full, 1 wraps to new).
-// - If not overridden, we now compute the phase for the CURRENT moment (Date())
-//   instead of anchoring to local midnight. This makes the displayed phase more
-//   accurate to "right now" instead of remaining fixed for the whole calendar day.
-//   (Note: We still only compute at Moon init; if you want the phase to change
-//   gradually while the saver runs, you'd need to update illuminatedFraction
-//   over time or recreate Moon periodically.)
+// - If not overridden, we compute the phase for the current instant.
 struct Moon {
     static let synodicMonthDays: Double = 29.530588853
     
@@ -40,8 +36,7 @@ struct Moon {
          screenHeight: Int,
          buildingMaxHeight: Int,
          log: OSLog,
-         minRadius: Int = 15,
-         maxRadius: Int = 60,
+         radius: Int,
          traversalSeconds: Double = 3600.0,
          phaseOverrideEnabled: Bool = false,
          phaseOverrideValue: Double = 0.0) {
@@ -49,31 +44,11 @@ struct Moon {
         self.screenHeight = screenHeight
         self.traversalSeconds = traversalSeconds
         
-        // Always move left -> right (previously depended on a latitude constant).
+        // Always move left -> right (previous implementation had latitude logic).
         self.movingLeftToRight = true
         
-        // Clamp user-provided radius bounds and enforce screen-derived cap.
-        let boundedMinUser = max(5, min(1000, minRadius))
-        let boundedMaxUser = max(boundedMinUser, min(1200, maxRadius))
-        let maxRLimitFromScreen = Int(0.2 * Double(min(screenWidth, screenHeight)))
-        
-        var effectiveMin = boundedMinUser
-        var effectiveMax = min(boundedMaxUser, maxRLimitFromScreen)
-        
-        if effectiveMin > maxRLimitFromScreen {
-            os_log("Moon radius min (%{public}d) > screen cap (%{public}d); clamping.",
-                   log: log, type: .info, effectiveMin, maxRLimitFromScreen)
-            effectiveMin = maxRLimitFromScreen
-        }
-        if effectiveMax < effectiveMin {
-            os_log("Moon radius max (%{public}d) < min (%{public}d); adjusting max = min.",
-                   log: log, type: .debug, effectiveMax, effectiveMin)
-            effectiveMax = effectiveMin
-        }
-        if effectiveMin < 5 { effectiveMin = 5 }
-        if effectiveMax < effectiveMin { effectiveMax = effectiveMin }
-        
-        self.radius = Int.random(in: effectiveMin...effectiveMax)
+        // Fixed radius (already validated/clamped by caller).
+        self.radius = max(1, radius)
         
         // Base Y for the traversal arc
         let minBaseUnclamped = buildingMaxHeight + self.radius + 10
@@ -105,7 +80,6 @@ struct Moon {
                 waxingFlag = false
             }
         } else {
-            // Use the current instant for a more precise phase.
             (fraction, waxingFlag) = Moon.computePhase(on: Date())
         }
         self.illuminatedFraction = fraction
@@ -117,13 +91,10 @@ struct Moon {
         let waxingStr: String = self.waxing ? "true" : "false"
         let direction: String = self.movingLeftToRight ? "L->R" : "R->L"
         let dur: Double = self.traversalSeconds
-        os_log("Moon init r=%{public}d (range %d-%d cap %d) frac=%.3f waxing=%{public}@ dir=%{public}@ dur=%.0fs override=%{public}@ val=%.3f",
+        os_log("Moon init r=%{public}d frac=%.3f waxing=%{public}@ dir=%{public}@ dur=%.0fs override=%{public}@ val=%.3f",
                log: log,
                type: .info,
                self.radius,
-               effectiveMin,
-               effectiveMax,
-               maxRLimitFromScreen,
                self.illuminatedFraction,
                waxingStr,
                direction,

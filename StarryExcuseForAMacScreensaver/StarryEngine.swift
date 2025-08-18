@@ -11,8 +11,8 @@ struct StarryRuntimeConfig {
     var buildingFrequency: Double
     var secsBetweenClears: Double
     var moonTraversalMinutes: Int
-    var moonMinRadius: Int
-    var moonMaxRadius: Int
+    // Replaced min/max radius with a single percentage-based size.
+    var moonDiameterScreenWidthPercent: Double
     var moonBrightBrightness: Double
     var moonDarkBrightness: Double
     var moonPhaseOverrideEnabled: Bool
@@ -132,8 +132,7 @@ final class StarryEngine {
             config.buildingHeight != newConfig.buildingHeight ||
             config.buildingFrequency != newConfig.buildingFrequency ||
             config.moonTraversalMinutes != newConfig.moonTraversalMinutes ||
-            config.moonMinRadius != newConfig.moonMinRadius ||
-            config.moonMaxRadius != newConfig.moonMaxRadius ||
+            config.moonDiameterScreenWidthPercent != newConfig.moonDiameterScreenWidthPercent ||
             config.moonBrightBrightness != newConfig.moonBrightBrightness ||
             config.moonDarkBrightness != newConfig.moonDarkBrightness ||
             config.moonPhaseOverrideEnabled != newConfig.moonPhaseOverrideEnabled ||
@@ -183,10 +182,9 @@ final class StarryEngine {
                                   clearAfterDuration: config.secsBetweenClears,
                                   traceEnabled: config.traceEnabled,
                                   moonTraversalSeconds: traversalSeconds,
-                                  moonMinRadius: config.moonMinRadius,
-                                  moonMaxRadius: config.moonMaxRadius,
                                   moonBrightBrightness: config.moonBrightBrightness,
                                   moonDarkBrightness: config.moonDarkBrightness,
+                                  moonDiameterScreenWidthPercent: config.moonDiameterScreenWidthPercent,
                                   moonPhaseOverrideEnabled: config.moonPhaseOverrideEnabled,
                                   moonPhaseOverrideValue: config.moonPhaseOverrideValue)
             if let skyline = skyline {
