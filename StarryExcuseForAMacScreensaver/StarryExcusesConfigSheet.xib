@@ -43,6 +43,19 @@
                 <outlet property="showLightAreaTextureFillMaskCheckbox" destination="CLIP-CHK" id="CLIP-CHK-OUTLET"/>
                 <outlet property="starsPerUpdate" destination="IjJ-g5-V0M" id="abn-RS-3YH"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
+                <!-- Satellites Outlets -->
+                <outlet property="satellitesEnabledCheckbox" destination="SAT-EN-CHK" id="SAT-EN-CHK-OUTLET"/>
+                <outlet property="satellitesPerMinuteSlider" destination="SAT-PERMIN-SL" id="SAT-PERMIN-SL-OUTLET"/>
+                <outlet property="satellitesPerMinutePreview" destination="SAT-PERMIN-LBL" id="SAT-PERMIN-LBL-OUTLET"/>
+                <outlet property="satellitesSpeedSlider" destination="SAT-SPD-SL" id="SAT-SPD-SL-OUTLET"/>
+                <outlet property="satellitesSpeedPreview" destination="SAT-SPD-LBL" id="SAT-SPD-LBL-OUTLET"/>
+                <outlet property="satellitesSizeSlider" destination="SAT-SIZE-SL" id="SAT-SIZE-SL-OUTLET"/>
+                <outlet property="satellitesSizePreview" destination="SAT-SIZE-LBL" id="SAT-SIZE-LBL-OUTLET"/>
+                <outlet property="satellitesBrightnessSlider" destination="SAT-BRI-SL" id="SAT-BRI-SL-OUTLET"/>
+                <outlet property="satellitesBrightnessPreview" destination="SAT-BRI-LBL" id="SAT-BRI-LBL-OUTLET"/>
+                <outlet property="satellitesTrailingCheckbox" destination="SAT-TRAIL-CHK" id="SAT-TRAIL-CHK-OUTLET"/>
+                <outlet property="satellitesTrailDecaySlider" destination="SAT-DEC-SL" id="SAT-DEC-SL-OUTLET"/>
+                <outlet property="satellitesTrailDecayPreview" destination="SAT-DEC-LBL" id="SAT-DEC-LBL-OUTLET"/>
             </connections>
         </customObject>
         <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
@@ -51,23 +64,23 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES"/>
             <windowCollectionBehavior key="collectionBehavior" fullScreenNone="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
-            <rect key="contentRect" x="196" y="240" width="1382" height="857"/>
+            <rect key="contentRect" x="196" y="240" width="1382" height="1050"/>
             <rect key="screenRect" x="0.0" y="0.0" width="2056" height="1285"/>
-            <view key="contentView" wantsLayer="YES" misplaced="YES" id="EiT-Mj-1SZ">
-                <rect key="frame" x="0.0" y="0.0" width="1382" height="857"/>
+            <view key="contentView" wantsLayer="YES" id="EiT-Mj-1SZ">
+                <rect key="frame" x="0.0" y="0.0" width="1382" height="1050"/>
                 <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                 <subviews>
                     <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="12" translatesAutoresizingMaskIntoConstraints="NO" id="Ab2-ul-qfO">
-                        <rect key="frame" x="0.0" y="0.0" width="305" height="860"/>
+                        <rect key="frame" x="0.0" y="0.0" width="305" height="1053"/>
                         <subviews>
                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-GEN-LBL">
-                                <rect key="frame" x="-2" y="844" width="55" height="16"/>
+                                <rect key="frame" x="-2" y="1037" width="55" height="16"/>
                                 <textFieldCell key="cell" title="General" id="SEC-GEN-LBL-CELL">
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="prf-z8-ln5">
-                                <rect key="frame" x="0.0" y="813" width="197" height="19"/>
+                                <rect key="frame" x="0.0" y="1006" width="197" height="19"/>
                                 <subviews>
                                     <imageView identifier="sparkles" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-STARS-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -98,7 +111,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="ozG-gR-er8">
-                                <rect key="frame" x="0.0" y="782" width="239" height="19"/>
+                                <rect key="frame" x="0.0" y="975" width="239" height="19"/>
                                 <subviews>
                                     <imageView identifier="arrow.clockwise" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-CLEAR-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -129,7 +142,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="a9U-nj-sTo">
-                                <rect key="frame" x="0.0" y="750" width="301" height="20"/>
+                                <rect key="frame" x="0.0" y="943" width="301" height="20"/>
                                 <subviews>
                                     <imageView identifier="building.2" translatesAutoresizingMaskIntoConstraints="NO" id="BLD-LEFT-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -179,7 +192,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="BLD-FREQ-STK">
-                                <rect key="frame" x="0.0" y="718" width="280" height="20"/>
+                                <rect key="frame" x="0.0" y="911" width="280" height="20"/>
                                 <subviews>
                                     <imageView identifier="buildingfreq.building.2" translatesAutoresizingMaskIntoConstraints="NO" id="BLD-FREQ-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -219,13 +232,13 @@
                                 </customSpacing>
                             </stackView>
                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-MOON-LBL">
-                                <rect key="frame" x="-2" y="690" width="40" height="16"/>
+                                <rect key="frame" x="-2" y="883" width="40" height="16"/>
                                 <textFieldCell key="cell" title="Moon" id="SEC-MOON-LBL-CELL">
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
-                                <rect key="frame" x="0.0" y="659" width="209" height="19"/>
+                                <rect key="frame" x="0.0" y="852" width="209" height="19"/>
                                 <subviews>
                                     <imageView identifier="clock" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-TRAV-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -256,7 +269,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-STK">
-                                <rect key="frame" x="0.0" y="627" width="305" height="20"/>
+                                <rect key="frame" x="0.0" y="820" width="305" height="20"/>
                                 <subviews>
                                     <imageView identifier="moonphase.new.moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-L-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -306,7 +319,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-B-STK">
-                                <rect key="frame" x="0.0" y="595" width="269" height="20"/>
+                                <rect key="frame" x="0.0" y="788" width="269" height="20"/>
                                 <subviews>
                                     <imageView identifier="moonslider.sun.min" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BRIGHT-L">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -356,7 +369,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-B-STK">
-                                <rect key="frame" x="0.0" y="563" width="263" height="20"/>
+                                <rect key="frame" x="0.0" y="756" width="263" height="20"/>
                                 <subviews>
                                     <imageView identifier="moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-DARK-L">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -406,7 +419,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK-STK">
-                                <rect key="frame" x="0.0" y="529" width="141" height="22"/>
+                                <rect key="frame" x="0.0" y="722" width="141" height="22"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-CHK-LBL">
                                         <rect key="frame" x="-2" y="4" width="99" height="14"/>
@@ -429,7 +442,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-SL-STK">
-                                <rect key="frame" x="0.0" y="497" width="292" height="20"/>
+                                <rect key="frame" x="0.0" y="690" width="292" height="20"/>
                                 <subviews>
                                     <imageView identifier="moonphase.new.moon" translatesAutoresizingMaskIntoConstraints="NO" id="PHASE-L-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -479,7 +492,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-STK">
-                                <rect key="frame" x="0.0" y="463" width="261" height="22"/>
+                                <rect key="frame" x="0.0" y="656" width="261" height="22"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="CLIP-LBL">
                                         <rect key="frame" x="-2" y="4" width="219" height="14"/>
@@ -502,13 +515,13 @@
                                 </customSpacing>
                             </stackView>
                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-SS-LBL">
-                                <rect key="frame" x="-2" y="435" width="100" height="16"/>
+                                <rect key="frame" x="-2" y="628" width="100" height="16"/>
                                 <textFieldCell key="cell" title="Shooting Stars" id="SEC-SS-LBL-CELL">
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-STK">
-                                <rect key="frame" x="0.0" y="401" width="162" height="22"/>
+                                <rect key="frame" x="0.0" y="594" width="162" height="22"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-EN-LBL">
                                         <rect key="frame" x="-2" y="4" width="120" height="14"/>
@@ -531,7 +544,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-STK">
-                                <rect key="frame" x="0.0" y="370" width="202" height="19"/>
+                                <rect key="frame" x="0.0" y="563" width="202" height="19"/>
                                 <subviews>
                                     <imageView identifier="timer" translatesAutoresizingMaskIntoConstraints="NO" id="SS-AVG-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -565,7 +578,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-STK">
-                                <rect key="frame" x="0.0" y="338" width="204" height="20"/>
+                                <rect key="frame" x="0.0" y="531" width="204" height="20"/>
                                 <subviews>
                                     <imageView identifier="location.north.line" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DIR-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -610,7 +623,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-STK">
-                                <rect key="frame" x="0.0" y="306" width="266" height="20"/>
+                                <rect key="frame" x="0.0" y="499" width="266" height="20"/>
                                 <subviews>
                                     <imageView identifier="line.horizontal.3" translatesAutoresizingMaskIntoConstraints="NO" id="SS-LEN-L-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -660,7 +673,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-STK">
-                                <rect key="frame" x="0.0" y="274" width="278" height="20"/>
+                                <rect key="frame" x="0.0" y="467" width="278" height="20"/>
                                 <subviews>
                                     <imageView identifier="tortoise" translatesAutoresizingMaskIntoConstraints="NO" id="SS-SPD-L-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -710,7 +723,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="SS-MORE-STK">
-                                <rect key="frame" x="0.0" y="156" width="278" height="106"/>
+                                <rect key="frame" x="0.0" y="349" width="278" height="106"/>
                                 <subviews>
                                     <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SS-THK-STK">
                                         <rect key="frame" x="0.0" y="86" width="274" height="20"/>
@@ -906,14 +919,307 @@
                                     <real value="3.4028234663852886e+38"/>
                                 </customSpacing>
                             </stackView>
+                            <!-- Satellites Section -->
+                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-SAT-LBL">
+                                <rect key="frame" x="-2" y="321" width="62" height="16"/>
+                                <textFieldCell key="cell" title="Satellites" id="SEC-SAT-LBL-CELL">
+                                    <font key="font" metaFont="systemBold"/>
+                                </textFieldCell>
+                            </textField>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-STK">
+                                <rect key="frame" x="0.0" y="287" width="140" height="22"/>
+                                <subviews>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-LBL">
+                                        <rect key="frame" x="-2" y="4" width="98" height="14"/>
+                                        <textFieldCell key="cell" title="Enable satellites" id="SAT-EN-LBL-CELL"/>
+                                    </textField>
+                                    <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-CHK">
+                                        <rect key="frame" x="100" y="-2" width="42" height="25"/>
+                                        <connections>
+                                            <action selector="satellitesToggled:" target="-2" id="SAT-EN-CHK-ACT"/>
+                                        </connections>
+                                    </switch>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-PERMIN-STK">
+                                <rect key="frame" x="0.0" y="256" width="250" height="19"/>
+                                <subviews>
+                                    <imageView identifier="timer" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-PERMIN-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-PERMIN-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-PERMIN-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="timer" id="SAT-PERMIN-ICON-CELL"/>
+                                    </imageView>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-PERMIN-TXT">
+                                        <rect key="frame" x="18" y="3" width="118" height="14"/>
+                                        <textFieldCell key="cell" title="Satellites / minute" id="SAT-PERMIN-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="SAT-PERMIN-SL">
+                                        <rect key="frame" x="138" y="-6" width="80" height="28"/>
+                                        <sliderCell key="cell" minValue="1" maxValue="120" doubleValue="80" tickMarkPosition="below" sliderType="linear" id="SAT-PERMIN-SL-CELL"/>
+                                        <connections>
+                                            <action selector="satellitesSliderChanged:" target="-2" id="SAT-PERMIN-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-PERMIN-LBL">
+                                        <rect key="frame" x="220" y="3" width="30" height="14"/>
+                                        <textFieldCell key="cell" title="80.0" id="SAT-PERMIN-LBL-CELL"/>
+                                    </textField>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-STK">
+                                <rect key="frame" x="0.0" y="224" width="268" height="20"/>
+                                <subviews>
+                                    <imageView identifier="tortoise" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-L-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-SPD-L-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-SPD-L-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="tortoise" id="SAT-SPD-L-ICON-CELL"/>
+                                    </imageView>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-TXT">
+                                        <rect key="frame" x="18" y="3" width="77" height="14"/>
+                                        <textFieldCell key="cell" title="Speed (px/s)" id="SAT-SPD-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-SL">
+                                        <rect key="frame" x="95" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="20" maxValue="300" doubleValue="90" tickMarkPosition="below" sliderType="linear" id="SAT-SPD-SL-CELL"/>
+                                        <connections>
+                                            <action selector="satellitesSliderChanged:" target="-2" id="SAT-SPD-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-LBL">
+                                        <rect key="frame" x="235" y="3" width="33" height="14"/>
+                                        <textFieldCell key="cell" title="90" id="SAT-SPD-LBL-CELL"/>
+                                    </textField>
+                                    <imageView identifier="hare" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-R-ICON">
+                                        <rect key="frame" x="268" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-SPD-R-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-SPD-R-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="hare" id="SAT-SPD-R-ICON-CELL"/>
+                                    </imageView>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-STK">
+                                <rect key="frame" x="0.0" y="192" width="262" height="20"/>
+                                <subviews>
+                                    <imageView identifier="circle" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-L-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-SIZE-L-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-SIZE-L-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="circle" id="SAT-SIZE-L-ICON-CELL"/>
+                                    </imageView>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-TXT">
+                                        <rect key="frame" x="18" y="3" width="60" height="14"/>
+                                        <textFieldCell key="cell" title="Size (px)" id="SAT-SIZE-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-SL">
+                                        <rect key="frame" x="80" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="1" maxValue="6" doubleValue="2" tickMarkPosition="below" sliderType="linear" id="SAT-SIZE-SL-CELL"/>
+                                        <connections>
+                                            <action selector="satellitesSliderChanged:" target="-2" id="SAT-SIZE-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-LBL">
+                                        <rect key="frame" x="222" y="3" width="17" height="14"/>
+                                        <textFieldCell key="cell" title="2.0" id="SAT-SIZE-LBL-CELL"/>
+                                    </textField>
+                                    <imageView identifier="circle.fill" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-R-ICON">
+                                        <rect key="frame" x="241" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-SIZE-R-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-SIZE-R-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="circle.fill" id="SAT-SIZE-R-ICON-CELL"/>
+                                    </imageView>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-STK">
+                                <rect key="frame" x="0.0" y="160" width="269" height="20"/>
+                                <subviews>
+                                    <imageView identifier="sun.min" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-L-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-BRI-L-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-BRI-L-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="sun.min" id="SAT-BRI-L-ICON-CELL"/>
+                                    </imageView>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-TXT">
+                                        <rect key="frame" x="18" y="3" width="65" height="14"/>
+                                        <textFieldCell key="cell" title="Brightness" id="SAT-BRI-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-SL">
+                                        <rect key="frame" x="83" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="0.29999999999999999" maxValue="1" doubleValue="0.90000000000000002" tickMarkPosition="below" sliderType="linear" id="SAT-BRI-SL-CELL"/>
+                                        <connections>
+                                            <action selector="satellitesSliderChanged:" target="-2" id="SAT-BRI-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-LBL">
+                                        <rect key="frame" x="223" y="3" width="28" height="14"/>
+                                        <textFieldCell key="cell" title="0.90" id="SAT-BRI-LBL-CELL"/>
+                                    </textField>
+                                    <imageView identifier="sun.max" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-R-ICON">
+                                        <rect key="frame" x="253" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-BRI-R-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-BRI-R-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="sun.max" id="SAT-BRI-R-ICON-CELL"/>
+                                    </imageView>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-STK">
+                                <rect key="frame" x="0.0" y="126" width="149" height="22"/>
+                                <subviews>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-TXT">
+                                        <rect key="frame" x="-2" y="4" width="107" height="14"/>
+                                        <textFieldCell key="cell" title="Trailing effect" id="SAT-TRAIL-TXT-CELL"/>
+                                    </textField>
+                                    <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-CHK">
+                                        <rect key="frame" x="109" y="-2" width="42" height="25"/>
+                                        <connections>
+                                            <action selector="satellitesTrailingToggled:" target="-2" id="SAT-TRAIL-CHK-ACT"/>
+                                        </connections>
+                                    </switch>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-STK">
+                                <rect key="frame" x="0.0" y="94" width="274" height="20"/>
+                                <subviews>
+                                    <imageView identifier="cloud" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-L-ICON">
+                                        <rect key="frame" x="0.0" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-DEC-L-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-DEC-L-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="cloud" id="SAT-DEC-L-ICON-CELL"/>
+                                    </imageView>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-TXT">
+                                        <rect key="frame" x="18" y="3" width="63" height="14"/>
+                                        <textFieldCell key="cell" title="Trail decay" id="SAT-DEC-TXT-CELL"/>
+                                    </textField>
+                                    <slider translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-SL">
+                                        <rect key="frame" x="81" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="0.5" maxValue="0.95" doubleValue="0.80000000000000004" tickMarkPosition="below" sliderType="linear" id="SAT-DEC-SL-CELL"/>
+                                        <connections>
+                                            <action selector="satellitesSliderChanged:" target="-2" id="SAT-DEC-SL-ACT"/>
+                                        </connections>
+                                    </slider>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-LBL">
+                                        <rect key="frame" x="221" y="3" width="35" height="14"/>
+                                        <textFieldCell key="cell" title="0.800" id="SAT-DEC-LBL-CELL"/>
+                                    </textField>
+                                    <imageView identifier="cloud.rain" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-R-ICON">
+                                        <rect key="frame" x="258" y="2" width="16" height="16"/>
+                                        <constraints>
+                                            <constraint firstAttribute="height" constant="16" id="SAT-DEC-R-ICON-H"/>
+                                            <constraint firstAttribute="width" constant="16" id="SAT-DEC-R-ICON-W"/>
+                                        </constraints>
+                                        <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="cloud.rain" id="SAT-DEC-R-ICON-CELL"/>
+                                    </imageView>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-PREV-LBL">
-                                <rect key="frame" x="-2" y="128" width="56" height="16"/>
+                                <rect key="frame" x="-2" y="66" width="56" height="16"/>
                                 <textFieldCell key="cell" title="Preview" id="SEC-PREV-LBL-CELL">
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
                             <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-CTL-STK">
-                                <rect key="frame" x="0.0" y="96" width="111" height="20"/>
+                                <rect key="frame" x="0.0" y="34" width="111" height="20"/>
                                 <subviews>
                                     <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-PAUSE">
                                         <rect key="frame" x="-7" y="-7" width="71" height="32"/>
@@ -946,7 +1252,7 @@
                                 </customSpacing>
                             </stackView>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CLEAR">
-                                <rect key="frame" x="-7" y="57" width="117" height="32"/>
+                                <rect key="frame" x="-7" y="-5" width="117" height="32"/>
                                 <buttonCell key="cell" type="push" title="Clear Preview" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CLEAR-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -956,7 +1262,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="irw-GB-QPa">
-                                <rect key="frame" x="-7" y="25" width="64" height="32"/>
+                                <rect key="frame" x="-7" y="-37" width="64" height="32"/>
                                 <buttonCell key="cell" type="push" title="Save" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="IyX-HG-idV">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -966,7 +1272,7 @@
                                 </buttonCell>
                             </button>
                             <button translatesAutoresizingMaskIntoConstraints="NO" id="BTN-CANCEL">
-                                <rect key="frame" x="-7" y="-7" width="76" height="32"/>
+                                <rect key="frame" x="-7" y="-69" width="76" height="32"/>
                                 <buttonCell key="cell" type="push" title="Cancel" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BTN-CANCEL-CELL">
                                     <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                     <font key="font" metaFont="system"/>
@@ -1006,6 +1312,15 @@
                             <integer value="1000"/>
                             <integer value="1000"/>
                             <integer value="1000"/>
+                            <!-- added satellites + preview items -->
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
+                            <integer value="1000"/>
                         </visibilityPriorities>
                         <customSpacing>
                             <real value="3.4028234663852886e+38"/>
@@ -1033,10 +1348,19 @@
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
+                            <!-- added satellites + preview items -->
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
                         </customSpacing>
                     </stackView>
                     <customView translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-VIEW">
-                        <rect key="frame" x="315" y="20" width="1047" height="820"/>
+                        <rect key="frame" x="315" y="20" width="1047" height="1010"/>
                     </customView>
                 </subviews>
                 <constraints>
@@ -1049,7 +1373,7 @@
                     <constraint firstItem="PREVIEW-VIEW" firstAttribute="leading" secondItem="Ab2-ul-qfO" secondAttribute="trailing" constant="10" id="C7"/>
                 </constraints>
             </view>
-            <point key="canvasLocation" x="430" y="36.5"/>
+            <point key="canvasLocation" x="430" y="148.5"/>
         </window>
         <userDefaultsController representsSharedInstance="YES" id="a09-0b-tT3"/>
     </objects>
