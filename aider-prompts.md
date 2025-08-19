@@ -1,0 +1,5 @@
+#  Aider-Prompts
+
+this repository contains swift code for a macos screensaver that is meant to look like the starry night screensaver from the afterdark package from the late 1980's. analyze the code in StarryEngine.swift in particular. we want to add a new layer that renders "satellites" in the same style as the original screensaver. for this first pass, add the layer and choose sensible defaults for any potential configuration options.
+
+this repository contains swift code for a macos screensaver that is meant to look like the starry night screensaver from the afterdark package from the late 1980's. add a new section to the options panel in the .xib file for the new satellite layer. add a checkbox to enable or disable the layer, a slider to control the number of satellites, and any other reasonable options wire these controls into the controller as appropriate, and pass them through to the constructor of the satellite layer. resize the options panel as appropriate. do not remove any other options from the xib file.
