@@ -1,0 +1,5 @@
+
+Save / export the cropped square base image as `base.png` (1024×1024).
+
+Generate the required scaled sizes (macOS will scale if some are missing, but providing all yields best quality):
+

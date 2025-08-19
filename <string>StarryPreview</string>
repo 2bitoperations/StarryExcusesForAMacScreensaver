@@ -1,0 +1,24 @@
+(Do not include the `.icns` extension.)
+
+## 6. Test in System Settings
+
+1. Install or build the saver.
+2. Open System Settings > Screen Saver.
+3. If the old icon still appears:
+   - Quit System Settings.
+   - Optionally clear the icon cache (log out/in or reboot if stubborn).
+   - Re-open System Settings.
+
+You should now see your custom screenshot-derived icon.
+
+## 7. Updating Later
+
+Just regenerate a new screenshot and repeat steps 2–4. The plist does not need further modification unless you rename the icon.
+
+## 8. Troubleshooting
+
+- Icon not showing: ensure the .icns is inside the built bundle under `Contents/Resources/StarryPreview.icns`.
+- Blurry small icon: consider hand-tuning the 16×16 and 32×32 PNGs with higher contrast or slightly enlarged moon/silhouette details before running `iconutil`.
+- Changed but System Settings still shows old: macOS caches aggressively; try a different filename (e.g. StarryPreview2) and update Info.plist if urgent, then revert after cache clears.
+
+Enjoy your authentic preview icon!
