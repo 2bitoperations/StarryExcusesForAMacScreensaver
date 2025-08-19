@@ -37,8 +37,6 @@ struct StarryRuntimeConfig {
 final class StarryEngine {
     // Base (persistent) star/building/backdrop context
     private(set) var baseContext: CGContext
-    // Satellite layer (transparent, rewritten each frame)
-    private var satelliteLayerContext: CGContext
     // Shooting stars layer (transparent, accumulation + decay)
     private var shootingStarsLayerContext: CGContext
     // Moon overlay (transparent) rewritten each frame (content internally cached)
@@ -53,7 +51,6 @@ final class StarryEngine {
     private var skylineRenderer: SkylineCoreRenderer?
     private var moonRenderer: MoonLayerRenderer?
     private var shootingStarsRenderer: ShootingStarsLayerRenderer?
-    private var satelliteRenderer: SatelliteLayerRenderer?
     
     private var size: CGSize
     private var lastInitSize: CGSize
@@ -70,13 +67,11 @@ final class StarryEngine {
         self.config = config
         
         self.baseContext = StarryEngine.makeOpaqueContext(size: size)
-        self.satelliteLayerContext = StarryEngine.makeTransparentContext(size: size)
         self.shootingStarsLayerContext = StarryEngine.makeTransparentContext(size: size)
         self.moonLayerContext = StarryEngine.makeTransparentContext(size: size)
         self.compositeContext = StarryEngine.makeOpaqueContext(size: size)
         
         clearBase()
-        clearSatelliteLayer()
         clearMoonLayer()
         clearShootingStarsLayer(full: true)
     }
@@ -116,7 +111,6 @@ final class StarryEngine {
         lastInitSize = newSize
         
         baseContext = StarryEngine.makeOpaqueContext(size: size)
-        satelliteLayerContext = StarryEngine.makeTransparentContext(size: size)
         shootingStarsLayerContext = StarryEngine.makeTransparentContext(size: size)
         moonLayerContext = StarryEngine.makeTransparentContext(size: size)
         compositeContext = StarryEngine.makeOpaqueContext(size: size)
@@ -125,9 +119,7 @@ final class StarryEngine {
         skylineRenderer = nil
         moonRenderer = nil
         shootingStarsRenderer = nil
-        satelliteRenderer = nil
         clearBase()
-        clearSatelliteLayer()
         clearMoonLayer()
         clearShootingStarsLayer(full: true)
     }
@@ -169,16 +161,14 @@ final class StarryEngine {
             clearShootingStarsLayer(full: true)
         }
         
-        // Satellites currently have only internal defaults; future config could be added here.
         config = newConfig
     }
     
-    // MARK: - Initialization of Skyline & Moon & Shooting Stars & Satellites
+    // MARK: - Initialization of Skyline & Moon & Shooting Stars
     
     private func ensureSkyline() {
         guard skyline == nil || skylineRenderer == nil else {
             ensureShootingStarsRenderer()
-            ensureSatelliteRenderer()
             return
         }
         do {
@@ -211,7 +201,6 @@ final class StarryEngine {
             os_log("StarryEngine: unable to init skyline %{public}@", log: log, type: .fault, "\(error)")
         }
         ensureShootingStarsRenderer()
-        ensureSatelliteRenderer()
     }
     
     private func ensureShootingStarsRenderer() {
@@ -233,24 +222,11 @@ final class StarryEngine {
             debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
     }
     
-    private func ensureSatelliteRenderer() {
-        guard satelliteRenderer == nil else { return }
-        satelliteRenderer = SatelliteLayerRenderer(
-            width: Int(size.width),
-            height: Int(size.height),
-            log: log)
-    }
-    
     // MARK: - Clearing
     
     private func clearBase() {
         baseContext.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
         baseContext.fill(CGRect(origin: .zero, size: size))
-    }
-    
-    private func clearSatelliteLayer() {
-        satelliteLayerContext.clear(CGRect(origin: .zero, size: size))
-        satelliteRenderer?.reset()
     }
     
     private func clearMoonLayer() {
@@ -270,15 +246,6 @@ final class StarryEngine {
         guard let renderer = moonRenderer else { return }
         clearMoonLayer()
         renderer.renderMoon(into: moonLayerContext)
-    }
-    
-    // MARK: - Satellite Rendering
-    
-    private func updateSatelliteLayer(dt: CFTimeInterval) {
-        guard let renderer = satelliteRenderer else { return }
-        // Satellites redraw fresh each frame (no accumulation)
-        satelliteLayerContext.clear(CGRect(origin: .zero, size: size))
-        renderer.update(into: satelliteLayerContext, dt: dt)
     }
     
     // MARK: - Shooting Stars Rendering
@@ -306,14 +273,12 @@ final class StarryEngine {
         if skyline.shouldClearNow() {
             skylineRenderer.resetFrameCounter()
             clearBase()
-            clearSatelliteLayer()
             clearMoonLayer()
             clearShootingStarsLayer(full: true)
             self.skyline = nil
             self.skylineRenderer = nil
             self.moonRenderer = nil
             self.shootingStarsRenderer = nil
-            self.satelliteRenderer = nil
             ensureSkyline()
             return baseContext.makeImage()
         }
@@ -321,23 +286,17 @@ final class StarryEngine {
         // Persistent stars/buildings/flasher
         skylineRenderer.drawSingleFrame(context: baseContext)
         
-        // Satellites (stateless layer each frame)
-        updateSatelliteLayer(dt: dt)
-        
         // Shooting stars (accumulation + decay)
         updateShootingStarsLayer(dt: dt)
         
         // Moon
         updateMoonLayer()
         
-        // Composite order: base -> satellites -> shooting stars -> moon
+        // Composite order: base -> shooting stars -> moon
         compositeContext.setFillColor(CGColor(gray: 0, alpha: 1))
         compositeContext.fill(CGRect(origin: .zero, size: size))
         if let baseImage = baseContext.makeImage() {
             compositeContext.draw(baseImage, in: CGRect(origin: .zero, size: size))
-        }
-        if let satellitesImage = satelliteLayerContext.makeImage() {
-            compositeContext.draw(satellitesImage, in: CGRect(origin: .zero, size: size))
         }
         if config.shootingStarsEnabled,
            let shootingStarsImage = shootingStarsLayerContext.makeImage() {
