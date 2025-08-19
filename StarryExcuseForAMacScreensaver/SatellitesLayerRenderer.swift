@@ -17,20 +17,35 @@ final class SatellitesLayerRenderer {
         var brightness: CGFloat
     }
     
+    // MARK: - Public configuration interface
+    
+    /// Whether the layer is actively rendering. Disabling clears existing satellites.
+    private(set) var isEnabled: Bool = true
+    
+    /// Average seconds between spawns (modifiable at runtime).
+    private var avgSpawnSeconds: Double
+    
+    /// Base horizontal speed (points / second).
+    private var speed: CGFloat
+    /// Base size (pixels) of each satellite square.
+    private var sizePx: CGFloat
+    /// Base brightness (0-1) prior to per-satellite random variation.
+    private var brightness: CGFloat
+    /// Whether to leave trails (alpha-faded decay)
+    private var trailing: Bool
+    /// Per-second decay factor (0 = instant disappear, 0.999 ~ slow fade)
+    private var trailDecay: CGFloat
+    
     private var satellites: [Satellite] = []
     
     private let width: Int
     private let height: Int
     private let log: OSLog
-    private let avgSpawnSeconds: Double
-    private let speed: CGFloat
-    private let sizePx: CGFloat
-    private let brightness: CGFloat
-    private let trailing: Bool
-    private let trailDecay: CGFloat
     
     private var timeUntilNextSpawn: Double = 0.0
     private var rng = SystemRandomNumberGenerator()
+    
+    // MARK: - Init
     
     init(width: Int,
          height: Int,
@@ -53,12 +68,72 @@ final class SatellitesLayerRenderer {
         scheduleNextSpawn()
     }
     
+    // MARK: - Public reconfiguration
+    
+    /// Enable or disable the renderer. Disabling clears any existing satellites.
+    func setEnabled(_ enabled: Bool) {
+        if enabled == isEnabled { return }
+        isEnabled = enabled
+        if !enabled {
+            satellites.removeAll()
+        } else {
+            scheduleNextSpawn()
+        }
+    }
+    
+    /// Convenience to fully reset, disable, and clear state.
+    func resetAndDisable() {
+        satellites.removeAll()
+        isEnabled = false
+    }
+    
+    /// Reset satellites and timers (preserves current parameter values and enabled state).
     func reset() {
         satellites.removeAll()
         scheduleNextSpawn()
     }
     
+    /// Update runtime parameters. Any nil parameter is left unchanged.
+    /// If avgSpawnSeconds changes, next spawn time is rescheduled to reflect new cadence.
+    func updateParameters(avgSpawnSeconds: Double? = nil,
+                          speed: CGFloat? = nil,
+                          size: CGFloat? = nil,
+                          brightness: CGFloat? = nil,
+                          trailing: Bool? = nil,
+                          trailDecay: CGFloat? = nil) {
+        var reschedule = false
+        
+        if let a = avgSpawnSeconds {
+            let clamped = max(0.05, a)
+            if clamped != self.avgSpawnSeconds {
+                self.avgSpawnSeconds = clamped
+                reschedule = true
+            }
+        }
+        if let s = speed {
+            self.speed = max(1.0, s)
+        }
+        if let sz = size {
+            self.sizePx = max(1.0, sz)
+        }
+        if let b = brightness {
+            self.brightness = min(max(0.0, b), 1.0)
+        }
+        if let t = trailing {
+            self.trailing = t
+        }
+        if let td = trailDecay {
+            self.trailDecay = min(max(0.0, td), 0.999)
+        }
+        if reschedule {
+            scheduleNextSpawn()
+        }
+    }
+    
+    // MARK: - Private helpers
+    
     private func scheduleNextSpawn() {
+        guard isEnabled else { return }
         // Exponential distribution with mean avgSpawnSeconds.
         // Use Darwin.log to avoid shadowing by the OSLog property named 'log'.
         let u = Double.random(in: 0.00001...0.99999, using: &rng)
@@ -66,6 +141,7 @@ final class SatellitesLayerRenderer {
     }
     
     private func spawn() {
+        guard isEnabled else { return }
         let fromLeft = Bool.random(using: &rng)
         // Constrain y so satellites stay above likely building tops (upper 70% of screen)
         let yMin = CGFloat(height) * 0.30
@@ -81,7 +157,17 @@ final class SatellitesLayerRenderer {
         satellites.append(s)
     }
     
+    // MARK: - Rendering
+    
     func update(into context: CGContext, dt: CFTimeInterval) {
+        let fullRect = CGRect(x: 0, y: 0, width: width, height: height)
+        
+        // If disabled, clear and skip.
+        guard isEnabled else {
+            context.clear(fullRect)
+            return
+        }
+        
         // Apply trail fade if enabled (done here so engine doesn't need to decide)
         if trailing {
             // DestinationOut fill to fade older pixels
@@ -94,17 +180,18 @@ final class SatellitesLayerRenderer {
             if fadeAlpha > 0 {
                 context.setBlendMode(.destinationOut)
                 context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: fadeAlpha))
-                context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+                context.fill(fullRect)
                 context.setBlendMode(.normal)
             }
             context.restoreGState()
         } else {
-            context.clear(CGRect(x: 0, y: 0, width: width, height: height))
+            context.clear(fullRect)
         }
         
+        // Advance satellites & prune
         var idx = 0
+        let dtf = CGFloat(dt)
         while idx < satellites.count {
-            let dtf = CGFloat(dt)
             satellites[idx].x += satellites[idx].vx * dtf
             if satellites[idx].vx > 0 && satellites[idx].x - satellites[idx].size > CGFloat(width) {
                 satellites.remove(at: idx)
@@ -116,11 +203,13 @@ final class SatellitesLayerRenderer {
             idx += 1
         }
         
+        // Spawning
         timeUntilNextSpawn -= dt
         while timeUntilNextSpawn <= 0 {
             spawn()
             scheduleNextSpawn()
-            timeUntilNextSpawn -= 0 // no overshoot accumulation; keep loop simple
+            // Keep timeUntilNextSpawn simple — no carryover of overshoot
+            break
         }
         
         drawSatellites(into: context)
@@ -133,7 +222,6 @@ final class SatellitesLayerRenderer {
                               y: sat.y - sat.size * 0.5,
                               width: sat.size,
                               height: sat.size)
-            // Simple white-ish square; could later add a 2x2 cross or slight glow
             context.setFillColor(CGColor(red: sat.brightness,
                                          green: sat.brightness,
                                          blue: sat.brightness,
