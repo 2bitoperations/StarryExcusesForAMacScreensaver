@@ -868,7 +868,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             shootingStarsBrightness: shootingStarsBrightnessSlider.doubleValue,
             shootingStarsTrailDecay: shootingStarsTrailDecaySlider.doubleValue,
             shootingStarsDebugShowSpawnBounds: (shootingStarsDebugSpawnBoundsCheckbox.state == .on),
-            satellitesEnabled: satellitesEnabledCheckbox?.state == .on ?? defaultsManager.satellitesEnabled,
+            satellitesEnabled: (satellitesEnabledCheckbox?.state == .on) ?? defaultsManager.satellitesEnabled,
             satellitesAvgSpawnSeconds: satellitesAvg,
             satellitesSpeed: satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed,
             satellitesSize: satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize,
