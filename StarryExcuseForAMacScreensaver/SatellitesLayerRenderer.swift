@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import os
 import QuartzCore
+import Darwin   // For explicit access to math functions like log()
 
 // Simple satellite renderer: spawns small bright points that traverse the sky
 // horizontally (either direction) at a fixed speed, at random vertical positions
@@ -58,9 +59,10 @@ final class SatellitesLayerRenderer {
     }
     
     private func scheduleNextSpawn() {
-        // Exponential distribution with mean avgSpawnSeconds
+        // Exponential distribution with mean avgSpawnSeconds.
+        // Use Darwin.log to avoid shadowing by the OSLog property named 'log'.
         let u = Double.random(in: 0.00001...0.99999, using: &rng)
-        timeUntilNextSpawn = -log(1 - u) * avgSpawnSeconds
+        timeUntilNextSpawn = -Darwin.log(1 - u) * avgSpawnSeconds
     }
     
     private func spawn() {
@@ -118,7 +120,7 @@ final class SatellitesLayerRenderer {
         while timeUntilNextSpawn <= 0 {
             spawn()
             scheduleNextSpawn()
-            timeUntilNextSpawn -= 0 // no overshoot accumulation; spawn at most one extra per frame beyond loop
+            timeUntilNextSpawn -= 0 // no overshoot accumulation; keep loop simple
         }
         
         drawSatellites(into: context)
