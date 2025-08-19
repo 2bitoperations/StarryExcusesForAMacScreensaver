@@ -1,3 +1,4 @@
+﻿
 //
 //  ConfigurationSheetManager.swift
 //  StarryExcuseForAMacScreensaver
@@ -59,6 +60,21 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var shootingStarsTrailDecayPreview: NSTextField!
     @IBOutlet weak var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch!
     
+    // Satellites controls (NEW - optional until XIB updated)
+    @IBOutlet weak var satellitesEnabledCheckbox: NSSwitch?
+    // Slider will represent satellites per minute (frequency). We convert to avg seconds.
+    @IBOutlet weak var satellitesPerMinuteSlider: NSSlider?
+    @IBOutlet weak var satellitesPerMinutePreview: NSTextField?
+    @IBOutlet weak var satellitesSpeedSlider: NSSlider?
+    @IBOutlet weak var satellitesSpeedPreview: NSTextField?
+    @IBOutlet weak var satellitesSizeSlider: NSSlider?
+    @IBOutlet weak var satellitesSizePreview: NSTextField?
+    @IBOutlet weak var satellitesBrightnessSlider: NSSlider?
+    @IBOutlet weak var satellitesBrightnessPreview: NSTextField?
+    @IBOutlet weak var satellitesTrailingCheckbox: NSSwitch?
+    @IBOutlet weak var satellitesTrailDecaySlider: NSSlider?
+    @IBOutlet weak var satellitesTrailDecayPreview: NSTextField?
+    
     // Preview container
     @IBOutlet weak var moonPreviewView: NSView!
     
@@ -101,6 +117,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastShootingStarsBrightness: Double = 0
     private var lastShootingStarsTrailDecay: Double = 0
     private var lastShootingStarsDebugSpawnBounds: Bool = false
+    
+    // Satellites last-known (NEW)
+    private var lastSatellitesEnabled: Bool = false
+    private var lastSatellitesAvgSpawnSeconds: Double = 0
+    private var lastSatellitesSpeed: Double = 0
+    private var lastSatellitesSize: Double = 0
+    private var lastSatellitesBrightness: Double = 0
+    private var lastSatellitesTrailing: Bool = false
+    private var lastSatellitesTrailDecay: Double = 0
     
     // MARK: - UI Actions (sliders / controls)
     
@@ -296,6 +321,86 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         updatePreviewConfig()
     }
     
+    // MARK: - Satellites Actions (NEW)
+    
+    @IBAction func satellitesToggled(_ sender: Any) {
+        guard let checkbox = satellitesEnabledCheckbox else { return }
+        let enabled = (checkbox.state == .on)
+        if enabled != lastSatellitesEnabled {
+            logChange(changedKey: "satellitesEnabled",
+                      oldValue: lastSatellitesEnabled ? "true" : "false",
+                      newValue: enabled ? "true" : "false")
+            lastSatellitesEnabled = enabled
+        }
+        updateSatellitesUIEnabled()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+        maybeClearAndRestartPreview(reason: "satellitesToggled")
+    }
+    
+    @IBAction func satellitesSliderChanged(_ sender: Any) {
+        // Satellites per minute slider -> avg spawn seconds
+        if let perMinSlider = satellitesPerMinuteSlider {
+            let perMinute = max(0.1, perMinSlider.doubleValue)
+            let avgSeconds = 60.0 / perMinute
+            if avgSeconds != lastSatellitesAvgSpawnSeconds {
+                logChange(changedKey: "satellitesAvgSpawnSeconds",
+                          oldValue: format(lastSatellitesAvgSpawnSeconds),
+                          newValue: format(avgSeconds))
+                lastSatellitesAvgSpawnSeconds = avgSeconds
+            }
+        }
+        if let speedSlider = satellitesSpeedSlider {
+            if speedSlider.doubleValue != lastSatellitesSpeed {
+                logChange(changedKey: "satellitesSpeed",
+                          oldValue: format(lastSatellitesSpeed),
+                          newValue: format(speedSlider.doubleValue))
+                lastSatellitesSpeed = speedSlider.doubleValue
+            }
+        }
+        if let sizeSlider = satellitesSizeSlider {
+            if sizeSlider.doubleValue != lastSatellitesSize {
+                logChange(changedKey: "satellitesSize",
+                          oldValue: format(lastSatellitesSize),
+                          newValue: format(sizeSlider.doubleValue))
+                lastSatellitesSize = sizeSlider.doubleValue
+            }
+        }
+        if let brightnessSlider = satellitesBrightnessSlider {
+            if brightnessSlider.doubleValue != lastSatellitesBrightness {
+                logChange(changedKey: "satellitesBrightness",
+                          oldValue: format(lastSatellitesBrightness),
+                          newValue: format(brightnessSlider.doubleValue))
+                lastSatellitesBrightness = brightnessSlider.doubleValue
+            }
+        }
+        if let trailDecaySlider = satellitesTrailDecaySlider {
+            if trailDecaySlider.doubleValue != lastSatellitesTrailDecay {
+                logChange(changedKey: "satellitesTrailDecay",
+                          oldValue: format(lastSatellitesTrailDecay),
+                          newValue: format(trailDecaySlider.doubleValue))
+                lastSatellitesTrailDecay = trailDecaySlider.doubleValue
+            }
+        }
+        updatePreviewLabels()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+    
+    @IBAction func satellitesTrailingToggled(_ sender: Any) {
+        guard let cb = satellitesTrailingCheckbox else { return }
+        let enabled = cb.state == .on
+        if enabled != lastSatellitesTrailing {
+            logChange(changedKey: "satellitesTrailing",
+                      oldValue: lastSatellitesTrailing ? "true" : "false",
+                      newValue: enabled ? "true" : "false")
+            lastSatellitesTrailing = enabled
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+        maybeClearAndRestartPreview(reason: "satellitesTrailingToggled")
+    }
+    
     // MARK: - Preview Control Buttons
     
     @IBAction func previewTogglePause(_ sender: Any) {
@@ -382,6 +487,27 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsTrailDecaySlider.doubleValue = defaultsManager.shootingStarsTrailDecay
         shootingStarsDebugSpawnBoundsCheckbox.state = defaultsManager.shootingStarsDebugShowSpawnBounds ? .on : .off
         
+        // Satellites (NEW)
+        if let satEnabled = satellitesEnabledCheckbox {
+            satEnabled.state = defaultsManager.satellitesEnabled ? .on : .off
+        }
+        if let satPerMinSlider = satellitesPerMinuteSlider {
+            // Convert avg seconds to per minute
+            let perMinute = 60.0 / defaultsManager.satellitesAvgSpawnSeconds
+            satPerMinSlider.doubleValue = perMinute
+        }
+        satellitesPerMinutePreview?.stringValue = satellitesPerMinuteSlider.map { String(format: "%.2f", $0.doubleValue) } ?? ""
+        satellitesSpeedSlider?.doubleValue = defaultsManager.satellitesSpeed
+        satellitesSpeedPreview?.stringValue = String(format: "%.0f", satellitesSpeedSlider?.doubleValue ?? 0)
+        satellitesSizeSlider?.doubleValue = defaultsManager.satellitesSize
+        satellitesSizePreview?.stringValue = String(format: "%.1f", satellitesSizeSlider?.doubleValue ?? 0)
+        satellitesBrightnessSlider?.doubleValue = defaultsManager.satellitesBrightness
+        satellitesBrightnessPreview?.stringValue = String(format: "%.2f", satellitesBrightnessSlider?.doubleValue ?? 0)
+        satellitesTrailingCheckbox?.state = defaultsManager.satellitesTrailing ? .on : .off
+        satellitesTrailDecaySlider?.doubleValue = defaultsManager.satellitesTrailDecay
+        satellitesTrailDecayPreview?.stringValue = String(format: "%.3f", satellitesTrailDecaySlider?.doubleValue ?? 0)
+        updateSatellitesUIEnabled()
+        
         // Editable fields
         moonTraversalMinutes.isEditable = true
         moonTraversalMinutes.isSelectable = true
@@ -413,6 +539,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastShootingStarsBrightness = shootingStarsBrightnessSlider.doubleValue
         lastShootingStarsTrailDecay = shootingStarsTrailDecaySlider.doubleValue
         lastShootingStarsDebugSpawnBounds = (shootingStarsDebugSpawnBoundsCheckbox.state == .on)
+        
+        // Satellites last-known
+        lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
+        lastSatellitesAvgSpawnSeconds = defaultsManager.satellitesAvgSpawnSeconds
+        lastSatellitesSpeed = defaultsManager.satellitesSpeed
+        lastSatellitesSize = defaultsManager.satellitesSize
+        lastSatellitesBrightness = defaultsManager.satellitesBrightness
+        lastSatellitesTrailing = defaultsManager.satellitesTrailing
+        lastSatellitesTrailDecay = defaultsManager.satellitesTrailDecay
         
         // Delegates
         starsPerUpdate.delegate = self
@@ -479,6 +614,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsTrailDecaySlider.setAccessibilityLabel("Shooting star trail decay")
         shootingStarsDebugSpawnBoundsCheckbox.setAccessibilityLabel("Debug: show spawn bounds")
         pauseToggleButton.setAccessibilityLabel("Pause or resume preview")
+        satellitesEnabledCheckbox?.setAccessibilityLabel("Enable satellites layer")
+        satellitesPerMinuteSlider?.setAccessibilityLabel("Satellites per minute")
+        satellitesSpeedSlider?.setAccessibilityLabel("Satellite speed")
+        satellitesSizeSlider?.setAccessibilityLabel("Satellite size")
+        satellitesBrightnessSlider?.setAccessibilityLabel("Satellite brightness")
+        satellitesTrailingCheckbox?.setAccessibilityLabel("Satellite trailing effect")
+        satellitesTrailDecaySlider?.setAccessibilityLabel("Satellite trail decay")
     }
     
     // MARK: - SF Symbols injection
@@ -538,7 +680,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // MARK: - Validation
     
     private func inputsAreValid() -> Bool {
-        // Single moon size slider always valid (enforced by slider range)
+        // For now all ranges enforced by slider min/max or property clamps.
         return true
     }
     
@@ -698,7 +840,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func currentPreviewRuntimeConfig() -> StarryRuntimeConfig {
-        StarryRuntimeConfig(
+        // Derive satellitesAvgSpawnSeconds from slider (per minute) if slider exists.
+        var satellitesAvg: Double = defaultsManager.satellitesAvgSpawnSeconds
+        if let slider = satellitesPerMinuteSlider {
+            let perMinute = max(0.1, slider.doubleValue)
+            satellitesAvg = 60.0 / perMinute
+        }
+        return StarryRuntimeConfig(
             starsPerUpdate: starsPerUpdate.integerValue,
             buildingHeight: buildingHeightSlider.doubleValue,
             buildingFrequency: buildingFrequencySlider.doubleValue,
@@ -719,7 +867,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             shootingStarsThickness: shootingStarsThicknessSlider.doubleValue,
             shootingStarsBrightness: shootingStarsBrightnessSlider.doubleValue,
             shootingStarsTrailDecay: shootingStarsTrailDecaySlider.doubleValue,
-            shootingStarsDebugShowSpawnBounds: (shootingStarsDebugSpawnBoundsCheckbox.state == .on)
+            shootingStarsDebugShowSpawnBounds: (shootingStarsDebugSpawnBoundsCheckbox.state == .on),
+            satellitesEnabled: satellitesEnabledCheckbox?.state == .on ?? defaultsManager.satellitesEnabled,
+            satellitesAvgSpawnSeconds: satellitesAvg,
+            satellitesSpeed: satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed,
+            satellitesSize: satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize,
+            satellitesBrightness: satellitesBrightnessSlider?.doubleValue ?? defaultsManager.satellitesBrightness,
+            satellitesTrailing: satellitesTrailingCheckbox?.state == .on ?? defaultsManager.satellitesTrailing,
+            satellitesTrailDecay: satellitesTrailDecaySlider?.doubleValue ?? defaultsManager.satellitesTrailDecay
         )
     }
     
@@ -740,6 +895,22 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsThicknessPreview?.stringValue = String(format: "%.0f", shootingStarsThicknessSlider.doubleValue)
         shootingStarsBrightnessPreview?.stringValue = String(format: "%.2f", shootingStarsBrightnessSlider.doubleValue)
         shootingStarsTrailDecayPreview?.stringValue = String(format: "%.3f", shootingStarsTrailDecaySlider.doubleValue)
+        
+        if let satPerMinSlider = satellitesPerMinuteSlider {
+            satellitesPerMinutePreview?.stringValue = String(format: "%.2f", satPerMinSlider.doubleValue)
+        }
+        if let speedSlider = satellitesSpeedSlider {
+            satellitesSpeedPreview?.stringValue = String(format: "%.0f", speedSlider.doubleValue)
+        }
+        if let sizeSlider = satellitesSizeSlider {
+            satellitesSizePreview?.stringValue = String(format: "%.1f", sizeSlider.doubleValue)
+        }
+        if let brightSlider = satellitesBrightnessSlider {
+            satellitesBrightnessPreview?.stringValue = String(format: "%.2f", brightSlider.doubleValue)
+        }
+        if let trailDecaySlider = satellitesTrailDecaySlider {
+            satellitesTrailDecayPreview?.stringValue = String(format: "%.3f", trailDecaySlider.doubleValue)
+        }
     }
     
     private func effectivePaused() -> Bool {
@@ -779,6 +950,29 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsDebugSpawnBoundsCheckbox.alphaValue = alpha
     }
     
+    private func updateSatellitesUIEnabled() {
+        guard let enabledCheckbox = satellitesEnabledCheckbox else { return }
+        let enabled = enabledCheckbox.state == .on
+        let alpha: CGFloat = enabled ? 1.0 : 0.4
+        satellitesPerMinuteSlider?.isEnabled = enabled
+        satellitesSpeedSlider?.isEnabled = enabled
+        satellitesSizeSlider?.isEnabled = enabled
+        satellitesBrightnessSlider?.isEnabled = enabled
+        satellitesTrailingCheckbox?.isEnabled = enabled
+        satellitesTrailDecaySlider?.isEnabled = enabled && (satellitesTrailingCheckbox?.state == .on)
+        satellitesPerMinuteSlider?.alphaValue = alpha
+        satellitesPerMinutePreview?.alphaValue = alpha
+        satellitesSpeedSlider?.alphaValue = alpha
+        satellitesSpeedPreview?.alphaValue = alpha
+        satellitesSizeSlider?.alphaValue = alpha
+        satellitesSizePreview?.alphaValue = alpha
+        satellitesBrightnessSlider?.alphaValue = alpha
+        satellitesBrightnessPreview?.alphaValue = alpha
+        satellitesTrailingCheckbox?.alphaValue = alpha
+        satellitesTrailDecaySlider?.alphaValue = alpha
+        satellitesTrailDecayPreview?.alphaValue = alpha
+    }
+    
     // MARK: - Save / Close / Cancel
     
     @IBAction func saveClose(_ sender: Any) {
@@ -811,6 +1005,30 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.shootingStarsBrightness = shootingStarsBrightnessSlider.doubleValue
         defaultsManager.shootingStarsTrailDecay = shootingStarsTrailDecaySlider.doubleValue
         defaultsManager.shootingStarsDebugShowSpawnBounds = (shootingStarsDebugSpawnBoundsCheckbox.state == .on)
+        
+        // Satellites
+        if let cb = satellitesEnabledCheckbox {
+            defaultsManager.satellitesEnabled = (cb.state == .on)
+        }
+        if let perMinSlider = satellitesPerMinuteSlider {
+            let perMinute = max(0.1, perMinSlider.doubleValue)
+            defaultsManager.satellitesAvgSpawnSeconds = 60.0 / perMinute
+        }
+        if let speedSlider = satellitesSpeedSlider {
+            defaultsManager.satellitesSpeed = speedSlider.doubleValue
+        }
+        if let sizeSlider = satellitesSizeSlider {
+            defaultsManager.satellitesSize = sizeSlider.doubleValue
+        }
+        if let brightnessSlider = satellitesBrightnessSlider {
+            defaultsManager.satellitesBrightness = brightnessSlider.doubleValue
+        }
+        if let trailingCheckbox = satellitesTrailingCheckbox {
+            defaultsManager.satellitesTrailing = (trailingCheckbox.state == .on)
+        }
+        if let trailDecaySlider = satellitesTrailDecaySlider {
+            defaultsManager.satellitesTrailDecay = trailDecaySlider.doubleValue
+        }
         
         view?.settingsChanged()
         
@@ -861,7 +1079,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                " shootingStarsThickness=\(format(shootingStarsThicknessSlider.doubleValue))," +
                " shootingStarsBrightness=\(format(shootingStarsBrightnessSlider.doubleValue))," +
                " shootingStarsTrailDecay=\(format(shootingStarsTrailDecaySlider.doubleValue))," +
-               " shootingStarsDebugSpawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox.state == .on)"
+               " shootingStarsDebugSpawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox.state == .on)," +
+               " satellitesEnabled=\(satellitesEnabledCheckbox?.state == .on)," +
+               " satellitesAvgSpawnSeconds=\(format(lastSatellitesAvgSpawnSeconds))," +
+               " satellitesSpeed=\(format(lastSatellitesSpeed))," +
+               " satellitesSize=\(format(lastSatellitesSize))," +
+               " satellitesBrightness=\(format(lastSatellitesBrightness))," +
+               " satellitesTrailing=\(lastSatellitesTrailing)," +
+               " satellitesTrailDecay=\(format(lastSatellitesTrailDecay))"
     }
     
     private func format(_ d: Double) -> String {

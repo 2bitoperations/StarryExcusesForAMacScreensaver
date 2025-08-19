@@ -41,6 +41,15 @@ class StarryDefaultsManager {
     private let defaultShootingStarsTrailDecay: Double = 0.92
     private let defaultShootingStarsDebugSpawnBounds = false
     
+    // Satellites defaults (NEW)
+    private let defaultSatellitesEnabled = true
+    private let defaultSatellitesAvgSpawnSeconds = 0.75     // frequent
+    private let defaultSatellitesSpeed = 90.0               // px/sec
+    private let defaultSatellitesSize = 2.0                 // px
+    private let defaultSatellitesBrightness = 0.9           // 0..1
+    private let defaultSatellitesTrailing = true
+    private let defaultSatellitesTrailDecay = 0.80          // 0..1 (decay factor)
+    
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
         defaults = ScreenSaverDefaults.init(forModuleWithName: identifier!)!
@@ -321,6 +330,97 @@ class StarryDefaultsManager {
                 return defaultShootingStarsDebugSpawnBounds
             }
             return defaults.bool(forKey: "ShootingStarsDebugShowSpawnBounds")
+        }
+    }
+    
+    // MARK: - Satellites Settings (NEW)
+    
+    var satellitesEnabled: Bool {
+        set { defaults.set(newValue, forKey: "SatellitesEnabled"); defaults.synchronize() }
+        get {
+            if defaults.object(forKey: "SatellitesEnabled") == nil {
+                return defaultSatellitesEnabled
+            }
+            return defaults.bool(forKey: "SatellitesEnabled")
+        }
+    }
+    
+    // Average seconds between spawns (0.2 (very frequent) ... 120 (rare))
+    var satellitesAvgSpawnSeconds: Double {
+        set {
+            let clamped = max(0.2, min(120.0, newValue))
+            defaults.set(clamped, forKey: "SatellitesAvgSpawnSeconds")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "SatellitesAvgSpawnSeconds")
+            if v.isNaN || v < 0.2 || v > 120.0 {
+                return defaultSatellitesAvgSpawnSeconds
+            }
+            return v
+        }
+    }
+    
+    // Pixels per second
+    var satellitesSpeed: Double {
+        set {
+            let clamped = max(10.0, min(600.0, newValue))
+            defaults.set(clamped, forKey: "SatellitesSpeed")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "SatellitesSpeed")
+            return (v >= 10.0 && v <= 600.0) ? v : defaultSatellitesSpeed
+        }
+    }
+    
+    // Pixel size (dot diameter)
+    var satellitesSize: Double {
+        set {
+            let clamped = max(1.0, min(6.0, newValue))
+            defaults.set(clamped, forKey: "SatellitesSize")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "SatellitesSize")
+            return (v >= 1.0 && v <= 6.0) ? v : defaultSatellitesSize
+        }
+    }
+    
+    // Brightness multiplier 0.2 .. 1.2
+    var satellitesBrightness: Double {
+        set {
+            let clamped = max(0.2, min(1.2, newValue))
+            defaults.set(clamped, forKey: "SatellitesBrightness")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "SatellitesBrightness")
+            return (v >= 0.2 && v <= 1.2) ? v : defaultSatellitesBrightness
+        }
+    }
+    
+    // Trailing effect enabled
+    var satellitesTrailing: Bool {
+        set { defaults.set(newValue, forKey: "SatellitesTrailing"); defaults.synchronize() }
+        get {
+            if defaults.object(forKey: "SatellitesTrailing") == nil {
+                return defaultSatellitesTrailing
+            }
+            return defaults.bool(forKey: "SatellitesTrailing")
+        }
+    }
+    
+    // Trail decay factor 0.5 .. 0.99
+    var satellitesTrailDecay: Double {
+        set {
+            let clamped = max(0.5, min(0.99, newValue))
+            defaults.set(clamped, forKey: "SatellitesTrailDecay")
+            defaults.synchronize()
+        }
+        get {
+            let v = defaults.double(forKey: "SatellitesTrailDecay")
+            return (v >= 0.5 && v <= 0.99) ? v : defaultSatellitesTrailDecay
         }
     }
     

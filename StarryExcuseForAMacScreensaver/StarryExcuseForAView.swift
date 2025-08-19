@@ -1,3 +1,4 @@
+﻿
 //
 //  StarryExcuseForAView.swift
 //  StarryExcuseForAMacScreensaver
@@ -122,7 +123,14 @@ class StarryExcuseForAView: ScreenSaverView {
             shootingStarsThickness: defaultsManager.shootingStarsThickness,
             shootingStarsBrightness: defaultsManager.shootingStarsBrightness,
             shootingStarsTrailDecay: defaultsManager.shootingStarsTrailDecay,
-            shootingStarsDebugShowSpawnBounds: defaultsManager.shootingStarsDebugShowSpawnBounds
+            shootingStarsDebugShowSpawnBounds: defaultsManager.shootingStarsDebugShowSpawnBounds,
+            satellitesEnabled: defaultsManager.satellitesEnabled,
+            satellitesAvgSpawnSeconds: defaultsManager.satellitesAvgSpawnSeconds,
+            satellitesSpeed: defaultsManager.satellitesSpeed,
+            satellitesSize: defaultsManager.satellitesSize,
+            satellitesBrightness: defaultsManager.satellitesBrightness,
+            satellitesTrailing: defaultsManager.satellitesTrailing,
+            satellitesTrailDecay: defaultsManager.satellitesTrailDecay
         )
     }
     
