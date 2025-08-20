@@ -16,6 +16,7 @@
                 <outlet property="cancelButton" destination="BTN-CANCEL" id="CANCEL-BTN-OUTLET"/>
                 <outlet property="darkBrightnessPreview" destination="DRK-B-LBL" id="DRK-B-LBL-ID"/>
                 <outlet property="darkBrightnessSlider" destination="DRK-B-SL" id="DRK-B-SL-ID"/>
+                <outlet property="debugOverlayEnabledCheckbox" destination="DBG-OVR-CHK" id="DBG-OVR-CHK-OUTLET"/>
                 <outlet property="moonPhaseOverrideCheckbox" destination="PHASE-CHK" id="PHASE-CHK-OUTLET"/>
                 <outlet property="moonPhasePreview" destination="PHASE-VAL-LBL" id="PHASE-VAL-LBL-OUTLET"/>
                 <outlet property="moonPhaseSlider" destination="PHASE-SL" id="PHASE-SL-OUTLET"/>
@@ -502,6 +503,30 @@
                                         <rect key="frame" x="221" y="-2" width="42" height="25"/>
                                         <connections>
                                             <action selector="showLightAreaTextureFillMaskToggled:" target="-2" id="CLIP-CHK-ACT"/>
+                                        </connections>
+                                    </switch>
+                                </subviews>
+                                <visibilityPriorities>
+                                    <integer value="1000"/>
+                                    <integer value="1000"/>
+                                </visibilityPriorities>
+                                <customSpacing>
+                                    <real value="3.4028234663852886e+38"/>
+                                    <real value="3.4028234663852886e+38"/>
+                                </customSpacing>
+                            </stackView>
+                            <!-- Debug Overlay Toggle -->
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="DBG-OVR-STK">
+                                <rect key="frame" x="0.0" y="636" width="170" height="22"/>
+                                <subviews>
+                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DBG-OVR-LBL">
+                                        <rect key="frame" x="-2" y="4" width="126" height="14"/>
+                                        <textFieldCell key="cell" title="Show debug overlay" id="DBG-OVR-LBL-CELL"/>
+                                    </textField>
+                                    <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="DBG-OVR-CHK">
+                                        <rect key="frame" x="128" y="-2" width="42" height="25"/>
+                                        <connections>
+                                            <action selector="debugOverlayToggled:" target="-2" id="DBG-OVR-CHK-ACT"/>
                                         </connections>
                                     </switch>
                                 </subviews>
@@ -1312,6 +1337,9 @@
                             <integer value="1000"/>
                             <integer value="1000"/>
                             <integer value="1000"/>
+                            <integer value="1000"/>
+                            <!-- newly added debug overlay -->
+                            <integer value="1000"/>
                             <!-- added satellites + preview items -->
                             <integer value="1000"/>
                             <integer value="1000"/>
@@ -1347,6 +1375,9 @@
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
+                            <!-- newly added debug overlay -->
                             <real value="3.4028234663852886e+38"/>
                             <!-- added satellites + preview items -->
                             <real value="3.4028234663852886e+38"/>
