@@ -17,6 +17,7 @@
 		3EAA86072279605D009F5745 /* SkylineCoreRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA86062279605D009F5745 /* SkylineCoreRenderer.swift */; };
 		A1B2C3D40000000100000001 /* Moon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D30000000100000001 /* Moon.swift */; };
 		F9104B3F2E54D3A0007322E2 /* aider-prompts.md in Resources */ = {isa = PBXBuildFile; fileRef = F9104B3E2E54D3A0007322E2 /* aider-prompts.md */; };
+		F9104B472E54F27C007322E2 /* SatellitesLayerRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9104B462E54F27C007322E2 /* SatellitesLayerRenderer.swift */; };
 		F9295FE42E4E567500083F85 /* StarryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9295FE32E4E567500083F85 /* StarryEngine.swift */; };
 		F9295FE62E4E68BD00083F85 /* MoonLayerRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9295FE52E4E68BD00083F85 /* MoonLayerRenderer.swift */; };
 		F9295FE82E4FA78800083F85 /* ShootingStarsLayerRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9295FE72E4FA78800083F85 /* ShootingStarsLayerRenderer.swift */; };
@@ -36,6 +37,7 @@
 		3EAA86062279605D009F5745 /* SkylineCoreRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkylineCoreRenderer.swift; sourceTree = "<group>"; };
 		A1B2C3D30000000100000001 /* Moon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Moon.swift; sourceTree = "<group>"; };
 		F9104B3E2E54D3A0007322E2 /* aider-prompts.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "aider-prompts.md"; sourceTree = "<group>"; };
+		F9104B462E54F27C007322E2 /* SatellitesLayerRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SatellitesLayerRenderer.swift; sourceTree = "<group>"; };
 		F9295FE32E4E567500083F85 /* StarryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarryEngine.swift; sourceTree = "<group>"; };
 		F9295FE52E4E68BD00083F85 /* MoonLayerRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoonLayerRenderer.swift; sourceTree = "<group>"; };
 		F9295FE72E4FA78800083F85 /* ShootingStarsLayerRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShootingStarsLayerRenderer.swift; sourceTree = "<group>"; };
@@ -87,6 +89,7 @@
 				3E597E10227BAE390092CA49 /* StarryDefaultsManager.swift */,
 				A1B2C3D30000000100000001 /* Moon.swift */,
 				F9295FE52E4E68BD00083F85 /* MoonLayerRenderer.swift */,
+				F9104B462E54F27C007322E2 /* SatellitesLayerRenderer.swift */,
 			);
 			path = StarryExcuseForAMacScreensaver;
 			sourceTree = "<group>";
@@ -180,6 +183,7 @@
 				3EAA860122795E14009F5745 /* Buildings.swift in Sources */,
 				3E597E12227BD9C70092CA49 /* StarryDefaultsManager.swift in Sources */,
 				F9295FE82E4FA78800083F85 /* ShootingStarsLayerRenderer.swift in Sources */,
+				F9104B472E54F27C007322E2 /* SatellitesLayerRenderer.swift in Sources */,
 				3E597E0F227BA8780092CA49 /* StarryConfigSheetController.swift in Sources */,
 				F9E3C8F12E4D34D500FDBD91 /* MoonTexture.swift in Sources */,
 				3EAA86072279605D009F5745 /* SkylineCoreRenderer.swift in Sources */,
