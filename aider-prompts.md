@@ -8,3 +8,6 @@ this repository contains swift code for a macos screensaver that is meant to loo
 
 
 this repository contains swift code for a macos screensaver that is meant to look like the starry night screensaver from the afterdark package from the late 1980's.  we have recently added options to StarryConfigSheetController relevant to the satellite layer in StarryEngine.swift. edit the StarryExcusesConfigSheet.xib file to provide widgets for these new options. resize the options panel as appropriate. do not remove any other options from the xib file.
+
+(the initial implementation of this basically just made the satellites lines rather than dots. to iterate later...)
+this repository contains swift code for a macos screensaver that is meant to look like the starry night screensaver from the afterdark package from the late 1980's. analyze the code in StarryEngine.swift and SatellitesLayerRenderer.swift and see if there is a way we can make the motion of the satellites smoother (right now we change each satellite position by many pixels with each update, leading to jerky motion).
