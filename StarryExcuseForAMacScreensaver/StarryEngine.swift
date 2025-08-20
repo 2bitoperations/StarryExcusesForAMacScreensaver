@@ -391,7 +391,7 @@ final class StarryEngine {
         paragraph.alignment = .right
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.9),
+            .foregroundColor: NSColor(calibratedRed: 1.0, green: 0.0, blue: 1.0, alpha: 0.9),
             .paragraphStyle: paragraph
         ]
         let attrString = NSAttributedString(string: text, attributes: attrs)
