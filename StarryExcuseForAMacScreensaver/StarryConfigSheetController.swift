@@ -1,4 +1,4 @@
-﻿
+
 //
 //  ConfigurationSheetManager.swift
 //  StarryExcuseForAMacScreensaver
@@ -873,7 +873,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             satellitesSpeed: satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed,
             satellitesSize: satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize,
             satellitesBrightness: satellitesBrightnessSlider?.doubleValue ?? defaultsManager.satellitesBrightness,
-            satellitesTrailing: satellitesTrailingCheckbox?.state == .on ?? defaultsManager.satellitesTrailing,
+            satellitesTrailing: (satellitesTrailingCheckbox?.state == .on) ?? defaultsManager.satellitesTrailing,
             satellitesTrailDecay: satellitesTrailDecaySlider?.doubleValue ?? defaultsManager.satellitesTrailDecay
         )
     }
