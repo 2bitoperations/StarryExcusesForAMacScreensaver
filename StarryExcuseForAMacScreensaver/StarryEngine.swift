@@ -56,6 +56,45 @@ struct StarryRuntimeConfig {
     var debugOverlayEnabled: Bool = false
 }
 
+// Human-readable dumping for logging/debugging
+extension StarryRuntimeConfig: CustomStringConvertible {
+    var description: String {
+        return """
+StarryRuntimeConfig(
+  starsPerUpdate: \(starsPerUpdate),
+  buildingHeight: \(buildingHeight),
+  buildingFrequency: \(buildingFrequency),
+  secsBetweenClears: \(secsBetweenClears),
+  moonTraversalMinutes: \(moonTraversalMinutes),
+  moonDiameterScreenWidthPercent: \(moonDiameterScreenWidthPercent),
+  moonBrightBrightness: \(moonBrightBrightness),
+  moonDarkBrightness: \(moonDarkBrightness),
+  moonPhaseOverrideEnabled: \(moonPhaseOverrideEnabled),
+  moonPhaseOverrideValue: \(moonPhaseOverrideValue),
+  traceEnabled: \(traceEnabled),
+  showLightAreaTextureFillMask: \(showLightAreaTextureFillMask),
+  shootingStarsEnabled: \(shootingStarsEnabled),
+  shootingStarsAvgSeconds: \(shootingStarsAvgSeconds),
+  shootingStarsDirectionMode: \(shootingStarsDirectionMode),
+  shootingStarsLength: \(shootingStarsLength),
+  shootingStarsSpeed: \(shootingStarsSpeed),
+  shootingStarsThickness: \(shootingStarsThickness),
+  shootingStarsBrightness: \(shootingStarsBrightness),
+  shootingStarsTrailDecay: \(shootingStarsTrailDecay),
+  shootingStarsDebugShowSpawnBounds: \(shootingStarsDebugShowSpawnBounds),
+  satellitesEnabled: \(satellitesEnabled),
+  satellitesAvgSpawnSeconds: \(satellitesAvgSpawnSeconds),
+  satellitesSpeed: \(satellitesSpeed),
+  satellitesSize: \(satellitesSize),
+  satellitesBrightness: \(satellitesBrightness),
+  satellitesTrailing: \(satellitesTrailing),
+  satellitesTrailDecay: \(satellitesTrailDecay),
+  debugOverlayEnabled: \(debugOverlayEnabled)
+)
+"""
+    }
+}
+
 final class StarryEngine {
     // Base (persistent) star/building/backdrop context
     private(set) var baseContext: CGContext
@@ -122,6 +161,10 @@ final class StarryEngine {
         clearMoonLayer()
         clearShootingStarsLayer(full: true)
         clearDebugTextLayer()
+        
+        // Log full configuration on engine startup for diagnostics
+        os_log("StarryEngine initialized with config:\n%{public}@",
+               log: log, type: .info, config.description)
     }
     
     // MARK: - Context Helpers
