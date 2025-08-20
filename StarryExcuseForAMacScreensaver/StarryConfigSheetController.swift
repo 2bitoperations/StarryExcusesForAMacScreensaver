@@ -1084,35 +1084,49 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                stateSummaryString())
     }
     
+    // Refactored to avoid huge single expression that caused type-check slowdown.
     private func stateSummaryString() -> String {
-        return "starsPerUpdate=\(starsPerUpdate.integerValue)," +
-               " buildingHeight=\(format(buildingHeightSlider.doubleValue))," +
-               " buildingFrequency=\(format(buildingFrequencySlider.doubleValue))," +
-               " secsBetweenClears=\(format(secsBetweenClears.doubleValue))," +
-               " moonTraversalMinutes=\(moonTraversalMinutes.integerValue)," +
-               " moonSizePercent=\(format(moonSizePercentSlider.doubleValue))," +
-               " moonBrightBrightness=\(format(brightBrightnessSlider.doubleValue))," +
-               " moonDarkBrightness=\(format(darkBrightnessSlider.doubleValue))," +
-               " moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)," +
-               " moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))," +
-               " showLightAreaTextureFillMask=\(showLightAreaTextureFillMaskCheckbox.state == .on)," +
-               " debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ?? defaultsManager.debugOverlayEnabled)," +
-               " shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)," +
-               " shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))," +
-               " shootingStarsDirectionMode=\(shootingStarsDirectionPopup.indexOfSelectedItem)," +
-               " shootingStarsLength=\(format(shootingStarsLengthSlider.doubleValue))," +
-               " shootingStarsSpeed=\(format(shootingStarsSpeedSlider.doubleValue))," +
-               " shootingStarsThickness=\(format(shootingStarsThicknessSlider.doubleValue))," +
-               " shootingStarsBrightness=\(format(shootingStarsBrightnessSlider.doubleValue))," +
-               " shootingStarsTrailDecay=\(format(shootingStarsTrailDecaySlider.doubleValue))," +
-               " shootingStarsDebugSpawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox.state == .on)," +
-               " satellitesEnabled=\(satellitesEnabledCheckbox?.state == .on)," +
-               " satellitesAvgSpawnSeconds=\(format(lastSatellitesAvgSpawnSeconds))," +
-               " satellitesSpeed=\(format(lastSatellitesSpeed))," +
-               " satellitesSize=\(format(lastSatellitesSize))," +
-               " satellitesBrightness=\(format(lastSatellitesBrightness))," +
-               " satellitesTrailing=\(lastSatellitesTrailing)," +
-               " satellitesTrailDecay=\(format(lastSatellitesTrailDecay))"
+        var parts: [String] = []
+        parts.append("starsPerUpdate=\(starsPerUpdate.integerValue)")
+        parts.append("buildingHeight=\(format(buildingHeightSlider.doubleValue))")
+        parts.append("buildingFrequency=\(format(buildingFrequencySlider.doubleValue))")
+        parts.append("secsBetweenClears=\(format(secsBetweenClears.doubleValue))")
+        parts.append("moonTraversalMinutes=\(moonTraversalMinutes.integerValue)")
+        parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
+        parts.append("moonBrightBrightness=\(format(brightBrightnessSlider.doubleValue))")
+        parts.append("moonDarkBrightness=\(format(darkBrightnessSlider.doubleValue))")
+        parts.append("moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)")
+        parts.append("moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))")
+        parts.append("showLightAreaTextureFillMask=\(showLightAreaTextureFillMaskCheckbox.state == .on)")
+        let debugEnabled: Bool = {
+            if let cb = debugOverlayEnabledCheckbox {
+                return cb.state == .on
+            } else {
+                return defaultsManager.debugOverlayEnabled
+            }
+        }()
+        parts.append("debugOverlayEnabled=\(debugEnabled)")
+        parts.append("shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)")
+        parts.append("shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))")
+        parts.append("shootingStarsDirectionMode=\(shootingStarsDirectionPopup.indexOfSelectedItem)")
+        parts.append("shootingStarsLength=\(format(shootingStarsLengthSlider.doubleValue))")
+        parts.append("shootingStarsSpeed=\(format(shootingStarsSpeedSlider.doubleValue))")
+        parts.append("shootingStarsThickness=\(format(shootingStarsThicknessSlider.doubleValue))")
+        parts.append("shootingStarsBrightness=\(format(shootingStarsBrightnessSlider.doubleValue))")
+        parts.append("shootingStarsTrailDecay=\(format(shootingStarsTrailDecaySlider.doubleValue))")
+        parts.append("shootingStarsDebugSpawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox.state == .on)")
+        if let satellitesEnabledCheckbox {
+            parts.append("satellitesEnabled=\(satellitesEnabledCheckbox.state == .on)")
+        } else {
+            parts.append("satellitesEnabled=nil")
+        }
+        parts.append("satellitesAvgSpawnSeconds=\(format(lastSatellitesAvgSpawnSeconds))")
+        parts.append("satellitesSpeed=\(format(lastSatellitesSpeed))")
+        parts.append("satellitesSize=\(format(lastSatellitesSize))")
+        parts.append("satellitesBrightness=\(format(lastSatellitesBrightness))")
+        parts.append("satellitesTrailing=\(lastSatellitesTrailing)")
+        parts.append("satellitesTrailDecay=\(format(lastSatellitesTrailDecay))")
+        return parts.joined(separator: ", ")
     }
     
     private func format(_ d: Double) -> String {
