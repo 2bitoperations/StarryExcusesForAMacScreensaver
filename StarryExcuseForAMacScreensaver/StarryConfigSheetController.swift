@@ -868,12 +868,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             shootingStarsBrightness: shootingStarsBrightnessSlider.doubleValue,
             shootingStarsTrailDecay: shootingStarsTrailDecaySlider.doubleValue,
             shootingStarsDebugShowSpawnBounds: (shootingStarsDebugSpawnBoundsCheckbox.state == .on),
-            satellitesEnabled: (satellitesEnabledCheckbox?.state == .on) ?? defaultsManager.satellitesEnabled,
+            // Use optional map to preserve defaults when control not present (instead of forcing false).
+            satellitesEnabled: satellitesEnabledCheckbox.map { $0.state == .on } ?? defaultsManager.satellitesEnabled,
             satellitesAvgSpawnSeconds: satellitesAvg,
             satellitesSpeed: satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed,
             satellitesSize: satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize,
             satellitesBrightness: satellitesBrightnessSlider?.doubleValue ?? defaultsManager.satellitesBrightness,
-            satellitesTrailing: (satellitesTrailingCheckbox?.state == .on) ?? defaultsManager.satellitesTrailing,
+            satellitesTrailing: satellitesTrailingCheckbox.map { $0.state == .on } ?? defaultsManager.satellitesTrailing,
             satellitesTrailDecay: satellitesTrailDecaySlider?.doubleValue ?? defaultsManager.satellitesTrailDecay
         )
     }
