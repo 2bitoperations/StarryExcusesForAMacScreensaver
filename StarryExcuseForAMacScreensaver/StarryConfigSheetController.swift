@@ -43,6 +43,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // Debug toggle
     @IBOutlet weak var showLightAreaTextureFillMaskCheckbox: NSSwitch!
     
+    // Debug overlay toggle (NEW - no XIB update yet, thus optional)
+    @IBOutlet weak var debugOverlayEnabledCheckbox: NSSwitch?
+    
     // Shooting Stars controls
     @IBOutlet weak var shootingStarsEnabledCheckbox: NSSwitch!
     @IBOutlet weak var shootingStarsAvgSecondsField: NSTextField!
@@ -106,6 +109,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastMoonPhaseOverrideEnabled: Bool = false
     private var lastMoonPhaseOverrideValue: Double = 0.0
     private var lastShowLightAreaTextureFillMask: Bool = false
+    private var lastDebugOverlayEnabled: Bool = false
     
     // Shooting stars last-known
     private var lastShootingStarsEnabled: Bool = false
@@ -231,6 +235,19 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
         maybeClearAndRestartPreview(reason: "showLightAreaTextureFillMaskToggled")
+    }
+    
+    @IBAction func debugOverlayToggled(_ sender: Any) {
+        guard let checkbox = debugOverlayEnabledCheckbox else { return }
+        let newVal = (checkbox.state == .on)
+        if newVal != lastDebugOverlayEnabled {
+            logChange(changedKey: "debugOverlayEnabled",
+                      oldValue: lastDebugOverlayEnabled ? "true" : "false",
+                      newValue: newVal ? "true" : "false")
+            lastDebugOverlayEnabled = newVal
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
     }
     
     // MARK: - Shooting Stars Actions
@@ -471,6 +488,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         updatePhaseOverrideUIEnabled()
         
         showLightAreaTextureFillMaskCheckbox.state = defaultsManager.showLightAreaTextureFillMask ? .on : .off
+        debugOverlayEnabledCheckbox?.state = defaultsManager.debugOverlayEnabled ? .on : .off
         
         // Shooting stars
         shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
@@ -529,6 +547,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastMoonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         lastMoonPhaseOverrideValue = moonPhaseSlider.doubleValue
         lastShowLightAreaTextureFillMask = (showLightAreaTextureFillMaskCheckbox.state == .on)
+        lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         
         lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
@@ -604,6 +623,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonPhaseOverrideCheckbox.setAccessibilityLabel("Lock moon phase")
         moonPhaseSlider.setAccessibilityLabel("Moon phase slider")
         showLightAreaTextureFillMaskCheckbox.setAccessibilityLabel("Show illuminated mask debug")
+        debugOverlayEnabledCheckbox?.setAccessibilityLabel("Enable debug overlay (FPS / CPU / time)")
         shootingStarsEnabledCheckbox.setAccessibilityLabel("Enable shooting stars")
         shootingStarsAvgSecondsField.setAccessibilityLabel("Average seconds between shooting stars")
         shootingStarsDirectionPopup.setAccessibilityLabel("Shooting star direction mode")
@@ -868,14 +888,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             shootingStarsBrightness: shootingStarsBrightnessSlider.doubleValue,
             shootingStarsTrailDecay: shootingStarsTrailDecaySlider.doubleValue,
             shootingStarsDebugShowSpawnBounds: (shootingStarsDebugSpawnBoundsCheckbox.state == .on),
-            // Use optional map to preserve defaults when control not present (instead of forcing false).
+            // Use optional map to preserve defaults when control not present.
             satellitesEnabled: satellitesEnabledCheckbox.map { $0.state == .on } ?? defaultsManager.satellitesEnabled,
             satellitesAvgSpawnSeconds: satellitesAvg,
             satellitesSpeed: satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed,
             satellitesSize: satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize,
             satellitesBrightness: satellitesBrightnessSlider?.doubleValue ?? defaultsManager.satellitesBrightness,
             satellitesTrailing: satellitesTrailingCheckbox.map { $0.state == .on } ?? defaultsManager.satellitesTrailing,
-            satellitesTrailDecay: satellitesTrailDecaySlider?.doubleValue ?? defaultsManager.satellitesTrailDecay
+            satellitesTrailDecay: satellitesTrailDecaySlider?.doubleValue ?? defaultsManager.satellitesTrailDecay,
+            debugOverlayEnabled: debugOverlayEnabledCheckbox.map { $0.state == .on } ?? defaultsManager.debugOverlayEnabled
         )
     }
     
@@ -995,6 +1016,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.moonPhaseOverrideEnabled = (moonPhaseOverrideCheckbox.state == .on)
         defaultsManager.moonPhaseOverrideValue = moonPhaseSlider.doubleValue
         defaultsManager.showLightAreaTextureFillMask = (showLightAreaTextureFillMaskCheckbox.state == .on)
+        if let debugCB = debugOverlayEnabledCheckbox {
+            defaultsManager.debugOverlayEnabled = (debugCB.state == .on)
+        }
         
         // Shooting stars
         defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
@@ -1072,6 +1096,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                " moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)," +
                " moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))," +
                " showLightAreaTextureFillMask=\(showLightAreaTextureFillMaskCheckbox.state == .on)," +
+               " debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ?? defaultsManager.debugOverlayEnabled)," +
                " shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)," +
                " shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))," +
                " shootingStarsDirectionMode=\(shootingStarsDirectionPopup.indexOfSelectedItem)," +

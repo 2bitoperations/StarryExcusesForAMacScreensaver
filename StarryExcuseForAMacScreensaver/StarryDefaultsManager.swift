@@ -27,6 +27,7 @@ class StarryDefaultsManager {
     private let defaultMoonPhaseOverrideValue = 0.0
     // Debug toggle defaults
     private let defaultShowLightAreaTextureFillMask = false
+    private let defaultDebugOverlayEnabled = false
     
     // Shooting Stars (Option Set C) defaults
     private let defaultShootingStarsEnabled = true
@@ -221,6 +222,20 @@ class StarryDefaultsManager {
                 return defaultShowLightAreaTextureFillMask
             }
             return defaults.bool(forKey: "ShowLightAreaTextureFillMask")
+        }
+    }
+    
+    // Debug overlay (FPS / CPU / time) toggle
+    var debugOverlayEnabled: Bool {
+        set {
+            defaults.set(newValue, forKey: "DebugOverlayEnabled")
+            defaults.synchronize()
+        }
+        get {
+            if defaults.object(forKey: "DebugOverlayEnabled") == nil {
+                return defaultDebugOverlayEnabled
+            }
+            return defaults.bool(forKey: "DebugOverlayEnabled")
         }
     }
     
