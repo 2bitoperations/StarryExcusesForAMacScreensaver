@@ -2,6 +2,8 @@ import Foundation
 import CoreGraphics
 import os
 import QuartzCore   // For CACurrentMediaTime()
+import AppKit       // For font / color / attributed string drawing
+import Darwin       // For task_info CPU sampling
 
 // Encapsulates the rendering state and logic so both the main ScreenSaverView
 // and the configuration sheet preview can share the exact same code path.
@@ -49,6 +51,9 @@ struct StarryRuntimeConfig {
     var satellitesTrailing: Bool = true
     // Trail decay factor per second (only if trailing enabled). 0.0 -> immediate clear, 1.0 -> no decay.
     var satellitesTrailDecay: Double = 0.80
+    
+    // Debug overlay (FPS / CPU / Time)
+    var debugOverlayEnabled: Bool = false
 }
 
 final class StarryEngine {
@@ -60,6 +65,8 @@ final class StarryEngine {
     private var shootingStarsLayerContext: CGContext
     // Moon overlay (transparent) rewritten each frame (content internally cached)
     private var moonLayerContext: CGContext
+    // Debug text overlay (transparent) rewritten each frame
+    private var debugTextLayerContext: CGContext
     // Temporary compositing context (reused) used to produce final frame
     private var compositeContext: CGContext
     
@@ -78,6 +85,23 @@ final class StarryEngine {
     // Timing
     private var lastFrameTime: CFTimeInterval = CACurrentMediaTime()
     
+    // FPS computation (smoothed)
+    private var fpsAccumulatedTime: CFTimeInterval = 0
+    private var fpsFrameCount: Int = 0
+    private var currentFPS: Double = 0
+    
+    // CPU usage sampling
+    private var lastProcessCPUTimesSeconds: Double = 0
+    private var lastCPUSampleWallTime: CFTimeInterval = 0
+    private var currentCPUPercent: Double = 0
+    
+    // Date formatter (ISO 8601, no fractional seconds, 24-hour)
+    private let isoDateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    
     init(size: CGSize,
          log: OSLog,
          config: StarryRuntimeConfig) {
@@ -90,12 +114,14 @@ final class StarryEngine {
         self.satellitesLayerContext = StarryEngine.makeTransparentContext(size: size)
         self.shootingStarsLayerContext = StarryEngine.makeTransparentContext(size: size)
         self.moonLayerContext = StarryEngine.makeTransparentContext(size: size)
+        self.debugTextLayerContext = StarryEngine.makeTransparentContext(size: size)
         self.compositeContext = StarryEngine.makeOpaqueContext(size: size)
         
         clearBase()
         clearSatellitesLayer(full: true)
         clearMoonLayer()
         clearShootingStarsLayer(full: true)
+        clearDebugTextLayer()
     }
     
     // MARK: - Context Helpers
@@ -136,6 +162,7 @@ final class StarryEngine {
         satellitesLayerContext = StarryEngine.makeTransparentContext(size: size)
         shootingStarsLayerContext = StarryEngine.makeTransparentContext(size: size)
         moonLayerContext = StarryEngine.makeTransparentContext(size: size)
+        debugTextLayerContext = StarryEngine.makeTransparentContext(size: size)
         compositeContext = StarryEngine.makeOpaqueContext(size: size)
         
         skyline = nil
@@ -147,6 +174,7 @@ final class StarryEngine {
         clearSatellitesLayer(full: true)
         clearMoonLayer()
         clearShootingStarsLayer(full: true)
+        clearDebugTextLayer()
     }
     
     // MARK: - Configuration
@@ -198,6 +226,11 @@ final class StarryEngine {
         if satellitesAffecting {
             satellitesRenderer = nil
             clearSatellitesLayer(full: true)
+        }
+        
+        let debugOverlayAffecting = config.debugOverlayEnabled != newConfig.debugOverlayEnabled
+        if debugOverlayAffecting {
+            clearDebugTextLayer()
         }
         
         config = newConfig
@@ -316,6 +349,10 @@ final class StarryEngine {
         }
     }
     
+    private func clearDebugTextLayer() {
+        debugTextLayerContext.clear(CGRect(origin: .zero, size: size))
+    }
+    
     // MARK: - Moon Rendering
     
     private func updateMoonLayer() {
@@ -340,6 +377,101 @@ final class StarryEngine {
         renderer.update(into: satellitesLayerContext, dt: dt)
     }
     
+    // MARK: - Debug Overlay Rendering
+    
+    private func updateDebugOverlayLayer() {
+        guard config.debugOverlayEnabled else { return }
+        clearDebugTextLayer()
+        
+        let dateString = isoDateFormatter.string(from: Date())
+        let text = String(format: "FPS: %.1f\nCPU: %.1f%%\nTime: %@", currentFPS, currentCPUPercent, dateString)
+        
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .right
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.9),
+            .paragraphStyle: paragraph
+        ]
+        let attrString = NSAttributedString(string: text, attributes: attrs)
+        let textSize = attrString.size()
+        let padding: CGFloat = 6
+        let rect = CGRect(x: size.width - textSize.width - padding,
+                          y: size.height - textSize.height - padding,
+                          width: textSize.width,
+                          height: textSize.height)
+        
+        // Background box (rounded)
+        let bgRect = rect.insetBy(dx: -4, dy: -3)
+        debugTextLayerContext.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.38))
+        let path = CGPath(roundedRect: bgRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
+        debugTextLayerContext.addPath(path)
+        debugTextLayerContext.fillPath()
+        
+        // Flip coordinates for AppKit text drawing
+        debugTextLayerContext.saveGState()
+        debugTextLayerContext.translateBy(x: 0, y: size.height)
+        debugTextLayerContext.scaleBy(x: 1, y: -1)
+        // Because we've flipped, adjust Y
+        let flippedRect = CGRect(x: rect.origin.x,
+                                 y: size.height - rect.origin.y - rect.height,
+                                 width: rect.width,
+                                 height: rect.height)
+        attrString.draw(in: flippedRect)
+        debugTextLayerContext.restoreGState()
+    }
+    
+    // MARK: - CPU Sampling
+    
+    private func sampleCPU(dt: CFTimeInterval) {
+        guard dt > 0 else { return }
+        var info = task_thread_times_info_data_t()
+        var infoCount = mach_msg_type_number_t(MemoryLayout<task_thread_times_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kerr = withUnsafeMutablePointer(to: &info) { infoPtr -> kern_return_t in
+            infoPtr.withMemoryRebound(to: integer_t.self, capacity: Int(infoCount)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_THREAD_TIMES_INFO), $0, &infoCount)
+            }
+        }
+        
+        var cpuSeconds: Double = 0
+        if kerr == KERN_SUCCESS {
+            let user = Double(info.user_time.seconds) + Double(info.user_time.microseconds) / 1_000_000.0
+            let system = Double(info.system_time.seconds) + Double(info.system_time.microseconds) / 1_000_000.0
+            cpuSeconds = user + system
+        } else {
+            // Fallback: don't update on error
+            return
+        }
+        
+        if lastProcessCPUTimesSeconds == 0 {
+            lastProcessCPUTimesSeconds = cpuSeconds
+            lastCPUSampleWallTime = CACurrentMediaTime()
+            return
+        }
+        let deltaCPU = max(0, cpuSeconds - lastProcessCPUTimesSeconds)
+        // Percent of a single core (Activity Monitor style)
+        let percent = (deltaCPU / dt) * 100.0
+        // Light smoothing (EMA)
+        currentCPUPercent = currentCPUPercent * 0.8 + percent * 0.2
+        lastProcessCPUTimesSeconds = cpuSeconds
+        lastCPUSampleWallTime = CACurrentMediaTime()
+    }
+    
+    // MARK: - FPS Update
+    
+    private func updateFPS(dt: CFTimeInterval) {
+        fpsFrameCount += 1
+        fpsAccumulatedTime += dt
+        if fpsAccumulatedTime >= 0.5 {
+            let fps = Double(fpsFrameCount) / fpsAccumulatedTime
+            // Smooth with a little inertia
+            currentFPS = currentFPS * 0.6 + fps * 0.4
+            fpsAccumulatedTime = 0
+            fpsFrameCount = 0
+        }
+    }
+    
     // MARK: - Frame Advancement
     
     @discardableResult
@@ -348,6 +480,9 @@ final class StarryEngine {
         let now = CACurrentMediaTime()
         let dt = max(0.0, now - lastFrameTime)
         lastFrameTime = now
+        
+        updateFPS(dt: dt)
+        sampleCPU(dt: dt)
         
         guard let skyline = skyline,
               let skylineRenderer = skylineRenderer else {
@@ -360,6 +495,7 @@ final class StarryEngine {
             clearSatellitesLayer(full: true)
             clearMoonLayer()
             clearShootingStarsLayer(full: true)
+            clearDebugTextLayer()
             self.skyline = nil
             self.skylineRenderer = nil
             self.moonRenderer = nil
@@ -381,7 +517,10 @@ final class StarryEngine {
         // Moon
         updateMoonLayer()
         
-        // Composite order: base -> satellites -> shooting stars -> moon
+        // Debug overlay (after everything else)
+        updateDebugOverlayLayer()
+        
+        // Composite order: base -> satellites -> shooting stars -> moon -> debug
         compositeContext.setFillColor(CGColor(gray: 0, alpha: 1))
         compositeContext.fill(CGRect(origin: .zero, size: size))
         if let baseImage = baseContext.makeImage() {
@@ -397,6 +536,10 @@ final class StarryEngine {
         }
         if let moonImage = moonLayerContext.makeImage() {
             compositeContext.draw(moonImage, in: CGRect(origin: .zero, size: size))
+        }
+        if config.debugOverlayEnabled,
+           let debugImage = debugTextLayerContext.makeImage() {
+            compositeContext.draw(debugImage, in: CGRect(origin: .zero, size: size))
         }
         
         return compositeContext.makeImage()
