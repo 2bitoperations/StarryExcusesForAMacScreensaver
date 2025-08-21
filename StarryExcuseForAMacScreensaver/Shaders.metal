@@ -86,9 +86,13 @@ vertex SpriteVarying SpriteVertex(uint vid [[vertex_id]],
 }
 
 fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
+    // CPU provides premultiplied BGRA; convert to premultiplied RGBA for blending
+    float4 c = in.colorPremul;
+    float4 rgba = float4(c.z, c.y, c.x, c.w); // BGRA -> RGBA
+
     if (in.shape == 0) {
         // Rect
-        return in.colorPremul;
+        return rgba;
     } else {
         // Circle with soft edge
         float r2 = dot(in.local, in.local); // local is in [-1,1] so radius=1
@@ -97,7 +101,7 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
         }
         // Smooth edge for anti-alias; ensure edge0 < edge1
         float edge = smoothstep(0.9, 1.0, 1.0 - r2);
-        return float4(in.colorPremul.rgb * edge, in.colorPremul.a * edge);
+        return float4(rgba.rgb * edge, rgba.a * edge);
     }
 }
 
