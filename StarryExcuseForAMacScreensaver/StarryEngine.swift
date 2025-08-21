@@ -128,6 +128,9 @@ final class StarryEngine {
     private var moonAlbedoImage: CGImage?
     private var moonAlbedoDirty: Bool = false
     
+    // Headless Metal renderer for preview CGImage output
+    private var previewMetalRenderer: StarryMetalRenderer?
+    
     init(size: CGSize,
          log: OSLog,
          config: StarryRuntimeConfig) {
@@ -153,6 +156,7 @@ final class StarryEngine {
         shootingStarsRenderer = nil
         satellitesRenderer = nil
         moonRenderer = nil
+        previewMetalRenderer = nil
         
         // Moon albedo might change size (radius), request refresh
         moonAlbedoImage = nil
@@ -178,6 +182,7 @@ final class StarryEngine {
             skyline = nil
             skylineRenderer = nil
             moonRenderer = nil
+            previewMetalRenderer = nil
             // Force moon albedo refresh
             moonAlbedoImage = nil
             moonAlbedoDirty = false
@@ -392,8 +397,8 @@ final class StarryEngine {
         return drawData
     }
     
-    // MARK: - Frame Advancement (Preview CoreGraphics path)
-    // Minimal CPU compositor for config sheet preview (draws current sprites and moon)
+    // MARK: - Frame Advancement (Preview via Metal headless)
+    // Produce a CGImage by rendering through the same Metal renderer into an offscreen texture.
     
     @discardableResult
     func advanceFrame() -> CGImage? {
@@ -405,92 +410,78 @@ final class StarryEngine {
         updateFPS(dt: dt)
         sampleCPU(dt: dt)
         
-        guard let skyline = skyline,
-              let skylineRenderer = skylineRenderer else {
-            // Nothing to draw yet
-            return makeBlackImage(size: size)
-        }
-        
-        if skyline.shouldClearNow() {
-            skylineRenderer.resetFrameCounter()
-            satellitesRenderer?.reset()
-            shootingStarsRenderer?.reset()
-            self.skyline = nil
-            self.skylineRenderer = nil
-            self.shootingStarsRenderer = nil
-            self.satellitesRenderer = nil
-            self.moonRenderer = nil
-            ensureSkyline()
-        }
-        
-        // Generate draw data
-        let baseSprites = skylineRenderer.generateSprites()
+        // Generate the same drawData used by the on-screen GPU path
+        var clearAll = false
+        var baseSprites: [SpriteInstance] = []
         var satellitesSprites: [SpriteInstance] = []
         var shootingSprites: [SpriteInstance] = []
-        if config.satellitesEnabled, let sat = satellitesRenderer {
-            let (spr, _) = sat.update(dt: dt)
-            satellitesSprites = spr
-        }
-        if config.shootingStarsEnabled, let ss = shootingStarsRenderer {
-            let (spr, _) = ss.update(dt: dt)
-            shootingSprites = spr
-        }
+        var satellitesKeep: Float = 0.0
+        var shootingKeep: Float = 0.0
         
-        // Create a temporary context and draw sprites
-        guard let ctx = CGContext(data: nil,
-                                  width: Int(size.width),
-                                  height: Int(size.height),
-                                  bitsPerComponent: 8,
-                                  bytesPerRow: 0,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-        else { return nil }
-        // Background
-        ctx.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
-        ctx.fill(CGRect(origin: .zero, size: size))
-        
-        func drawSprites(_ sprites: [SpriteInstance]) {
-            guard !sprites.isEmpty else { return }
-            ctx.saveGState()
-            ctx.setShouldAntialias(true)
-            for s in sprites {
-                let cx = CGFloat(s.centerPx.x)
-                let cy = CGFloat(s.centerPx.y)
-                let hw = CGFloat(s.halfSizePx.x)
-                let hh = CGFloat(s.halfSizePx.y)
-                let rect = CGRect(x: cx - hw, y: cy - hh, width: hw * 2.0, height: hh * 2.0)
-                let c = rgbaFromPremulRGBA(s.colorPremul)
-                ctx.setFillColor(red: c.r, green: c.g, blue: c.b, alpha: c.a)
-                if s.shape == SpriteShape.circle.rawValue {
-                    ctx.fillEllipse(in: rect)
-                } else {
-                    ctx.fill(rect)
-                }
+        if let skyline = skyline,
+           let skylineRenderer = skylineRenderer {
+            if skyline.shouldClearNow() {
+                skylineRenderer.resetFrameCounter()
+                satellitesRenderer?.reset()
+                shootingStarsRenderer?.reset()
+                self.skyline = nil
+                self.skylineRenderer = nil
+                self.shootingStarsRenderer = nil
+                self.satellitesRenderer = nil
+                self.moonRenderer = nil
+                clearAll = true
+                ensureSkyline()
             }
-            ctx.restoreGState()
-        }
-        
-        drawSprites(baseSprites)
-        drawSprites(satellitesSprites)
-        drawSprites(shootingSprites)
-        
-        // Moon using MoonLayerRenderer onto a transparent layer, then composite
-        if let mr = moonRenderer {
-            if let moonCtx = CGContext(data: nil,
-                                       width: Int(size.width),
-                                       height: Int(size.height),
-                                       bitsPerComponent: 8,
-                                       bytesPerRow: 0,
-                                       space: CGColorSpaceCreateDeviceRGB(),
-                                       bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
-                _ = mr.renderMoon(into: moonCtx)
-                if let moonImg = moonCtx.makeImage() {
-                    ctx.draw(moonImg, in: CGRect(origin: .zero, size: size))
-                }
+            
+            baseSprites = skylineRenderer.generateSprites()
+            
+            if config.satellitesEnabled, let sat = satellitesRenderer {
+                let (spr, keep) = sat.update(dt: dt)
+                satellitesSprites = spr
+                satellitesKeep = keep
             }
+            if config.shootingStarsEnabled, let ss = shootingStarsRenderer {
+                let (spr, keep) = ss.update(dt: dt)
+                shootingSprites = spr
+                shootingKeep = keep
+            }
+        } else {
+            clearAll = true
         }
         
-        return ctx.makeImage()
+        // Moon params
+        var moonParams: MoonParams?
+        if let moon = skyline?.getMoon() {
+            let c = moon.currentCenter()
+            let centerPx = SIMD2<Float>(Float(c.x), Float(c.y))
+            let r = Float(moon.radius)
+            let f = Float(moon.illuminatedFraction)
+            moonParams = MoonParams(centerPx: centerPx,
+                                    radiusPx: r,
+                                    phaseFraction: f,
+                                    brightBrightness: Float(config.moonBrightBrightness),
+                                    darkBrightness: Float(config.moonDarkBrightness))
+        }
+        
+        let drawData = StarryDrawData(
+            size: size,
+            clearAll: clearAll,
+            baseSprites: baseSprites,
+            satellitesSprites: satellitesSprites,
+            satellitesKeepFactor: satellitesKeep,
+            shootingSprites: shootingSprites,
+            shootingKeepFactor: shootingKeep,
+            moon: moonParams,
+            moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil
+        )
+        moonAlbedoDirty = false
+        
+        if previewMetalRenderer == nil {
+            previewMetalRenderer = StarryMetalRenderer(log: log)
+        }
+        guard let renderer = previewMetalRenderer else { return nil }
+        renderer.updateDrawableSize(size: size, scale: 1.0)
+        return renderer.renderToImage(drawData: drawData)
     }
     
     private func rgbaFromPremulRGBA(_ v: SIMD4<Float>) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
