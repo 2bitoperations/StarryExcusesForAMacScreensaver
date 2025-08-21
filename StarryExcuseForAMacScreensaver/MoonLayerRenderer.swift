@@ -101,7 +101,8 @@ final class MoonLayerRenderer {
         guard let diskImage = cachedDiskImage else { return false }
         
         // Clear entire layer before drawing new moon (position or disk changed)
-        context.clear(CGRect(origin: .zero, size: context.boundingBoxOfClipPath.size))
+        let fullRect = CGRect(x: 0, y: 0, width: context.width, height: context.height)
+        context.clear(fullRect)
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         context.saveGState()
         context.interpolationQuality = .none

@@ -53,8 +53,6 @@ final class StarryMetalRenderer {
     // Reusable vertex buffer for a full-screen quad (two triangles).
     private var quadVertexBuffer: MTLBuffer?
     
-    // Synchronization: all access happens on screensaver animation thread; no locking needed today.
-    
     // MARK: - Init
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -85,13 +83,8 @@ final class StarryMetalRenderer {
     // MARK: - Setup
     
     private func buildPipeline() throws {
-        let librarySource: String? = nil // we rely on Shaders.metal being part of the target
-        let library: MTLLibrary
-        if let src = librarySource {
-            library = try device.makeLibrary(source: src, options: nil)
-        } else {
-            library = try device.makeDefaultLibrary(bundle: Bundle(for: StarryMetalRenderer.self))
-        }
+        // Expect Shaders.metal compiled into the bundle for this target
+        let library = try device.makeDefaultLibrary(bundle: Bundle(for: StarryMetalRenderer.self))
         guard
             let vFunc = library.makeFunction(name: "TexturedQuadVertex"),
             let fFunc = library.makeFunction(name: "TexturedQuadFragment")
@@ -140,6 +133,10 @@ final class StarryMetalRenderer {
         layer.contentsScale = scale
         layer.drawableSize = CGSize(width: size.width * scale,
                                     height: size.height * scale)
+        // Force reallocation of per-layer textures at the new size on next render
+        if size != layerTextures.size {
+            allocateTextures(size: size)
+        }
     }
     
     /// Render the frame described by the CPU contexts.
@@ -231,27 +228,13 @@ final class StarryMetalRenderer {
     // MARK: - Allocation & Upload
     
     private func allocateTextures(size: CGSize) {
+        // Update the size and drop existing textures; they'll be lazily re-created on upload
         layerTextures.size = size
-        let w = Int(size.width)
-        let h = Int(size.height)
-        guard w > 0, h > 0 else { return }
-        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-                                                            width: w,
-                                                            height: h,
-                                                            mipmapped: false)
-        desc.usage = [.shaderRead, .renderTarget]
-        desc.storageMode = .private
-        // Create (or recreate) all textures
-        layerTextures.base = device.makeTexture(descriptor: desc)
-        layerTextures.base?.label = "BaseLayer"
-        layerTextures.satellites = device.makeTexture(descriptor: desc)
-        layerTextures.satellites?.label = "SatellitesLayer"
-        layerTextures.shootingStars = device.makeTexture(descriptor: desc)
-        layerTextures.shootingStars?.label = "ShootingStarsLayer"
-        layerTextures.moon = device.makeTexture(descriptor: desc)
-        layerTextures.moon?.label = "MoonLayer"
-        layerTextures.debug = device.makeTexture(descriptor: desc)
-        layerTextures.debug?.label = "DebugLayer"
+        layerTextures.base = nil
+        layerTextures.satellites = nil
+        layerTextures.shootingStars = nil
+        layerTextures.moon = nil
+        layerTextures.debug = nil
     }
     
     private func uploadIfNeeded(context: CGContext,
@@ -270,7 +253,8 @@ final class StarryMetalRenderer {
                                                                 height: height,
                                                                 mipmapped: false)
             desc.usage = [.shaderRead]
-            desc.storageMode = .private
+            // Use shared so replace(region:...) is valid for CPU uploads.
+            desc.storageMode = .shared
             existing = device.makeTexture(descriptor: desc)
             existing?.label = "\(label)Texture"
         }

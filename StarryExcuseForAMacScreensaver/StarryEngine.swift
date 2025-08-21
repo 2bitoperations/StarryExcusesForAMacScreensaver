@@ -181,25 +181,29 @@ final class StarryEngine {
     // MARK: - Context Helpers
     
     private static func makeOpaqueContext(size: CGSize) -> CGContext {
+        // BGRA8 premultiplied (matches MTLPixelFormat.bgra8Unorm)
+        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         let ctx = CGContext(data: nil,
                             width: Int(size.width),
                             height: Int(size.height),
                             bitsPerComponent: 8,
                             bytesPerRow: 0,
                             space: CGColorSpaceCreateDeviceRGB(),
-                            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)!
+                            bitmapInfo: bitmapInfo)!
         ctx.interpolationQuality = .high
         return ctx
     }
     
     private static func makeTransparentContext(size: CGSize) -> CGContext {
+        // BGRA8 premultiplied (matches MTLPixelFormat.bgra8Unorm)
+        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         let ctx = CGContext(data: nil,
                             width: Int(size.width),
                             height: Int(size.height),
                             bitsPerComponent: 8,
                             bytesPerRow: 0,
                             space: CGColorSpaceCreateDeviceRGB(),
-                            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)!
+                            bitmapInfo: bitmapInfo)!
         ctx.interpolationQuality = .high
         ctx.setBlendMode(.normal)
         return ctx
