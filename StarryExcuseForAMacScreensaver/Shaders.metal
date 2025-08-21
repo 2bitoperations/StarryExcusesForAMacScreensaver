@@ -1,6 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#define PI 3.14159265358979323846f
+
 // MARK: - Textured quad (compositor)
 
 struct VertexOut {
@@ -160,7 +162,7 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
     
     // Phase mapping:
     // phase 0.0=new (light from -Z), 0.5=full (light from +Z), 1.0=new (-Z again)
-    float phi = M_PI * (1.0 - 2.0 * uni.phase);
+    float phi = PI * (1.0 - 2.0 * uni.phase);
     float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
     
     float k = max(dot(n, l), 0.0); // Lambertian term
