@@ -176,6 +176,6 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
         albedo = c.r;
     }
     float edge = smoothstep(1.0, 0.95, 1.0 - r2);
-    float3 rgb = (albedo * brightness).xxx;
+    float3 rgb = float3(albedo * brightness);
     return float4(rgb * edge, edge); // premultiplied alpha
 }
