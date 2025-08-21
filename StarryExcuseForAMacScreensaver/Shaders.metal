@@ -95,8 +95,8 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
         if (r2 > 1.0) {
             discard_fragment();
         }
-        // Smooth edge for anti-alias
-        float edge = smoothstep(1.0, 0.9, 1.0 - r2);
+        // Smooth edge for anti-alias; ensure edge0 < edge1
+        float edge = smoothstep(0.9, 1.0, 1.0 - r2);
         return float4(in.colorPremul.rgb * edge, in.colorPremul.a * edge);
     }
 }
