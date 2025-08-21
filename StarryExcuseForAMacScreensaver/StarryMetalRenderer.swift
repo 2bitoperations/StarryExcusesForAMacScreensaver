@@ -3,6 +3,7 @@ import Metal
 import QuartzCore
 import CoreGraphics
 import os
+import AppKit
 
 /// Holds per-frame CPU-rendered layer contexts + dirty flags for Metal upload.
 struct StarryMetalFrameUpdate {
