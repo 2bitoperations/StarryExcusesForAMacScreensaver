@@ -10,18 +10,14 @@ import QuartzCore
 // 4. (Debug mode showLightAreaTextureFillMask): Skip drawing the dark disk entirely;
 //    only draw the illuminated region (filled red) so mask artifacts are obvious.
 //
-// Halo suppression: adaptive edge sanitization eliminates any faint rim on the dark side.
-// Caching (2025-08):
-//    The expensive step is computing the bright/dark mask & compositing the texture.
-//    We cache the shaded disk image (square 2r x 2r) and reuse it until the lunar
-//    terminator would have moved ~1 pixel. Approximation:
-//       - Half cycle (new->full) sweeps the terminator across 2r pixels.
-//       - Duration half cycle ≈ synodicMonthSeconds / 2.
-//       - Time per pixel ≈ synodicMonthSeconds / (4 * r).
-//    We also regenerate if phase fraction changed more than a small fraction
-//    equivalent to ~1/8 pixel, or radius/brightness/debug mode changed.
+// Added optimization (2025-08):
+//    - renderMoon(into:) now returns Bool indicating whether the moon layer was
+//      actually redrawn. If the integer pixel center and cached shaded disk
+//      (phase, radius, brightness, debug flag) haven't changed enough to
+//      trigger a regeneration, we skip clearing and drawing the layer entirely.
+//      StarryEngine uses this to avoid unnecessary CGImage creation & compositing.
 //
-// No subsequent dark-over-bright passes. Extension/oversize options have been removed.
+// Halo suppression and shading caching logic unchanged.
 final class MoonLayerRenderer {
     private let skyline: Skyline
     private let log: OSLog
@@ -38,6 +34,9 @@ final class MoonLayerRenderer {
     private var cachedDark: CGFloat = -1
     private var lastShadingRenderTime: CFTimeInterval = 0
     
+    // Last drawn (pixel-aligned) center. If unchanged and no regenerate needed, skip redraw.
+    private var lastDrawnCenter: CGPoint?
+    
     init(skyline: Skyline,
          log: OSLog,
          brightBrightness: CGFloat,
@@ -53,9 +52,10 @@ final class MoonLayerRenderer {
     @inline(__always)
     private func pixelAlign(_ value: CGFloat) -> CGFloat { round(value) }
     
-    func renderMoon(into context: CGContext) {
+    // Returns true if the moon layer was (re)rendered.
+    func renderMoon(into context: CGContext) -> Bool {
         guard let moon = skyline.getMoon(),
-              let texture = moon.textureImage else { return }
+              let texture = moon.textureImage else { return false }
         
         let rawCenter = moon.currentCenter()
         let r = CGFloat(moon.radius)
@@ -69,9 +69,7 @@ final class MoonLayerRenderer {
         let timePerPixel = (r > 0) ? synodicSec / (4.0 * Double(r)) : 0
         let dt = now - lastShadingRenderTime
         
-        // Fractional threshold (approx 1 pixel) ≈ 1 / (4r)
         let fracPerPixel = (r > 0) ? (1.0 / (4.0 * r)) : 1.0
-        // Use smaller threshold (1/8 pixel) to catch user override changes immediately.
         let fractionDeltaThreshold = max(fracPerPixel / 8.0, 0.0005)
         let fractionDelta = abs(f - cachedPhaseFraction)
         
@@ -82,6 +80,11 @@ final class MoonLayerRenderer {
         if cachedBright != brightBrightness || cachedDark != darkBrightness { needsRegenerate = true }
         if fractionDelta >= fractionDeltaThreshold { needsRegenerate = true }
         if dt >= timePerPixel { needsRegenerate = true }
+        
+        // If nothing changed (disk reused) AND center unchanged, skip redraw entirely.
+        if !needsRegenerate, let lastCenter = lastDrawnCenter, lastCenter == center {
+            return false
+        }
         
         if needsRegenerate {
             cachedDiskImage = buildShadedDiskImage(texture: texture,
@@ -95,9 +98,10 @@ final class MoonLayerRenderer {
             lastShadingRenderTime = now
         }
         
-        guard let diskImage = cachedDiskImage else { return }
+        guard let diskImage = cachedDiskImage else { return false }
         
-        // Draw the cached disk at the current center
+        // Clear entire layer before drawing new moon (position or disk changed)
+        context.clear(CGRect(origin: .zero, size: context.boundingBoxOfClipPath.size))
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         context.saveGState()
         context.interpolationQuality = .none
@@ -105,6 +109,8 @@ final class MoonLayerRenderer {
         context.setAllowsAntialiasing(true)
         context.draw(diskImage, in: moonRect)
         context.restoreGState()
+        lastDrawnCenter = center
+        return true
     }
     
     // Builds (or rebuilds) the shaded disk CGImage (size 2r x 2r) at origin.
@@ -137,7 +143,6 @@ final class MoonLayerRenderer {
         // DEBUG MODE: Only show illuminated region mask (no dark base)
         if showLightAreaTextureFillMask {
             if f <= newThreshold {
-                // Transparent image
                 return diskCtx.makeImage()
             }
             if f >= fullThreshold {
@@ -216,18 +221,15 @@ final class MoonLayerRenderer {
                                       bitmapInfo: 0)
         else { return nil }
         
-        // Smooth terminator; outer circumference artifacts cleaned post-process.
         maskCtx.setAllowsAntialiasing(true)
         maskCtx.setShouldAntialias(true)
         
-        // Fully black (no illumination).
         maskCtx.setFillColor(gray: 0, alpha: 1)
         maskCtx.fill(CGRect(x: 0, y: 0, width: size, height: size))
         
         let moonRect = CGRect(x: 0, y: 0, width: 2*r, height: 2*r)
         
         if f <= 0.5 {
-            // Bright minority crescent
             drawCrescentMask(into: maskCtx,
                              moonRect: moonRect,
                              fraction: f,
@@ -235,7 +237,6 @@ final class MoonLayerRenderer {
                              fillWhite: true,
                              subtractMode: false)
         } else {
-            // Bright majority (gibbous): full disk then subtract dark crescent
             maskCtx.setFillColor(gray: 1, alpha: 1)
             maskCtx.addEllipse(in: moonRect)
             maskCtx.fillPath()
@@ -250,7 +251,6 @@ final class MoonLayerRenderer {
             }
         }
         
-        // Post-process to eliminate faint halo around dark circumference.
         if let dataPtr = maskCtx.data {
             sanitizeMaskEdge(data: dataPtr,
                              width: size,
@@ -262,20 +262,12 @@ final class MoonLayerRenderer {
         return maskCtx.makeImage()
     }
     
-    // Apply aggressive cleaning to outer rim while preserving interior gradient.
-    //
-    // Strategy:
-    //  - Adaptive edge band: edgeBand = clamp(r * 0.06, 2px ... 6px)
-    //  - Within edge band: force binary (>=128 -> 255 else 0) to remove halos.
-    //  - Outside edge band:
-    //       * Snap tiny noise (1..3) to 0.
-    //       * Snap near white (252..254) to 255.
     private func sanitizeMaskEdge(data: UnsafeMutableRawPointer,
                                   width: Int,
                                   height: Int,
                                   bytesPerRow: Int,
                                   radius r: CGFloat) {
-        let edgeBand = max(2.0, min(6.0, r * 0.06)) // adaptive widened band
+        let edgeBand = max(2.0, min(6.0, r * 0.06))
         let rSq = r * r
         let innerBandRadius = r - edgeBand
         let innerBandRadiusSq = innerBandRadius * innerBandRadius
@@ -287,7 +279,6 @@ final class MoonLayerRenderer {
                 let p = rowPtr.advanced(by: x)
                 let val = p.load(as: UInt8.self)
                 
-                // Pixel center relative to circle center
                 let fx = CGFloat(x) + 0.5 - r
                 let fy = CGFloat(y) + 0.5 - r
                 let dSq = fx*fx + fy*fy
@@ -314,10 +305,6 @@ final class MoonLayerRenderer {
         }
     }
     
-    // Draw (or subtract) a crescent shape into the mask context.
-    // fraction represents the minority fraction (0 < fraction <= 0.5).
-    // If subtractMode == false and fillWhite==true -> fill crescent white onto black.
-    // If subtractMode == true -> fill crescent black over existing white (subtract).
     private func drawCrescentMask(into ctx: CGContext,
                                   moonRect: CGRect,
                                   fraction f: CGFloat,
@@ -334,18 +321,15 @@ final class MoonLayerRenderer {
         ctx.saveGState()
         ctx.clip(to: sideRect)
         
-        // Path for crescent region: (moon circle) - (terminator ellipse) inside side half-plane
         let path = CGMutablePath()
         path.addEllipse(in: moonRect)
         path.addEllipse(in: ellipseRect)
         ctx.addPath(path)
         
         ctx.setFillColor(gray: subtractMode ? 0 : (fillWhite ? 1 : 0), alpha: 1)
-        ctx.drawPath(using: .eoFill) // even-odd yields crescent
+        ctx.drawPath(using: .eoFill)
         ctx.restoreGState()
     }
-    
-    // MARK: - Phase Geometry
     
     private func phaseGeometry(radius r: CGFloat,
                                center: CGPoint,
@@ -359,8 +343,6 @@ final class MoonLayerRenderer {
                                  width: ellipseWidth,
                                  height: 2 * r)
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
-        
-        // Side rectangles (used to isolate one half-plane)
         let overlap: CGFloat = 1.0
         let centerX = moonRect.midX
         let rightSideRect = CGRect(x: centerX - overlap,
@@ -373,8 +355,6 @@ final class MoonLayerRenderer {
                                   height: moonRect.height)
         return (ellipseRect, rightSideRect, leftSideRect, cosTheta, ellipseWidth)
     }
-    
-    // MARK: - Texture Drawing (normal mode)
     
     private func drawTexture(context: CGContext,
                              image: CGImage,

@@ -8,11 +8,13 @@ import ScreenSaver
 import Foundation
 import os
 import CoreGraphics
+import QuartzCore
 
 class StarryExcuseForAView: ScreenSaverView {
     private lazy var configSheetController: StarryConfigSheetController = StarryConfigSheetController(windowNibName: "StarryExcusesConfigSheet")
     private var defaultsManager = StarryDefaultsManager()
-    private var imageView: NSImageView?
+    // Replaced NSImageView with a CALayer to avoid per-frame NSImage allocations.
+    private var renderLayer: CALayer?
     private var log: OSLog?
     private var engine: StarryEngine?
     private var traceEnabled: Bool
@@ -60,13 +62,14 @@ class StarryExcuseForAView: ScreenSaverView {
     override var hasConfigureSheet: Bool { true }
     
     override func animateOneFrame() {
-        guard let engine = engine,
-              let imageView = imageView else {
-            return
-        }
+        guard let engine = engine else { return }
         engine.resizeIfNeeded(newSize: bounds.size)
         if let cg = engine.advanceFrame() {
-            imageView.image = NSImage(cgImage: cg, size: bounds.size)
+            // Directly assign CGImage to CALayer contents (no NSImage allocation).
+            if let layer = renderLayer {
+                layer.contentsScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+                layer.contents = cg
+            }
         }
     }
     
@@ -87,13 +90,16 @@ class StarryExcuseForAView: ScreenSaverView {
                                   config: currentRuntimeConfig())
         }
         await MainActor.run {
-            if imageView == nil {
-                let iv = NSImageView(frame: bounds)
-                iv.imageScaling = .scaleProportionallyUpOrDown
-                addSubview(iv)
-                imageView = iv
+            if self.renderLayer == nil {
+                self.wantsLayer = true
+                let layer = CALayer()
+                layer.frame = self.bounds
+                layer.contentsGravity = .resizeAspectFill
+                layer.contentsScale = self.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+                self.layer?.addSublayer(layer)
+                self.renderLayer = layer
             } else {
-                imageView?.frame = bounds
+                renderLayer?.frame = bounds
             }
         }
         os_log("leaving setupAnimation %d %d",
@@ -150,8 +156,8 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     private func deallocateResources() {
-        imageView?.removeFromSuperview()
-        imageView = nil
+        renderLayer?.removeFromSuperlayer()
+        renderLayer = nil
         engine = nil
     }
     
