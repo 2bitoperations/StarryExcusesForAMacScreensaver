@@ -11,3 +11,10 @@ this repository contains swift code for a macos screensaver that is meant to loo
 
 (the initial implementation of this basically just made the satellites lines rather than dots. to iterate later...)
 this repository contains swift code for a macos screensaver that is meant to look like the starry night screensaver from the afterdark package from the late 1980's. analyze the code in StarryEngine.swift and SatellitesLayerRenderer.swift and see if there is a way we can make the motion of the satellites smoother (right now we change each satellite position by many pixels with each update, leading to jerky motion).
+
+this repository contains swift code for a macos screensaver that is meant to look like the starry night screensaver from the afterdark package from the late 1980's. analyze the code in StarryEngine.swift. add a new layer that, if enabled, will draw some debug text to the top-right of the screen. the debug information should include the current frames per second of rendering, the cpu used by this process, and the local date and time in ISO 24-hour format.
+
+this repository contains swift code for a macos screensaver that is meant to look like the starry night screensaver from the afterdark package from the late 1980's. analyze the code in StarryEngine.swift. add a toggle to StarryConfigSheetController.swift StarryDefaultsManager.swift to control the debug layer. pipe the enabled/disabled state to `StarryEngine` as appropriate. do not change StarryExcusesConfigSheet.xib at this time.
+
+
+this repository contains swift code for a macos screensaver that is meant to look like the starry night screensaver from the afterdark package from the late 1980's. analyze the code in StarryExcusesConfigSheet.xib, and add a widget for the toggle to the debug layer in StarryConfigSheetController.swift.
