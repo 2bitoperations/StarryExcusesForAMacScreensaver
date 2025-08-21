@@ -46,7 +46,7 @@ class SkylineCoreRenderer {
             let cx = Float(star.xPos) + 0.5
             let cy = Float(star.yPos) + 0.5
             let half = SIMD2<Float>(repeating: 0.5)
-            let color = premulBGRA(r: Float(star.color.red), g: Float(star.color.green), b: Float(star.color.blue), a: 1.0)
+            let color = premulRGBA(r: Float(star.color.red), g: Float(star.color.green), b: Float(star.color.blue), a: 1.0)
             sprites.append(SpriteInstance(centerPx: SIMD2<Float>(cx, cy), halfSizePx: half, colorPremul: color, shape: .rect))
         }
     }
@@ -57,7 +57,7 @@ class SkylineCoreRenderer {
             let cx = Float(light.xPos) + 0.5
             let cy = Float(light.yPos) + 0.5
             let half = SIMD2<Float>(repeating: 0.5)
-            let color = premulBGRA(r: Float(light.color.red), g: Float(light.color.green), b: Float(light.color.blue), a: 1.0)
+            let color = premulRGBA(r: Float(light.color.red), g: Float(light.color.green), b: Float(light.color.blue), a: 1.0)
             sprites.append(SpriteInstance(centerPx: SIMD2<Float>(cx, cy), halfSizePx: half, colorPremul: color, shape: .rect))
         }
     }
@@ -67,14 +67,15 @@ class SkylineCoreRenderer {
         let cx = Float(flasher.xPos)
         let cy = Float(flasher.yPos)
         let r = Float(skyline.flasherRadius)
-        let color = premulBGRA(r: Float(flasher.color.red), g: Float(flasher.color.green), b: Float(flasher.color.blue), a: 1.0)
+        let color = premulRGBA(r: Float(flasher.color.red), g: Float(flasher.color.green), b: Float(flasher.color.blue), a: 1.0)
         sprites.append(SpriteInstance(centerPx: SIMD2<Float>(cx, cy),
                                       halfSizePx: SIMD2<Float>(r, r),
                                       colorPremul: color,
                                       shape: .circle))
     }
     
-    private func premulBGRA(r: Float, g: Float, b: Float, a: Float) -> SIMD4<Float> {
-        return SIMD4<Float>(b * a, g * a, r * a, a) // BGRA premultiplied (match CAMetalLayer .bgra8Unorm)
+    // Store colors as premultiplied RGBA to match shader expectations.
+    private func premulRGBA(r: Float, g: Float, b: Float, a: Float) -> SIMD4<Float> {
+        return SIMD4<Float>(r * a, g * a, b * a, a)
     }
 }

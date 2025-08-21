@@ -262,12 +262,12 @@ final class ShootingStarsLayerRenderer {
             let warmHead = (r: CGFloat(1.0), g: CGFloat(0.95), b: CGFloat(0.85))
             let tailWhite = (r: CGFloat(1.0), g: CGFloat(1.0), b: CGFloat(1.0))
             let blend = t
-            let r = tailWhite.r * (1 - blend) + warmHead.r * blend
-            let g = tailWhite.g * (1 - blend) + warmHead.g * blend
-            let b = tailWhite.b * (1 - blend) + warmHead.b * blend
+            let rr = tailWhite.r * (1 - blend) + warmHead.r * blend
+            let gg = tailWhite.g * (1 - blend) + warmHead.g * blend
+            let bb = tailWhite.b * (1 - blend) + warmHead.b * blend
             let alpha = min(1.0, max(0.0, intensity))
             
-            let colorPremul = SIMD4<Float>(Float(b * alpha), Float(g * alpha), Float(r * alpha), Float(alpha))
+            let colorPremul = SIMD4<Float>(Float(rr * alpha), Float(gg * alpha), Float(bb * alpha), Float(alpha))
             sprites.append(SpriteInstance(centerPx: SIMD2<Float>(Float(px), Float(py)),
                                           halfSizePx: SIMD2<Float>(Float(radius), Float(radius)),
                                           colorPremul: colorPremul,

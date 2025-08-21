@@ -227,14 +227,21 @@ final class StarryEngine {
             skyline = try Skyline(screenXMax: Int(size.width),
                                   screenYMax: Int(size.height),
                                   buildingHeightPercentMax: config.buildingHeight,
+                                  buildingWidthMin: 40,
+                                  buildingWidthMax: 300,
                                   buildingFrequency: config.buildingFrequency,
                                   starsPerUpdate: config.starsPerUpdate,
+                                  buildingLightsPerUpdate: 15,
+                                  buildingColor: Color(red: 0.972, green: 0.945, blue: 0.012),
+                                  flasherRadius: 4,
+                                  flasherPeriod: 2.0,
                                   log: log,
                                   clearAfterDuration: config.secsBetweenClears,
                                   traceEnabled: config.traceEnabled,
                                   moonTraversalSeconds: traversalSeconds,
                                   moonBrightBrightness: config.moonBrightBrightness,
                                   moonDarkBrightness: config.moonDarkBrightness,
+                                  // percent of screen width
                                   moonDiameterScreenWidthPercent: config.moonDiameterScreenWidthPercent,
                                   moonPhaseOverrideEnabled: config.moonPhaseOverrideEnabled,
                                   moonPhaseOverrideValue: config.moonPhaseOverrideValue)
@@ -452,7 +459,7 @@ final class StarryEngine {
                 let hw = CGFloat(s.halfSizePx.x)
                 let hh = CGFloat(s.halfSizePx.y)
                 let rect = CGRect(x: cx - hw, y: cy - hh, width: hw * 2.0, height: hh * 2.0)
-                let c = rgbaFromPremulBGRA(s.colorPremul)
+                let c = rgbaFromPremulRGBA(s.colorPremul)
                 ctx.setFillColor(red: c.r, green: c.g, blue: c.b, alpha: c.a)
                 if s.shape == SpriteShape.circle.rawValue {
                     ctx.fillEllipse(in: rect)
@@ -486,12 +493,12 @@ final class StarryEngine {
         return ctx.makeImage()
     }
     
-    private func rgbaFromPremulBGRA(_ v: SIMD4<Float>) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
+    private func rgbaFromPremulRGBA(_ v: SIMD4<Float>) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
         let a = CGFloat(max(0.0, min(1.0, v.w)))
         if a <= 0 { return (0, 0, 0, 0) }
-        let r = CGFloat(v.z) / a
+        let r = CGFloat(v.x) / a
         let g = CGFloat(v.y) / a
-        let b = CGFloat(v.x) / a
+        let b = CGFloat(v.z) / a
         return (max(0, min(1, r)), max(0, min(1, g)), max(0, min(1, b)), a)
     }
     
