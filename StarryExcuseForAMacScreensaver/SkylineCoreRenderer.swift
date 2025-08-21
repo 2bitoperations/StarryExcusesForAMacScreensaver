@@ -5,12 +5,11 @@
 
 import Foundation
 import os
-import ScreenSaver
 import CoreGraphics
+import simd
 
 // Renders ONLY the evolving star field, building lights, and flasher.
-// The moon has been decoupled and is now rendered in MoonLayerRenderer
-// so that it "floats" above the accumulated star field.
+// Now emits GPU sprite instances instead of drawing into a CGContext.
 class SkylineCoreRenderer {
     let skyline: Skyline
     let log: OSLog
@@ -27,54 +26,55 @@ class SkylineCoreRenderer {
     
     func resetFrameCounter() { frameCounter = 0 }
     
-    func drawSingleFrame(context: CGContext) {
+    // Generate sprite instances to draw this frame onto the persistent base texture.
+    // Stars and building lights are 1px rects; flasher is a circle.
+    func generateSprites() -> [SpriteInstance] {
         if traceEnabled {
-            os_log("drawing base frame (no moon)", log: log, type: .debug)
+            os_log("generating base sprites (no moon)", log: log, type: .debug)
         }
         frameCounter &+= 1
-        drawStars(context: context)
-        drawBuildings(context: context)
-        drawFlasher(context: context)
+        var sprites: [SpriteInstance] = []
+        appendStars(into: &sprites)
+        appendBuildingLights(into: &sprites)
+        appendFlasher(into: &sprites)
+        return sprites
     }
     
-    private func drawStars(context: CGContext) {
+    private func appendStars(into sprites: inout [SpriteInstance]) {
         for _ in 0...skyline.starsPerUpdate {
             let star = skyline.getSingleStar()
-            drawSinglePoint(point: star, size: starSize, context: context)
+            let cx = Float(star.xPos) + 0.5
+            let cy = Float(star.yPos) + 0.5
+            let half = SIMD2<Float>(repeating: 0.5)
+            let color = premulBGRA(r: Float(star.color.red), g: Float(star.color.green), b: Float(star.color.blue), a: 1.0)
+            sprites.append(SpriteInstance(centerPx: SIMD2<Float>(cx, cy), halfSizePx: half, colorPremul: color, shape: .rect))
         }
     }
     
-    private func drawBuildings(context: CGContext) {
+    private func appendBuildingLights(into sprites: inout [SpriteInstance]) {
         for _ in 0...skyline.buildingLightsPerUpdate {
             let light = skyline.getSingleBuildingPoint()
-            drawSinglePoint(point: light, size: starSize, context: context)
+            let cx = Float(light.xPos) + 0.5
+            let cy = Float(light.yPos) + 0.5
+            let half = SIMD2<Float>(repeating: 0.5)
+            let color = premulBGRA(r: Float(light.color.red), g: Float(light.color.green), b: Float(light.color.blue), a: 1.0)
+            sprites.append(SpriteInstance(centerPx: SIMD2<Float>(cx, cy), halfSizePx: half, colorPremul: color, shape: .rect))
         }
     }
     
-    private func drawFlasher(context: CGContext) {
+    private func appendFlasher(into sprites: inout [SpriteInstance]) {
         guard let flasher = skyline.getFlasher() else { return }
-        drawSingleCircle(point: flasher, radius: skyline.flasherRadius, context: context)
+        let cx = Float(flasher.xPos)
+        let cy = Float(flasher.yPos)
+        let r = Float(skyline.flasherRadius)
+        let color = premulBGRA(r: Float(flasher.color.red), g: Float(flasher.color.green), b: Float(flasher.color.blue), a: 1.0)
+        sprites.append(SpriteInstance(centerPx: SIMD2<Float>(cx, cy),
+                                      halfSizePx: SIMD2<Float>(r, r),
+                                      colorPremul: color,
+                                      shape: .circle))
     }
     
-    // MARK: - Primitive Drawing
-    
-    private func convertColor(color: Color) -> CGColor {
-        CGColor(red: CGFloat(color.red), green: CGFloat(color.green), blue: CGFloat(color.blue), alpha: 1.0)
-    }
-    
-    private func drawSingleCircle(point: Point, radius: Int = 4, context: CGContext) {
-        context.saveGState()
-        context.setFillColor(convertColor(color: point.color))
-        let rect = CGRect(x: point.xPos - radius, y: point.yPos - radius, width: radius * 2, height: radius * 2)
-        context.addEllipse(in: rect)
-        context.drawPath(using: .fill)
-        context.restoreGState()
-    }
-    
-    private func drawSinglePoint(point: Point, size: Int = 10, context: CGContext) {
-        context.saveGState()
-        context.setFillColor(convertColor(color: point.color))
-        context.fill(CGRect(x: point.xPos, y: point.yPos, width: starSize, height: size))
-        context.restoreGState()
+    private func premulBGRA(r: Float, g: Float, b: Float, a: Float) -> SIMD4<Float> {
+        return SIMD4<Float>(b * a, g * a, r * a, a) // BGRA premultiplied (match CAMetalLayer .bgra8Unorm)
     }
 }

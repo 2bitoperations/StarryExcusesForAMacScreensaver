@@ -3,10 +3,11 @@ import CoreGraphics
 import os
 import QuartzCore
 import Darwin   // For explicit access to math functions like log()
+import simd
 
 // Simple satellite renderer: spawns small bright points that traverse the sky
 // horizontally (either direction) at a fixed speed, at random vertical positions
-// above the skyline (upper ~70% of screen). Layer is redrawn each frame.
+// above the skyline (upper ~70% of screen). Layer emits sprites per frame.
 final class SatellitesLayerRenderer {
     
     private struct Satellite {
@@ -157,35 +158,15 @@ final class SatellitesLayerRenderer {
         satellites.append(s)
     }
     
-    // MARK: - Rendering
+    // MARK: - Emission to GPU
     
-    func update(into context: CGContext, dt: CFTimeInterval) {
-        let fullRect = CGRect(x: 0, y: 0, width: width, height: height)
-        
-        // If disabled, clear and skip.
+    // Advance simulation, emit sprites for this frame, and compute keep factor for trails.
+    // keepFactor = trailing ? (trailDecay^dt) : 0
+    func update(dt: CFTimeInterval) -> ([SpriteInstance], Float) {
+        // If disabled, just clear state and request texture clear (keep 0)
         guard isEnabled else {
-            context.clear(fullRect)
-            return
-        }
-        
-        // Apply trail fade if enabled (done here so engine doesn't need to decide)
-        if trailing {
-            // DestinationOut fill to fade older pixels
-            context.saveGState()
-            let fadeAlpha: CGFloat
-            // Compute per-frame fade from per-second decay factor
-            // brightness(t+dt) = decay^dt * brightness(t) -> fade = 1 - decay^dt
-            let perFrameKeep = pow(trailDecay, CGFloat(dt))
-            fadeAlpha = 1.0 - perFrameKeep
-            if fadeAlpha > 0 {
-                context.setBlendMode(.destinationOut)
-                context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: fadeAlpha))
-                context.fill(fullRect)
-                context.setBlendMode(.normal)
-            }
-            context.restoreGState()
-        } else {
-            context.clear(fullRect)
+            satellites.removeAll()
+            return ([], 0.0)
         }
         
         // Advance satellites & prune
@@ -208,26 +189,22 @@ final class SatellitesLayerRenderer {
         while timeUntilNextSpawn <= 0 {
             spawn()
             scheduleNextSpawn()
-            // Keep timeUntilNextSpawn simple — no carryover of overshoot
             break
         }
         
-        drawSatellites(into: context)
-    }
-    
-    private func drawSatellites(into context: CGContext) {
-        context.saveGState()
+        var sprites: [SpriteInstance] = []
         for sat in satellites {
-            let rect = CGRect(x: sat.x - sat.size * 0.5,
-                              y: sat.y - sat.size * 0.5,
-                              width: sat.size,
-                              height: sat.size)
-            context.setFillColor(CGColor(red: sat.brightness,
-                                         green: sat.brightness,
-                                         blue: sat.brightness,
-                                         alpha: 1.0))
-            context.fill(rect)
+            let half = Float(sat.size * 0.5)
+            let b = Float(sat.brightness)
+            // Premultiplied BGRA gray
+            let colorPremul = SIMD4<Float>(b, b, b, 1.0)
+            sprites.append(SpriteInstance(centerPx: SIMD2<Float>(Float(sat.x), Float(sat.y)),
+                                          halfSizePx: SIMD2<Float>(half, half),
+                                          colorPremul: colorPremul,
+                                          shape: .rect))
         }
-        context.restoreGState()
+        
+        let keep: Float = trailing ? Float(pow(Double(trailDecay), dt)) : 0.0
+        return (sprites, max(0.0, min(1.0, keep)))
     }
 }

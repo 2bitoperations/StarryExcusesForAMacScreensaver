@@ -2,6 +2,7 @@ import Foundation
 import CoreGraphics
 import QuartzCore
 import os
+import simd
 
 // Direction modes
 enum ShootingStarDirectionMode: Int {
@@ -103,10 +104,9 @@ final class ShootingStarsLayerRenderer {
     
     // MARK: - Update
     
-    func update(into ctx: CGContext, dt: CFTimeInterval) {
-        // Fade existing streaks WITHOUT darkening the background behind layer.
-        applyTrailDecay(into: ctx)
-        
+    // Advance simulation and emit sprite instances for this frame.
+    // Returns (sprites, keepFactor) where keepFactor=trailDecay^dt, or 0 if trails disabled.
+    func update(dt: CFTimeInterval) -> ([SpriteInstance], Float) {
         spawnIfNeeded(dt: dt)
         
         // Advance positions
@@ -119,34 +119,22 @@ final class ShootingStarsLayerRenderer {
         // Remove old
         active.removeAll { $0.done }
         
-        // Draw
+        var sprites: [SpriteInstance] = []
         for s in active {
-            drawStar(s, into: ctx)
+            appendStarSprites(s, into: &sprites)
         }
         
         if debugShowSpawnBounds {
-            drawSpawnBounds(into: ctx)
+            // Optional: draw spawn bounds as thin line (disabled to avoid clutter in GPU path)
         }
-    }
-    
-    // MARK: - Decay (alpha attenuation only)
-    //
-    // Previous implementation filled semi-transparent BLACK using normal blend,
-    // which over the composite dimmed the scene below. Here we instead multiply
-    // existing pixels (both color & alpha) by trailDecay by drawing an opaque
-    // WHITE rect with alpha=trailDecay in destinationIn blend mode:
-    //
-    // dest.rgb = dest.rgb * src.alpha  (≈ trailDecay)
-    // dest.a   = dest.a   * src.alpha  (≈ trailDecay)
-    //
-    // Transparent regions stay transparent (not darkened).
-    private func applyTrailDecay(into ctx: CGContext) {
-        ctx.saveGState()
-        ctx.setBlendMode(.destinationIn)
-        // Use white so we keep RGB proportionally (black would zero them out).
-        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: trailDecay))
-        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        ctx.restoreGState()
+        
+        let keepFactor: Float
+        if trailDecay <= 0 { keepFactor = 0 }
+        else {
+            let k = pow(Double(trailDecay), dt)
+            keepFactor = Float(max(0.0, min(1.0, k)))
+        }
+        return (sprites, keepFactor)
     }
     
     // MARK: - Spawning
@@ -249,9 +237,9 @@ final class ShootingStarsLayerRenderer {
         return CGVector(dx: dx/len, dy: dy/len)
     }
     
-    // MARK: - Drawing
+    // MARK: - Drawing emission
     
-    private func drawStar(_ s: ShootingStar, into ctx: CGContext) {
+    private func appendStarSprites(_ s: ShootingStar, into sprites: inout [SpriteInstance]) {
         let tail = s.tailPosition()
         let dir = s.dir
         let len = s.length
@@ -279,24 +267,11 @@ final class ShootingStarsLayerRenderer {
             let b = tailWhite.b * (1 - blend) + warmHead.b * blend
             let alpha = min(1.0, max(0.0, intensity))
             
-            ctx.setFillColor(CGColor(red: r * alpha,
-                                     green: g * alpha,
-                                     blue: b * alpha,
-                                     alpha: alpha))
-            let rect = CGRect(x: px - radius,
-                              y: py - radius,
-                              width: radius * 2,
-                              height: radius * 2)
-            ctx.fillEllipse(in: rect)
+            let colorPremul = SIMD4<Float>(Float(b * alpha), Float(g * alpha), Float(r * alpha), Float(alpha))
+            sprites.append(SpriteInstance(centerPx: SIMD2<Float>(Float(px), Float(py)),
+                                          halfSizePx: SIMD2<Float>(Float(radius), Float(radius)),
+                                          colorPremul: colorPremul,
+                                          shape: .circle))
         }
-    }
-    
-    private func drawSpawnBounds(into ctx: CGContext) {
-        ctx.saveGState()
-        let rect = CGRect(x: 0, y: safeMinY, width: CGFloat(width), height: CGFloat(height) - safeMinY)
-        ctx.setStrokeColor(CGColor(red: 0, green: 1, blue: 0, alpha: 0.35))
-        ctx.setLineWidth(2)
-        ctx.stroke(rect)
-        ctx.restoreGState()
     }
 }

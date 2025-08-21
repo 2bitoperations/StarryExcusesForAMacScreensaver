@@ -2,8 +2,9 @@ import Foundation
 import CoreGraphics
 import os
 import QuartzCore   // For CACurrentMediaTime()
-import CoreText     // Core Text for text layout/drawing
+import CoreText     // retained for now; debug overlay not rendered in GPU path
 import Darwin       // For task_info CPU sampling
+import simd
 
 // Encapsulates the rendering state and logic so both the main ScreenSaverView
 // and the configuration sheet preview can share the exact same code path.
@@ -88,38 +89,11 @@ StarryRuntimeConfig(
 }
 
 final class StarryEngine {
-    // Base (persistent) star/building/backdrop context
-    private(set) var baseContext: CGContext
-    // Satellites layer (transparent, rewritten each frame, optional trail)
-    private var satellitesLayerContext: CGContext
-    // Shooting stars layer (transparent, accumulation + decay)
-    private var shootingStarsLayerContext: CGContext
-    // Moon overlay (transparent) rewritten only when needed
-    private var moonLayerContext: CGContext
-    // Debug text overlay (transparent) rewritten when text changes
-    private var debugTextLayerContext: CGContext
-    // Temporary compositing context (reused) used to produce final frame
-    private var compositeContext: CGContext
-    
-    // Cached CGImages for layers (avoid makeImage calls when unchanged)
-    private var baseImage: CGImage?
-    private var satellitesImage: CGImage?
-    private var shootingStarsImage: CGImage?
-    private var moonImage: CGImage?
-    private var debugImage: CGImage?
-    
-    // Dirty flags (set true when context content changed and new CGImage needed)
-    private var satellitesDirty = true
-    private var shootingStarsDirty = true
-    private var moonDirty = true
-    private var debugDirty = true
-    
     private let log: OSLog
     private(set) var config: StarryRuntimeConfig
     
     private var skyline: Skyline?
     private var skylineRenderer: SkylineCoreRenderer?
-    private var moonRenderer: MoonLayerRenderer?
     private var shootingStarsRenderer: ShootingStarsLayerRenderer?
     private var satellitesRenderer: SatellitesLayerRenderer?
     
@@ -139,18 +113,18 @@ final class StarryEngine {
     private var lastCPUSampleWallTime: CFTimeInterval = 0
     private var currentCPUPercent: Double = 0
     
-    // Debug overlay state
+    // Debug overlay state (not drawn in GPU path yet)
     private let isoDateFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
     private let debugFont: CTFont = CTFontCreateWithName("Menlo" as CFString, 12, nil)
-    private lazy var debugBaseAttributes: [NSAttributedString.Key: Any] = [
-        NSAttributedString.Key(kCTFontAttributeName as String): debugFont,
-        NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(red: 1.0, green: 0.0, blue: 1.0, alpha: 0.9)
-    ]
     private var lastDebugOverlayString: String = ""
+    
+    // Moon albedo (for renderer upload)
+    private var moonAlbedoImage: CGImage?
+    private var moonAlbedoDirty: Bool = false
     
     init(size: CGSize,
          log: OSLog,
@@ -160,53 +134,9 @@ final class StarryEngine {
         self.log = log
         self.config = config
         
-        self.baseContext = StarryEngine.makeOpaqueContext(size: size)
-        self.satellitesLayerContext = StarryEngine.makeTransparentContext(size: size)
-        self.shootingStarsLayerContext = StarryEngine.makeTransparentContext(size: size)
-        self.moonLayerContext = StarryEngine.makeTransparentContext(size: size)
-        self.debugTextLayerContext = StarryEngine.makeTransparentContext(size: size)
-        self.compositeContext = StarryEngine.makeOpaqueContext(size: size)
-        
-        clearBase()
-        clearSatellitesLayer(full: true)
-        clearMoonLayer()
-        clearShootingStarsLayer(full: true)
-        clearDebugTextLayer()
-        
         // Log full configuration on engine startup for diagnostics
         os_log("StarryEngine initialized with config:\n%{public}@",
                log: log, type: .info, config.description)
-    }
-    
-    // MARK: - Context Helpers
-    
-    private static func makeOpaqueContext(size: CGSize) -> CGContext {
-        // BGRA8 premultiplied (matches MTLPixelFormat.bgra8Unorm)
-        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        let ctx = CGContext(data: nil,
-                            width: Int(size.width),
-                            height: Int(size.height),
-                            bitsPerComponent: 8,
-                            bytesPerRow: 0,
-                            space: CGColorSpaceCreateDeviceRGB(),
-                            bitmapInfo: bitmapInfo)!
-        ctx.interpolationQuality = .high
-        return ctx
-    }
-    
-    private static func makeTransparentContext(size: CGSize) -> CGContext {
-        // BGRA8 premultiplied (matches MTLPixelFormat.bgra8Unorm)
-        let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        let ctx = CGContext(data: nil,
-                            width: Int(size.width),
-                            height: Int(size.height),
-                            bitsPerComponent: 8,
-                            bytesPerRow: 0,
-                            space: CGColorSpaceCreateDeviceRGB(),
-                            bitmapInfo: bitmapInfo)!
-        ctx.interpolationQuality = .high
-        ctx.setBlendMode(.normal)
-        return ctx
     }
     
     // MARK: - Resizing
@@ -216,35 +146,14 @@ final class StarryEngine {
         size = newSize
         lastInitSize = newSize
         
-        baseContext = StarryEngine.makeOpaqueContext(size: size)
-        satellitesLayerContext = StarryEngine.makeTransparentContext(size: size)
-        shootingStarsLayerContext = StarryEngine.makeTransparentContext(size: size)
-        moonLayerContext = StarryEngine.makeTransparentContext(size: size)
-        debugTextLayerContext = StarryEngine.makeTransparentContext(size: size)
-        compositeContext = StarryEngine.makeOpaqueContext(size: size)
-        
         skyline = nil
         skylineRenderer = nil
-        moonRenderer = nil
         shootingStarsRenderer = nil
         satellitesRenderer = nil
         
-        clearBase()
-        clearSatellitesLayer(full: true)
-        clearMoonLayer()
-        clearShootingStarsLayer(full: true)
-        clearDebugTextLayer()
-        
-        // Everything needs fresh images
-        satellitesDirty = true
-        shootingStarsDirty = true
-        moonDirty = true
-        debugDirty = true
-        baseImage = nil
-        satellitesImage = nil
-        shootingStarsImage = nil
-        moonImage = nil
-        debugImage = nil
+        // Moon albedo might change size (radius), request refresh
+        moonAlbedoImage = nil
+        moonAlbedoDirty = false
     }
     
     // MARK: - Configuration
@@ -265,8 +174,9 @@ final class StarryEngine {
         if skylineAffecting {
             skyline = nil
             skylineRenderer = nil
-            moonRenderer = nil
-            moonDirty = true
+            // Force moon albedo refresh
+            moonAlbedoImage = nil
+            moonAlbedoDirty = false
         }
         
         let shootingStarsAffecting =
@@ -282,8 +192,6 @@ final class StarryEngine {
         
         if shootingStarsAffecting {
             shootingStarsRenderer = nil
-            clearShootingStarsLayer(full: true)
-            shootingStarsDirty = true
         }
         
         let satellitesAffecting =
@@ -297,20 +205,12 @@ final class StarryEngine {
         
         if satellitesAffecting {
             satellitesRenderer = nil
-            clearSatellitesLayer(full: true)
-            satellitesDirty = true
-        }
-        
-        let debugOverlayAffecting = config.debugOverlayEnabled != newConfig.debugOverlayEnabled
-        if debugOverlayAffecting {
-            clearDebugTextLayer()
-            debugDirty = true
         }
         
         config = newConfig
     }
     
-    // MARK: - Initialization of Skyline & Moon & Shooting Stars & Satellites
+    // MARK: - Initialization of Skyline & Shooting Stars & Satellites
     
     private func ensureSkyline() {
         guard skyline == nil || skylineRenderer == nil else {
@@ -338,12 +238,14 @@ final class StarryEngine {
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
                                                       traceEnabled: config.traceEnabled)
-                moonRenderer = MoonLayerRenderer(skyline: skyline,
-                                                 log: log,
-                                                 brightBrightness: CGFloat(config.moonBrightBrightness),
-                                                 darkBrightness: CGFloat(config.moonDarkBrightness),
-                                                 showLightAreaTextureFillMask: config.showLightAreaTextureFillMask)
-                moonDirty = true
+                // fetch moon albedo once
+                if let tex = skyline.getMoon()?.textureImage {
+                    moonAlbedoImage = tex
+                    moonAlbedoDirty = true
+                } else {
+                    moonAlbedoImage = nil
+                    moonAlbedoDirty = false
+                }
             }
         } catch {
             os_log("StarryEngine: unable to init skyline %{public}@", log: log, type: .fault, "\(error)")
@@ -369,7 +271,6 @@ final class StarryEngine {
             brightness: CGFloat(config.shootingStarsBrightness),
             trailDecay: CGFloat(config.shootingStarsTrailDecay),
             debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
-        shootingStarsDirty = true
     }
     
     private func ensureSatellitesRenderer() {
@@ -385,149 +286,95 @@ final class StarryEngine {
                                                      brightness: CGFloat(config.satellitesBrightness),
                                                      trailing: config.satellitesTrailing,
                                                      trailDecay: CGFloat(config.satellitesTrailDecay))
-        satellitesDirty = true
     }
     
-    // MARK: - Clearing
+    // MARK: - Frame Advancement (GPU path)
     
-    private func clearBase() {
-        baseContext.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
-        baseContext.fill(CGRect(origin: .zero, size: size))
-        baseImage = nil
-    }
-    
-    private func clearMoonLayer() {
-        moonLayerContext.clear(CGRect(origin: .zero, size: size))
-        moonImage = nil
-        moonDirty = true
-    }
-    
-    private func clearShootingStarsLayer(full: Bool) {
-        shootingStarsLayerContext.clear(CGRect(origin: .zero, size: size))
-        if full {
-            shootingStarsRenderer?.reset()
-        }
-        shootingStarsImage = nil
-        shootingStarsDirty = true
-    }
-    
-    private func clearSatellitesLayer(full: Bool) {
-        if config.satellitesTrailing {
-            // Fade instead of full clear when trailing, unless full requested
-            if full {
-                satellitesLayerContext.clear(CGRect(origin: .zero, size: size))
+    func advanceFrameGPU() -> StarryDrawData {
+        ensureSkyline()
+        let now = CACurrentMediaTime()
+        let dt = max(0.0, now - lastFrameTime)
+        lastFrameTime = now
+        
+        updateFPS(dt: dt)
+        sampleCPU(dt: dt)
+        
+        var clearAll = false
+        var baseSprites: [SpriteInstance] = []
+        var satellitesSprites: [SpriteInstance] = []
+        var shootingSprites: [SpriteInstance] = []
+        var satellitesKeep: Float = 0.0
+        var shootingKeep: Float = 0.0
+        
+        if let skyline = skyline,
+           let skylineRenderer = skylineRenderer {
+            if skyline.shouldClearNow() {
+                skylineRenderer.resetFrameCounter()
+                satellitesRenderer?.reset()
+                shootingStarsRenderer?.reset()
+                self.skyline = nil
+                self.skylineRenderer = nil
+                self.shootingStarsRenderer = nil
+                self.satellitesRenderer = nil
+                clearAll = true
+                ensureSkyline()
+            }
+            
+            // Base sprites (accumulate on persistent texture)
+            baseSprites = skylineRenderer.generateSprites()
+            
+            if config.satellitesEnabled, let sat = satellitesRenderer {
+                let (sprites, keep) = sat.update(dt: dt)
+                satellitesSprites = sprites
+                satellitesKeep = keep
             } else {
-                let decay = config.satellitesTrailDecay
-                satellitesLayerContext.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: CGFloat(1.0 - decay)))
-                satellitesLayerContext.setBlendMode(.destinationOut)
-                satellitesLayerContext.fill(CGRect(origin: .zero, size: size))
-                satellitesLayerContext.setBlendMode(.normal)
+                satellitesSprites.removeAll()
+                satellitesKeep = 0.0
+            }
+            
+            if config.shootingStarsEnabled, let ss = shootingStarsRenderer {
+                let (sprites, keep) = ss.update(dt: dt)
+                shootingSprites = sprites
+                shootingKeep = keep
+            } else {
+                shootingSprites.removeAll()
+                shootingKeep = 0.0
             }
         } else {
-            satellitesLayerContext.clear(CGRect(origin: .zero, size: size))
-        }
-        if full {
-            satellitesRenderer?.reset()
-        }
-        satellitesImage = nil
-        satellitesDirty = true
-    }
-    
-    private func clearDebugTextLayer() {
-        debugTextLayerContext.clear(CGRect(origin: .zero, size: size))
-        debugImage = nil
-        debugDirty = true
-        lastDebugOverlayString = ""
-    }
-    
-    // MARK: - Moon Rendering
-    
-    // Returns true if moon layer content changed
-    private func updateMoonLayer() -> Bool {
-        guard let renderer = moonRenderer else { return false }
-        let did = renderer.renderMoon(into: moonLayerContext)
-        if did { moonDirty = true }
-        return did
-    }
-    
-    // MARK: - Shooting Stars Rendering
-    
-    private func updateShootingStarsLayer(dt: CFTimeInterval) {
-        guard config.shootingStarsEnabled,
-              let renderer = shootingStarsRenderer else { return }
-        renderer.update(into: shootingStarsLayerContext, dt: dt)
-        shootingStarsDirty = true
-    }
-    
-    // MARK: - Satellites Rendering
-    
-    private func updateSatellitesLayer(dt: CFTimeInterval) {
-        guard config.satellitesEnabled,
-              let renderer = satellitesRenderer else { return }
-        renderer.update(into: satellitesLayerContext, dt: dt)
-        satellitesDirty = true
-    }
-    
-    // MARK: - Debug Overlay Rendering (Core Text)
-    
-    // Returns true if text changed (and was redrawn)
-    private func updateDebugOverlayLayer() -> Bool {
-        guard config.debugOverlayEnabled else { return false }
-        
-        let dateString = isoDateFormatter.string(from: Date())
-        let newText = String(format: "FPS: %.1f\nCPU: %.1f%%\nTime: %@", currentFPS, currentCPUPercent, dateString)
-        if newText == lastDebugOverlayString {
-            return false // unchanged -> no redraw or new image needed
-        }
-        lastDebugOverlayString = newText
-        debugDirty = true
-        clearDebugTextLayer()
-        
-        let lines = newText.components(separatedBy: "\n")
-        
-        // Metrics
-        let ascent = CTFontGetAscent(debugFont)
-        let descent = CTFontGetDescent(debugFont)
-        let leading = CTFontGetLeading(debugFont)
-        let lineAdvance = ascent + descent + max(leading, 2)
-        
-        var lineCTObjects: [CTLine] = []
-        var maxLineWidth: CGFloat = 0
-        for l in lines {
-            let attr = NSAttributedString(string: l, attributes: debugBaseAttributes)
-            let ctLine = CTLineCreateWithAttributedString(attr)
-            let width = CGFloat(CTLineGetTypographicBounds(ctLine, nil, nil, nil))
-            if width > maxLineWidth { maxLineWidth = width }
-            lineCTObjects.append(ctLine)
+            clearAll = true
         }
         
-        let totalHeight = lineAdvance * CGFloat(lines.count)
-        let padding: CGFloat = 6
-        let rect = CGRect(
-            x: size.width - maxLineWidth - padding,
-            y: size.height - totalHeight - padding,
-            width: maxLineWidth,
-            height: totalHeight
+        // Moon params
+        var moonParams: MoonParams?
+        if let moon = skyline?.getMoon() {
+            let c = moon.currentCenter()
+            let centerPx = SIMD2<Float>(Float(c.x), Float(c.y))
+            let r = Float(moon.radius)
+            let f = Float(moon.illuminatedFraction)
+            moonParams = MoonParams(centerPx: centerPx,
+                                    radiusPx: r,
+                                    phaseFraction: f,
+                                    brightBrightness: Float(config.moonBrightBrightness),
+                                    darkBrightness: Float(config.moonDarkBrightness))
+        }
+        
+        let drawData = StarryDrawData(
+            size: size,
+            clearAll: clearAll,
+            baseSprites: baseSprites,
+            satellitesSprites: satellitesSprites,
+            satellitesKeepFactor: satellitesKeep,
+            shootingSprites: shootingSprites,
+            shootingKeepFactor: shootingKeep,
+            moon: moonParams,
+            moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil
         )
-        
-        let bgRect = rect.insetBy(dx: -4, dy: -3)
-        debugTextLayerContext.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.38))
-        let path = CGPath(roundedRect: bgRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
-        debugTextLayerContext.addPath(path)
-        debugTextLayerContext.fillPath()
-        
-        var baselineY = rect.maxY - ascent
-        for line in lineCTObjects {
-            let lineWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-            let lineX = rect.maxX - lineWidth
-            debugTextLayerContext.textPosition = CGPoint(x: lineX, y: baselineY)
-            CTLineDraw(line, debugTextLayerContext)
-            baselineY -= lineAdvance
-        }
-        return true
+        // Only send albedo once until skyline/moon changes
+        moonAlbedoDirty = false
+        return drawData
     }
     
-    // MARK: - CPU Sampling
+    // MARK: - CPU/FPS
     
     private func sampleCPU(dt: CFTimeInterval) {
         guard dt > 0 else { return }
@@ -560,8 +407,6 @@ final class StarryEngine {
         lastCPUSampleWallTime = CACurrentMediaTime()
     }
     
-    // MARK: - FPS Update
-    
     private func updateFPS(dt: CFTimeInterval) {
         fpsFrameCount += 1
         fpsAccumulatedTime += dt
@@ -570,232 +415,7 @@ final class StarryEngine {
             currentFPS = currentFPS * 0.6 + fps * 0.4
             fpsAccumulatedTime = 0
             fpsFrameCount = 0
-            debugDirty = true // text will change when FPS updates
+            lastDebugOverlayString = String(format: "FPS: %.1f  CPU: %.1f%%  Time: %@", currentFPS, currentCPUPercent, isoDateFormatter.string(from: Date()))
         }
-    }
-    
-    // MARK: - Frame Advancement (CoreGraphics path)
-    
-    @discardableResult
-    func advanceFrame() -> CGImage? {
-        ensureSkyline()
-        let now = CACurrentMediaTime()
-        let dt = max(0.0, now - lastFrameTime)
-        lastFrameTime = now
-        
-        updateFPS(dt: dt)
-        sampleCPU(dt: dt)
-        
-        guard let skyline = skyline,
-              let skylineRenderer = skylineRenderer else {
-            // Base only (first frame)
-            baseImage = baseContext.makeImage()
-            compositeContext.draw(baseImage!, in: CGRect(origin: .zero, size: size))
-            return compositeContext.makeImage()
-        }
-        
-        if skyline.shouldClearNow() {
-            skylineRenderer.resetFrameCounter()
-            clearBase()
-            clearSatellitesLayer(full: true)
-            clearMoonLayer()
-            clearShootingStarsLayer(full: true)
-            clearDebugTextLayer()
-            self.skyline = nil
-            self.skylineRenderer = nil
-            self.moonRenderer = nil
-            self.shootingStarsRenderer = nil
-            self.satellitesRenderer = nil
-            ensureSkyline()
-            baseImage = baseContext.makeImage()
-            compositeContext.draw(baseImage!, in: CGRect(origin: .zero, size: size))
-            return compositeContext.makeImage()
-        }
-        
-        // Persistent stars/buildings/flasher (always changes base each frame)
-        skylineRenderer.drawSingleFrame(context: baseContext)
-        baseImage = baseContext.makeImage()
-        
-        // Satellites
-        if config.satellitesEnabled {
-            updateSatellitesLayer(dt: dt)
-            if satellitesDirty {
-                satellitesImage = satellitesLayerContext.makeImage()
-                satellitesDirty = false
-            }
-        } else {
-            satellitesImage = nil
-        }
-        
-        // Shooting stars
-        if config.shootingStarsEnabled {
-            updateShootingStarsLayer(dt: dt)
-            if shootingStarsDirty {
-                shootingStarsImage = shootingStarsLayerContext.makeImage()
-                shootingStarsDirty = false
-            }
-        } else {
-            shootingStarsImage = nil
-        }
-        
-        // Moon (only re-render if needed)
-        if updateMoonLayer(), moonDirty {
-            moonImage = moonLayerContext.makeImage()
-            moonDirty = false
-        } else if moonImage == nil, moonRenderer != nil {
-            if updateMoonLayer() {
-                moonImage = moonLayerContext.makeImage()
-                moonDirty = false
-            }
-        }
-        
-        // Debug overlay
-        if config.debugOverlayEnabled {
-            if updateDebugOverlayLayer(), debugDirty {
-                debugImage = debugTextLayerContext.makeImage()
-                debugDirty = false
-            }
-        } else {
-            debugImage = nil
-        }
-        
-        // Composite order: base -> satellites -> shooting stars -> moon -> debug
-        if let baseImage = baseImage {
-            compositeContext.draw(baseImage, in: CGRect(origin: .zero, size: size))
-        }
-        if config.satellitesEnabled, let satImg = satellitesImage {
-            compositeContext.draw(satImg, in: CGRect(origin: .zero, size: size))
-        }
-        if config.shootingStarsEnabled, let ssImg = shootingStarsImage {
-            compositeContext.draw(ssImg, in: CGRect(origin: .zero, size: size))
-        }
-        if let moonImg = moonImage {
-            compositeContext.draw(moonImg, in: CGRect(origin: .zero, size: size))
-        }
-        if config.debugOverlayEnabled, let dbgImg = debugImage {
-            compositeContext.draw(dbgImg, in: CGRect(origin: .zero, size: size))
-        }
-        
-        return compositeContext.makeImage()
-    }
-    
-    // MARK: - Frame Advancement (Metal path, no CoreGraphics compositing)
-    
-    /// Advance simulation & per-layer CPU rendering, returning contexts + dirty flags for Metal upload.
-    /// This skips CGImage creation and composite blending.
-    func advanceFrameForMetal() -> StarryMetalFrameUpdate {
-        ensureSkyline()
-        let now = CACurrentMediaTime()
-        let dt = max(0.0, now - lastFrameTime)
-        lastFrameTime = now
-        
-        updateFPS(dt: dt)
-        sampleCPU(dt: dt)
-        
-        // First frame (skyline not yet ready)
-        guard let skyline = skyline,
-              let skylineRenderer = skylineRenderer else {
-            return StarryMetalFrameUpdate(
-                size: size,
-                baseContext: baseContext,
-                satellitesContext: nil,
-                satellitesChanged: false,
-                shootingStarsContext: nil,
-                shootingStarsChanged: false,
-                moonContext: nil,
-                moonChanged: false,
-                debugContext: nil,
-                debugChanged: false
-            )
-        }
-        
-        if skyline.shouldClearNow() {
-            skylineRenderer.resetFrameCounter()
-            clearBase()
-            clearSatellitesLayer(full: true)
-            clearMoonLayer()
-            clearShootingStarsLayer(full: true)
-            clearDebugTextLayer()
-            self.skyline = nil
-            self.skylineRenderer = nil
-            self.moonRenderer = nil
-            self.shootingStarsRenderer = nil
-            self.satellitesRenderer = nil
-            ensureSkyline()
-            return StarryMetalFrameUpdate(
-                size: size,
-                baseContext: baseContext,
-                satellitesContext: nil,
-                satellitesChanged: true,
-                shootingStarsContext: nil,
-                shootingStarsChanged: true,
-                moonContext: nil,
-                moonChanged: true,
-                debugContext: nil,
-                debugChanged: true
-            )
-        }
-        
-        // Base (always mutated)
-        skylineRenderer.drawSingleFrame(context: baseContext)
-        
-        // Satellites
-        var satellitesChangedOut = false
-        if config.satellitesEnabled {
-            updateSatellitesLayer(dt: dt)
-            satellitesChangedOut = satellitesDirty
-            satellitesDirty = false
-        } else {
-            satellitesChangedOut = satellitesDirty
-            satellitesDirty = false
-        }
-        
-        // Shooting stars
-        var shootingStarsChangedOut = false
-        if config.shootingStarsEnabled {
-            updateShootingStarsLayer(dt: dt)
-            shootingStarsChangedOut = shootingStarsDirty
-            shootingStarsDirty = false
-        } else {
-            shootingStarsChangedOut = shootingStarsDirty
-            shootingStarsDirty = false
-        }
-        
-        // Moon
-        var moonChangedOut = false
-        if updateMoonLayer(), moonDirty {
-            moonChangedOut = true
-            moonDirty = false
-        } else if moonRenderer != nil, moonImage == nil {
-            if updateMoonLayer() {
-                moonChangedOut = true
-                moonDirty = false
-            }
-        }
-        
-        // Debug overlay
-        var debugChangedOut = false
-        if config.debugOverlayEnabled {
-            if updateDebugOverlayLayer(), debugDirty {
-                debugChangedOut = true
-                debugDirty = false
-            }
-        } else if debugDirty {
-            debugChangedOut = true
-            debugDirty = false
-        }
-        
-        return StarryMetalFrameUpdate(
-            size: size,
-            baseContext: baseContext,
-            satellitesContext: config.satellitesEnabled ? satellitesLayerContext : nil,
-            satellitesChanged: satellitesChangedOut,
-            shootingStarsContext: config.shootingStarsEnabled ? shootingStarsLayerContext : nil,
-            shootingStarsChanged: shootingStarsChangedOut,
-            moonContext: moonRenderer != nil ? moonLayerContext : nil,
-            moonChanged: moonChangedOut,
-            debugContext: config.debugOverlayEnabled ? debugTextLayerContext : nil,
-            debugChanged: debugChangedOut
-        )
     }
 }

@@ -75,8 +75,8 @@ class StarryExcuseForAView: ScreenSaverView {
         metalLayer.frame = bounds
         metalRenderer.updateDrawableSize(size: bounds.size, scale: backingScale)
         
-        let frameUpdate = engine.advanceFrameForMetal()
-        metalRenderer.render(frame: frameUpdate)
+        let drawData = engine.advanceFrameGPU()
+        metalRenderer.render(drawData: drawData)
     }
     
     override func startAnimation() {

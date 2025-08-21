@@ -3,29 +3,8 @@ import Metal
 import QuartzCore
 import CoreGraphics
 import os
-import AppKit
+import simd
 
-/// Holds per-frame CPU-rendered layer contexts + dirty flags for Metal upload.
-struct StarryMetalFrameUpdate {
-    let size: CGSize
-    let baseContext: CGContext
-    let satellitesContext: CGContext?
-    let satellitesChanged: Bool
-    let shootingStarsContext: CGContext?
-    let shootingStarsChanged: Bool
-    let moonContext: CGContext?
-    let moonChanged: Bool
-    let debugContext: CGContext?
-    let debugChanged: Bool
-}
-
-/// Metal renderer responsible only for:
-/// 1. Creating & resizing per-layer textures
-/// 2. Uploading changed CPU layer bitmaps into those textures
-/// 3. Compositing the textures in the correct order into the CAMetalLayer drawable
-///
-/// Phase 1: All drawing still occurs on CPU (CoreGraphics) inside StarryEngine.
-/// Phase 2 (future): Individual layers will move their drawing onto the GPU.
 final class StarryMetalRenderer {
     
     // MARK: - Nested Types
@@ -33,9 +12,7 @@ final class StarryMetalRenderer {
     private struct LayerTextures {
         var base: MTLTexture?
         var satellites: MTLTexture?
-        var shootingStars: MTLTexture?
-        var moon: MTLTexture?
-        var debug: MTLTexture?
+        var shooting: MTLTexture?
         var size: CGSize = .zero
     }
     
@@ -46,12 +23,21 @@ final class StarryMetalRenderer {
     private weak var metalLayer: CAMetalLayer?
     private let log: OSLog
     
-    private var pipelineState: MTLRenderPipelineState!
+    // Pipelines
+    private var compositePipeline: MTLRenderPipelineState!
+    private var spritePipeline: MTLRenderPipelineState!
+    private var decayPipeline: MTLRenderPipelineState!
+    private var moonPipeline: MTLRenderPipelineState!
     
-    private var layerTextures = LayerTextures()
+    private var layerTex = LayerTextures()
     
-    // Reusable vertex buffer for a full-screen quad (two triangles).
-    private var quadVertexBuffer: MTLBuffer?
+    // Vertex buffers
+    private var quadVertexBuffer: MTLBuffer? // for textured composite
+    // Instanced sprite data (resized per frame)
+    private var spriteBuffer: MTLBuffer?
+    
+    // Moon albedo
+    private var moonAlbedoTexture: MTLTexture?
     
     // MARK: - Init
     
@@ -68,45 +54,89 @@ final class StarryMetalRenderer {
         layer.device = device
         layer.pixelFormat = .bgra8Unorm
         layer.framebufferOnly = true
-        layer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
         layer.isOpaque = true
         
         do {
-            try buildPipeline()
+            try buildPipelines()
             buildQuad()
         } catch {
-            os_log("Failed to build Metal pipeline: %{public}@", log: log, type: .fault, "\(error)")
+            os_log("Failed to build Metal pipelines: %{public}@", log: log, type: .fault, "\(error)")
             return nil
         }
     }
     
     // MARK: - Setup
     
-    private func buildPipeline() throws {
-        // Expect Shaders.metal compiled into the bundle for this target
+    private func buildPipelines() throws {
         let library = try device.makeDefaultLibrary(bundle: Bundle(for: StarryMetalRenderer.self))
-        guard
-            let vFunc = library.makeFunction(name: "TexturedQuadVertex"),
-            let fFunc = library.makeFunction(name: "TexturedQuadFragment")
-        else {
-            throw NSError(domain: "StarryMetalRenderer", code: -1, userInfo: [NSLocalizedDescriptionKey: "Shader functions missing"])
+        // Composite textured quad
+        do {
+            let desc = MTLRenderPipelineDescriptor()
+            desc.label = "Composite"
+            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex")
+            desc.fragmentFunction = library.makeFunction(name: "TexturedQuadFragment")
+            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+            let blend = desc.colorAttachments[0]
+            blend?.isBlendingEnabled = true
+            blend?.sourceRGBBlendFactor = .one
+            blend?.sourceAlphaBlendFactor = .one
+            blend?.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            blend?.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+            blend?.rgbBlendOperation = .add
+            blend?.alphaBlendOperation = .add
+            compositePipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
-        let desc = MTLRenderPipelineDescriptor()
-        desc.label = "StarryCompositePipeline"
-        desc.vertexFunction = vFunc
-        desc.fragmentFunction = fFunc
-        desc.colorAttachments[0].pixelFormat = .bgra8Unorm
-        // Premultiplied alpha blending
-        let blend = desc.colorAttachments[0]
-        blend?.isBlendingEnabled = true
-        blend?.sourceRGBBlendFactor = .one
-        blend?.sourceAlphaBlendFactor = .one
-        blend?.destinationRGBBlendFactor = .oneMinusSourceAlpha
-        blend?.destinationAlphaBlendFactor = .oneMinusSourceAlpha
-        blend?.rgbBlendOperation = .add
-        blend?.alphaBlendOperation = .add
-        
-        pipelineState = try device.makeRenderPipelineState(descriptor: desc)
+        // Sprite instanced pipeline
+        do {
+            let desc = MTLRenderPipelineDescriptor()
+            desc.label = "Sprites"
+            desc.vertexFunction = library.makeFunction(name: "SpriteVertex")
+            desc.fragmentFunction = library.makeFunction(name: "SpriteFragment")
+            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+            let blend = desc.colorAttachments[0]
+            blend?.isBlendingEnabled = true
+            blend?.sourceRGBBlendFactor = .one
+            blend?.sourceAlphaBlendFactor = .one
+            blend?.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            blend?.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+            blend?.rgbBlendOperation = .add
+            blend?.alphaBlendOperation = .add
+            spritePipeline = try device.makeRenderPipelineState(descriptor: desc)
+        }
+        // Decay pipeline: multiply destination by blendColor (src=0, dst=blendColor)
+        do {
+            let desc = MTLRenderPipelineDescriptor()
+            desc.label = "Decay"
+            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex") // any fullscreen quad
+            desc.fragmentFunction = library.makeFunction(name: "DecayFragment")
+            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+            let blend = desc.colorAttachments[0]
+            blend?.isBlendingEnabled = true
+            blend?.sourceRGBBlendFactor = .zero
+            blend?.sourceAlphaBlendFactor = .zero
+            blend?.destinationRGBBlendFactor = .blendColor
+            blend?.destinationAlphaBlendFactor = .blendColor
+            blend?.rgbBlendOperation = .add
+            blend?.alphaBlendOperation = .add
+            decayPipeline = try device.makeRenderPipelineState(descriptor: desc)
+        }
+        // Moon pipeline
+        do {
+            let desc = MTLRenderPipelineDescriptor()
+            desc.label = "Moon"
+            desc.vertexFunction = library.makeFunction(name: "MoonVertex")
+            desc.fragmentFunction = library.makeFunction(name: "MoonFragment")
+            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+            let blend = desc.colorAttachments[0]
+            blend?.isBlendingEnabled = true
+            blend?.sourceRGBBlendFactor = .one
+            blend?.sourceAlphaBlendFactor = .one
+            blend?.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            blend?.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+            blend?.rgbBlendOperation = .add
+            blend?.alphaBlendOperation = .add
+            moonPipeline = try device.makeRenderPipelineState(descriptor: desc)
+        }
     }
     
     private func buildQuad() {
@@ -133,137 +163,264 @@ final class StarryMetalRenderer {
         layer.contentsScale = scale
         layer.drawableSize = CGSize(width: size.width * scale,
                                     height: size.height * scale)
-        // Force reallocation of per-layer textures at the new size on next render
-        if size != layerTextures.size {
+        if size != layerTex.size {
             allocateTextures(size: size)
         }
     }
     
-    /// Render the frame described by the CPU contexts.
-    func render(frame: StarryMetalFrameUpdate) {
-        guard let layer = metalLayer else { return }
-        // Resize textures if needed
-        if frame.size != layerTextures.size {
-            allocateTextures(size: frame.size)
-        }
+    func setMoonAlbedo(image: CGImage) {
+        // Upload as R8 texture
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
+                                                            width: width,
+                                                            height: height,
+                                                            mipmapped: false)
+        desc.usage = [.shaderRead]
+        desc.storageMode = .private
+        guard let tex = device.makeTexture(descriptor: desc) else { return }
         
-        uploadIfNeeded(context: frame.baseContext,
-                       existing: &layerTextures.base,
-                       dirty: true, // base always changes
-                       label: "Base")
-        if let satCtx = frame.satellitesContext {
-            uploadIfNeeded(context: satCtx,
-                           existing: &layerTextures.satellites,
-                           dirty: frame.satellitesChanged,
-                           label: "Satellites")
-        } else {
-            layerTextures.satellites = nil
-        }
-        if let ssCtx = frame.shootingStarsContext {
-            uploadIfNeeded(context: ssCtx,
-                           existing: &layerTextures.shootingStars,
-                           dirty: frame.shootingStarsChanged,
-                           label: "ShootingStars")
-        } else {
-            layerTextures.shootingStars = nil
-        }
-        if let moonCtx = frame.moonContext {
-            uploadIfNeeded(context: moonCtx,
-                           existing: &layerTextures.moon,
-                           dirty: frame.moonChanged,
-                           label: "Moon")
-        } else {
-            layerTextures.moon = nil
-        }
-        if let dbgCtx = frame.debugContext {
-            uploadIfNeeded(context: dbgCtx,
-                           existing: &layerTextures.debug,
-                           dirty: frame.debugChanged,
-                           label: "Debug")
-        } else {
-            layerTextures.debug = nil
-        }
-        
-        guard
-            let drawable = layer.nextDrawable(),
-            let commandBuffer = commandQueue.makeCommandBuffer()
-        else {
+        // Extract raw grayscale bytes from CGImage (will convert if not grayscale)
+        guard let provider = image.dataProvider,
+              let data = provider.data else {
             return
         }
+        let nsdata = data as Data
+        // If image is not 8bpp gray tight, we convert into tight buffer.
+        // We'll draw into a grayscale context to guarantee layout.
+        var bytes: [UInt8]
+        var bytesPerRow = width
+        if image.bitsPerPixel == 8, image.colorSpace?.model == .monochrome, image.bytesPerRow == width {
+            bytes = [UInt8](nsdata)
+        } else {
+            bytes = [UInt8](repeating: 0, count: width * height)
+            let cs = CGColorSpaceCreateDeviceGray()
+            if let ctx = CGContext(data: &bytes,
+                                   width: width,
+                                   height: height,
+                                   bitsPerComponent: 8,
+                                   bytesPerRow: width,
+                                   space: cs,
+                                   bitmapInfo: CGImageAlphaInfo.none.rawValue) {
+                ctx.interpolationQuality = .none
+                ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            }
+        }
+        tex.replace(region: MTLRegionMake2D(0, 0, width, height),
+                    mipmapLevel: 0,
+                    withBytes: bytes,
+                    bytesPerRow: bytesPerRow)
+        moonAlbedoTexture = tex
+    }
+    
+    func render(drawData: StarryDrawData) {
+        // Upload moon albedo if provided
+        if let img = drawData.moonAlbedoImage {
+            setMoonAlbedo(image: img)
+        }
         
+        // Ensure textures
+        if drawData.size != layerTex.size {
+            allocateTextures(size: drawData.size)
+            // Newly allocated: clear all
+            clearOffscreenTextures()
+        }
+        if drawData.clearAll {
+            clearOffscreenTextures()
+        }
+        
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        
+        // 1) Base layer: render sprites onto persistent base texture (no clear)
+        if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
+            renderSprites(into: baseTex,
+                          sprites: drawData.baseSprites,
+                          viewport: drawData.size,
+                          commandBuffer: commandBuffer)
+        }
+        
+        // 2) Satellites trail: decay then draw
+        if let satTex = layerTex.satellites {
+            if drawData.satellitesKeepFactor < 1.0 {
+                applyDecay(into: satTex,
+                           keepFactor: drawData.satellitesKeepFactor,
+                           commandBuffer: commandBuffer)
+            }
+            if !drawData.satellitesSprites.isEmpty {
+                renderSprites(into: satTex,
+                              sprites: drawData.satellitesSprites,
+                              viewport: drawData.size,
+                              commandBuffer: commandBuffer)
+            }
+        }
+        
+        // 3) Shooting stars trail: decay then draw
+        if let shootTex = layerTex.shooting {
+            if drawData.shootingKeepFactor < 1.0 {
+                applyDecay(into: shootTex,
+                           keepFactor: drawData.shootingKeepFactor,
+                           commandBuffer: commandBuffer)
+            }
+            if !drawData.shootingSprites.isEmpty {
+                renderSprites(into: shootTex,
+                              sprites: drawData.shootingSprites,
+                              viewport: drawData.size,
+                              commandBuffer: commandBuffer)
+            }
+        }
+        
+        // 4) Composite to drawable and draw moon on top
+        guard let drawable = metalLayer?.nextDrawable() else {
+            commandBuffer.commit()
+            return
+        }
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = drawable.texture
         rpd.colorAttachments[0].loadAction = .clear
         rpd.colorAttachments[0].storeAction = .store
-        rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
         
-        guard
-            let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd),
-            let quad = quadVertexBuffer
-        else {
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else {
             commandBuffer.commit()
             return
         }
-        encoder.setRenderPipelineState(pipelineState)
-        encoder.setVertexBuffer(quad, offset: 0, index: 0)
         
-        func drawTexture(_ tex: MTLTexture?) {
+        // Composite base, satellites, shooting
+        encoder.setRenderPipelineState(compositePipeline)
+        if let quad = quadVertexBuffer {
+            encoder.setVertexBuffer(quad, offset: 0, index: 0)
+        }
+        func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
             encoder.setFragmentTexture(t, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
+        drawTex(layerTex.base)
+        drawTex(layerTex.satellites)
+        drawTex(layerTex.shooting)
         
-        // Composite order: base -> satellites -> shooting stars -> moon -> debug
-        drawTexture(layerTextures.base)
-        drawTexture(layerTextures.satellites)
-        drawTexture(layerTextures.shootingStars)
-        drawTexture(layerTextures.moon)
-        drawTexture(layerTextures.debug)
+        // Moon
+        if let moon = drawData.moon {
+            encoder.setRenderPipelineState(moonPipeline)
+            // Uniforms
+            var uni = MoonUniforms(viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
+                                   centerPx: moon.centerPx,
+                                   radiusPx: moon.radiusPx,
+                                   phase: moon.phaseFraction,
+                                   brightBrightness: moon.brightBrightness,
+                                   darkBrightness: moon.darkBrightness)
+            encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniforms>.stride, index: 2)
+            encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniforms>.stride, index: 2)
+            if let albedo = moonAlbedoTexture {
+                encoder.setFragmentTexture(albedo, index: 0)
+            }
+            // Draw quad (6 verts) via implicit corners in shader
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+        }
         
         encoder.endEncoding()
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }
     
-    // MARK: - Allocation & Upload
+    // MARK: - Helpers
     
     private func allocateTextures(size: CGSize) {
-        // Update the size and drop existing textures; they'll be lazily re-created on upload
-        layerTextures.size = size
-        layerTextures.base = nil
-        layerTextures.satellites = nil
-        layerTextures.shootingStars = nil
-        layerTextures.moon = nil
-        layerTextures.debug = nil
+        layerTex.size = size
+        let w = max(1, Int(size.width))
+        let h = max(1, Int(size.height))
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                                                            width: w,
+                                                            height: h,
+                                                            mipmapped: false)
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = .private
+        layerTex.base = device.makeTexture(descriptor: desc)
+        layerTex.base?.label = "BaseLayer"
+        layerTex.satellites = device.makeTexture(descriptor: desc)
+        layerTex.satellites?.label = "SatellitesLayer"
+        layerTex.shooting = device.makeTexture(descriptor: desc)
+        layerTex.shooting?.label = "ShootingStarsLayer"
     }
     
-    private func uploadIfNeeded(context: CGContext,
-                                existing: inout MTLTexture?,
-                                dirty: Bool,
-                                label: String) {
-        guard dirty else { return }
-        guard let dataPtr = context.data else { return }
-        let width = context.width
-        let height = context.height
-        if existing == nil ||
-            existing?.width != width ||
-            existing?.height != height {
-            let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-                                                                width: width,
-                                                                height: height,
-                                                                mipmapped: false)
-            desc.usage = [.shaderRead]
-            // Use shared so replace(region:...) is valid for CPU uploads.
-            desc.storageMode = .shared
-            existing = device.makeTexture(descriptor: desc)
-            existing?.label = "\(label)Texture"
+    private func clearOffscreenTextures() {
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        func clear(texture: MTLTexture?) {
+            guard let t = texture else { return }
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = t
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].storeAction = .store
+            rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+            if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
+                enc.endEncoding()
+            }
         }
-        guard let tex = existing else { return }
-        // Copy entire bitmap
-        let region = MTLRegionMake2D(0, 0, width, height)
-        tex.replace(region: region,
-                    mipmapLevel: 0,
-                    withBytes: dataPtr,
-                    bytesPerRow: context.bytesPerRow)
+        clear(texture: layerTex.base)
+        clear(texture: layerTex.satellites)
+        clear(texture: layerTex.shooting)
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+    }
+    
+    private func renderSprites(into target: MTLTexture,
+                               sprites: [SpriteInstance],
+                               viewport: CGSize,
+                               commandBuffer: MTLCommandBuffer) {
+        guard !sprites.isEmpty else { return }
+        // Ensure buffer capacity
+        let byteCount = sprites.count * MemoryLayout<SpriteInstance>.stride
+        if spriteBuffer == nil || (spriteBuffer!.length < byteCount) {
+            spriteBuffer = device.makeBuffer(length: max(byteCount, 1024 * 16), options: .storageModeShared)
+            spriteBuffer?.label = "SpriteInstanceBuffer"
+        }
+        if let ptr = spriteBuffer?.contents() {
+            ptr.copyMemory(from: sprites, byteCount: byteCount)
+        }
+        
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = target
+        rpd.colorAttachments[0].loadAction = .load
+        rpd.colorAttachments[0].storeAction = .store
+        
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        encoder.setRenderPipelineState(spritePipeline)
+        encoder.setVertexBuffer(spriteBuffer, offset: 0, index: 1)
+        var uni = SpriteUniforms(viewportSize: SIMD2<Float>(Float(viewport.width), Float(viewport.height)))
+        encoder.setVertexBytes(&uni, length: MemoryLayout<SpriteUniforms>.stride, index: 2)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: sprites.count)
+        encoder.endEncoding()
+    }
+    
+    private func applyDecay(into target: MTLTexture,
+                            keepFactor: Float,
+                            commandBuffer: MTLCommandBuffer) {
+        // If keepFactor == 0 -> clear
+        if keepFactor <= 0 {
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = target
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].storeAction = .store
+            rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+            if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
+                enc.endEncoding()
+            }
+            return
+        }
+        
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = target
+        rpd.colorAttachments[0].loadAction = .load
+        rpd.colorAttachments[0].storeAction = .store
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        encoder.setRenderPipelineState(decayPipeline)
+        if let quad = quadVertexBuffer {
+            encoder.setVertexBuffer(quad, offset: 0, index: 0)
+        }
+        // Multiply destination by keepFactor via blend constant
+        encoder.setBlendColor(red: Double(keepFactor), green: Double(keepFactor), blue: Double(keepFactor), alpha: Double(keepFactor))
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+        encoder.endEncoding()
     }
 }
