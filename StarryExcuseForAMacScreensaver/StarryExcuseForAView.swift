@@ -9,12 +9,16 @@ import Foundation
 import os
 import CoreGraphics
 import QuartzCore
+import Metal
 
 class StarryExcuseForAView: ScreenSaverView {
     private lazy var configSheetController: StarryConfigSheetController = StarryConfigSheetController(windowNibName: "StarryExcusesConfigSheet")
     private var defaultsManager = StarryDefaultsManager()
-    // Replaced NSImageView with a CALayer to avoid per-frame NSImage allocations.
-    private var renderLayer: CALayer?
+    
+    // Replaced prior bitmap CALayer approach with a CAMetalLayer + Metal renderer.
+    private var metalLayer: CAMetalLayer?
+    private var metalRenderer: StarryMetalRenderer?
+    
     private var log: OSLog?
     private var engine: StarryEngine?
     private var traceEnabled: Bool
@@ -62,15 +66,17 @@ class StarryExcuseForAView: ScreenSaverView {
     override var hasConfigureSheet: Bool { true }
     
     override func animateOneFrame() {
-        guard let engine = engine else { return }
+        guard let engine = engine,
+              let metalRenderer = metalRenderer,
+              let metalLayer = metalLayer else { return }
+        
+        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         engine.resizeIfNeeded(newSize: bounds.size)
-        if let cg = engine.advanceFrame() {
-            // Directly assign CGImage to CALayer contents (no NSImage allocation).
-            if let layer = renderLayer {
-                layer.contentsScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-                layer.contents = cg
-            }
-        }
+        metalLayer.frame = bounds
+        metalRenderer.updateDrawableSize(size: bounds.size, scale: backingScale)
+        
+        let frameUpdate = engine.advanceFrameForMetal()
+        metalRenderer.render(frame: frameUpdate)
     }
     
     override func startAnimation() {
@@ -90,16 +96,17 @@ class StarryExcuseForAView: ScreenSaverView {
                                   config: currentRuntimeConfig())
         }
         await MainActor.run {
-            if self.renderLayer == nil {
+            if self.metalLayer == nil {
                 self.wantsLayer = true
-                let layer = CALayer()
-                layer.frame = self.bounds
-                layer.contentsGravity = .resizeAspectFill
-                layer.contentsScale = self.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-                self.layer?.addSublayer(layer)
-                self.renderLayer = layer
+                let mLayer = CAMetalLayer()
+                mLayer.frame = self.bounds
+                self.layer?.addSublayer(mLayer)
+                self.metalLayer = mLayer
+                if let log = self.log {
+                    self.metalRenderer = StarryMetalRenderer(layer: mLayer, log: log)
+                }
             } else {
-                renderLayer?.frame = bounds
+                metalLayer?.frame = bounds
             }
         }
         os_log("leaving setupAnimation %d %d",
@@ -156,8 +163,9 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     private func deallocateResources() {
-        renderLayer?.removeFromSuperlayer()
-        renderLayer = nil
+        metalLayer?.removeFromSuperlayer()
+        metalLayer = nil
+        metalRenderer = nil
         engine = nil
     }
     

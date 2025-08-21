@@ -413,7 +413,6 @@ final class StarryEngine {
             if full {
                 satellitesLayerContext.clear(CGRect(origin: .zero, size: size))
             } else {
-                // Simplified: remove redundant pow(..., 1.0)
                 let decay = config.satellitesTrailDecay
                 satellitesLayerContext.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: CGFloat(1.0 - decay)))
                 satellitesLayerContext.setBlendMode(.destinationOut)
@@ -571,7 +570,7 @@ final class StarryEngine {
         }
     }
     
-    // MARK: - Frame Advancement
+    // MARK: - Frame Advancement (CoreGraphics path)
     
     @discardableResult
     func advanceFrame() -> CGImage? {
@@ -640,14 +639,13 @@ final class StarryEngine {
             moonImage = moonLayerContext.makeImage()
             moonDirty = false
         } else if moonImage == nil, moonRenderer != nil {
-            // First-time draw
             if updateMoonLayer() {
                 moonImage = moonLayerContext.makeImage()
                 moonDirty = false
             }
         }
         
-        // Debug overlay (only when text changes)
+        // Debug overlay
         if config.debugOverlayEnabled {
             if updateDebugOverlayLayer(), debugDirty {
                 debugImage = debugTextLayerContext.makeImage()
@@ -675,5 +673,125 @@ final class StarryEngine {
         }
         
         return compositeContext.makeImage()
+    }
+    
+    // MARK: - Frame Advancement (Metal path, no CoreGraphics compositing)
+    
+    /// Advance simulation & per-layer CPU rendering, returning contexts + dirty flags for Metal upload.
+    /// This skips CGImage creation and composite blending.
+    func advanceFrameForMetal() -> StarryMetalFrameUpdate {
+        ensureSkyline()
+        let now = CACurrentMediaTime()
+        let dt = max(0.0, now - lastFrameTime)
+        lastFrameTime = now
+        
+        updateFPS(dt: dt)
+        sampleCPU(dt: dt)
+        
+        // First frame (skyline not yet ready)
+        guard let skyline = skyline,
+              let skylineRenderer = skylineRenderer else {
+            return StarryMetalFrameUpdate(
+                size: size,
+                baseContext: baseContext,
+                satellitesContext: nil,
+                satellitesChanged: false,
+                shootingStarsContext: nil,
+                shootingStarsChanged: false,
+                moonContext: nil,
+                moonChanged: false,
+                debugContext: nil,
+                debugChanged: false
+            )
+        }
+        
+        if skyline.shouldClearNow() {
+            skylineRenderer.resetFrameCounter()
+            clearBase()
+            clearSatellitesLayer(full: true)
+            clearMoonLayer()
+            clearShootingStarsLayer(full: true)
+            clearDebugTextLayer()
+            self.skyline = nil
+            self.skylineRenderer = nil
+            self.moonRenderer = nil
+            self.shootingStarsRenderer = nil
+            self.satellitesRenderer = nil
+            ensureSkyline()
+            return StarryMetalFrameUpdate(
+                size: size,
+                baseContext: baseContext,
+                satellitesContext: nil,
+                satellitesChanged: true,
+                shootingStarsContext: nil,
+                shootingStarsChanged: true,
+                moonContext: nil,
+                moonChanged: true,
+                debugContext: nil,
+                debugChanged: true
+            )
+        }
+        
+        // Base (always mutated)
+        skylineRenderer.drawSingleFrame(context: baseContext)
+        
+        // Satellites
+        var satellitesChangedOut = false
+        if config.satellitesEnabled {
+            updateSatellitesLayer(dt: dt)
+            satellitesChangedOut = satellitesDirty
+            satellitesDirty = false
+        } else {
+            satellitesChangedOut = satellitesDirty
+            satellitesDirty = false
+        }
+        
+        // Shooting stars
+        var shootingStarsChangedOut = false
+        if config.shootingStarsEnabled {
+            updateShootingStarsLayer(dt: dt)
+            shootingStarsChangedOut = shootingStarsDirty
+            shootingStarsDirty = false
+        } else {
+            shootingStarsChangedOut = shootingStarsDirty
+            shootingStarsDirty = false
+        }
+        
+        // Moon
+        var moonChangedOut = false
+        if updateMoonLayer(), moonDirty {
+            moonChangedOut = true
+            moonDirty = false
+        } else if moonRenderer != nil, moonImage == nil {
+            if updateMoonLayer() {
+                moonChangedOut = true
+                moonDirty = false
+            }
+        }
+        
+        // Debug overlay
+        var debugChangedOut = false
+        if config.debugOverlayEnabled {
+            if updateDebugOverlayLayer(), debugDirty {
+                debugChangedOut = true
+                debugDirty = false
+            }
+        } else if debugDirty {
+            debugChangedOut = true
+            debugDirty = false
+        }
+        
+        return StarryMetalFrameUpdate(
+            size: size,
+            baseContext: baseContext,
+            satellitesContext: config.satellitesEnabled ? satellitesLayerContext : nil,
+            satellitesChanged: satellitesChangedOut,
+            shootingStarsContext: config.shootingStarsEnabled ? shootingStarsLayerContext : nil,
+            shootingStarsChanged: shootingStarsChangedOut,
+            moonContext: moonRenderer != nil ? moonLayerContext : nil,
+            moonChanged: moonChangedOut,
+            debugContext: config.debugOverlayEnabled ? debugTextLayerContext : nil,
+            debugChanged: debugChangedOut
+        )
     }
 }
