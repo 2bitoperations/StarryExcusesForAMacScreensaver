@@ -16,6 +16,17 @@ final class StarryMetalRenderer {
         var size: CGSize = .zero
     }
     
+    // Swift-side copy of Moon uniforms used by MoonVertex/MoonFragment.
+    // Kept local to avoid any cross-file visibility issues; layout must match Shaders.metal.
+    private struct MoonUniformsSwift {
+        var viewportSize: SIMD2<Float>
+        var centerPx: SIMD2<Float>
+        var radiusPx: Float
+        var phase: Float
+        var brightBrightness: Float
+        var darkBrightness: Float
+    }
+    
     // MARK: - Properties
     
     private let device: MTLDevice
@@ -304,14 +315,16 @@ final class StarryMetalRenderer {
         if let moon = drawData.moon {
             encoder.setRenderPipelineState(moonPipeline)
             // Uniforms
-            var uni = MoonUniforms(viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
-                                   centerPx: moon.centerPx,
-                                   radiusPx: moon.radiusPx,
-                                   phase: moon.phaseFraction,
-                                   brightBrightness: moon.brightBrightness,
-                                   darkBrightness: moon.darkBrightness)
-            encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniforms>.stride, index: 2)
-            encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniforms>.stride, index: 2)
+            var uni = MoonUniformsSwift(
+                viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
+                centerPx: moon.centerPx,
+                radiusPx: moon.radiusPx,
+                phase: moon.phaseFraction,
+                brightBrightness: moon.brightBrightness,
+                darkBrightness: moon.darkBrightness
+            )
+            encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
+            encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
             if let albedo = moonAlbedoTexture {
                 encoder.setFragmentTexture(albedo, index: 0)
             }
