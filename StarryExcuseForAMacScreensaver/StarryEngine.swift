@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 import os
 import QuartzCore   // For CACurrentMediaTime()
-import AppKit       // For font / color / attributed string drawing
+import CoreText     // Core Text for text layout/drawing
 import Darwin       // For task_info CPU sampling
 
 // Encapsulates the rendering state and logic so both the main ScreenSaverView
@@ -420,47 +420,77 @@ final class StarryEngine {
         renderer.update(into: satellitesLayerContext, dt: dt)
     }
     
-    // MARK: - Debug Overlay Rendering
+    // MARK: - Debug Overlay Rendering (Core Text implementation – no AppKit)
     
     private func updateDebugOverlayLayer() {
         guard config.debugOverlayEnabled else { return }
         clearDebugTextLayer()
         
-        // Ensure we're on the main thread for AppKit text drawing.
-        assert(Thread.isMainThread, "Debug overlay text drawing should be on the main thread.")
-        
         let dateString = isoDateFormatter.string(from: Date())
         let text = String(format: "FPS: %.1f\nCPU: %.1f%%\nTime: %@", currentFPS, currentCPUPercent, dateString)
         
-        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .right
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor(calibratedRed: 1.0, green: 0.0, blue: 1.0, alpha: 0.9),
-            .paragraphStyle: paragraph
-        ]
-        let attrString = NSAttributedString(string: text, attributes: attrs)
-        let textSize = attrString.size()
-        let padding: CGFloat = 6
-        let rect = CGRect(x: size.width - textSize.width - padding,
-                          y: size.height - textSize.height - padding,
-                          width: textSize.width,
-                          height: textSize.height)
+        // Split lines manually for measurement & drawing (right-aligned).
+        let lines = text.components(separatedBy: "\n")
         
-        // Background box (rounded) drawn with Core Graphics (bottom-left origin).
+        // Monospaced font for consistent alignment; Menlo is widely available.
+        let fontSize: CGFloat = 12
+        let ctFont = CTFontCreateWithName("Menlo" as CFString, fontSize, nil)
+        
+        // Metrics (from font)
+        let ascent = CTFontGetAscent(ctFont)
+        let descent = CTFontGetDescent(ctFont)
+        let leading = CTFontGetLeading(ctFont)
+        let lineAdvance = ascent + descent + max(leading, 2) // ensure minimum spacing
+        
+        // Text color (magenta-ish like previous)
+        let textColor = CGColor(red: 1.0, green: 0.0, blue: 1.0, alpha: 0.9)
+        
+        // Attributes dictionary (Core Text keys)
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            NSAttributedString.Key(kCTFontAttributeName as String): ctFont,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): textColor
+        ]
+        
+        // Measure each line
+        var lineCTObjects: [CTLine] = []
+        var maxLineWidth: CGFloat = 0
+        for l in lines {
+            let attr = NSAttributedString(string: l, attributes: baseAttributes)
+            let ctLine = CTLineCreateWithAttributedString(attr)
+            let width = CGFloat(CTLineGetTypographicBounds(ctLine, nil, nil, nil))
+            if width > maxLineWidth { maxLineWidth = width }
+            lineCTObjects.append(ctLine)
+        }
+        
+        // Total height
+        let totalHeight = lineAdvance * CGFloat(lines.count) - (max(leading, 2) * 0.0) // already baked into lineAdvance
+        let padding: CGFloat = 6
+        
+        // Text rect (tight to text bounds)
+        let rect = CGRect(
+            x: size.width - maxLineWidth - padding,
+            y: size.height - totalHeight - padding,
+            width: maxLineWidth,
+            height: totalHeight
+        )
+        
+        // Background box with padding inset (expand outward)
         let bgRect = rect.insetBy(dx: -4, dy: -3)
         debugTextLayerContext.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.38))
         let path = CGPath(roundedRect: bgRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
         debugTextLayerContext.addPath(path)
         debugTextLayerContext.fillPath()
         
-        // Bridge to AppKit for attributed string draw.
-        NSGraphicsContext.saveGraphicsState()
-        let nsCtx = NSGraphicsContext(cgContext: debugTextLayerContext, flipped: false)
-        NSGraphicsContext.current = nsCtx
-        attrString.draw(in: rect)
-        NSGraphicsContext.restoreGraphicsState()
+        // Draw each line right-aligned:
+        // Coordinate system origin is bottom-left; compute baselines from top.
+        var baselineY = rect.maxY - ascent  // baseline for first (top) line
+        for line in lineCTObjects {
+            let lineWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+            let lineX = rect.maxX - lineWidth // right align
+            debugTextLayerContext.textPosition = CGPoint(x: lineX, y: baselineY)
+            CTLineDraw(line, debugTextLayerContext)
+            baselineY -= lineAdvance
+        }
     }
     
     // MARK: - CPU Sampling
