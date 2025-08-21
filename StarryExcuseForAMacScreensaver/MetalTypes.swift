@@ -23,7 +23,17 @@ public struct SpriteInstance {
     }
 }
 
-// Moon parameters per-frame (for GPU shading)
+// Swift-side copy of the uniforms used by SpriteVertex in Shaders.metal
+// Must match memory layout exactly.
+public struct SpriteUniforms {
+    public var viewportSize: SIMD2<Float> // width, height in pixels
+    
+    public init(viewportSize: SIMD2<Float>) {
+        self.viewportSize = viewportSize
+    }
+}
+
+// Moon parameters per-frame (for renderer logic)
 public struct MoonParams {
     public var centerPx: SIMD2<Float>     // pixel center
     public var radiusPx: Float            // pixel radius
@@ -35,6 +45,32 @@ public struct MoonParams {
         self.centerPx = centerPx
         self.radiusPx = radiusPx
         self.phaseFraction = phaseFraction
+        self.brightBrightness = brightBrightness
+        self.darkBrightness = darkBrightness
+    }
+}
+
+// Swift-side copy of the uniforms used by MoonVertex/MoonFragment in Shaders.metal
+// Must match memory layout exactly.
+public struct MoonUniforms {
+    public var viewportSize: SIMD2<Float>     // screen size in pixels
+    public var centerPx: SIMD2<Float>         // moon center in pixels
+    public var radiusPx: Float                // radius in pixels
+    public var phase: Float                   // 0=new, 0.5=full
+    public var brightBrightness: Float        // lit multiplier
+    public var darkBrightness: Float          // unlit multiplier
+    // Note: total floats = 8 (32 bytes). Packing/alignment matches Metal's default (16-byte alignment per vec4).
+
+    public init(viewportSize: SIMD2<Float>,
+                centerPx: SIMD2<Float>,
+                radiusPx: Float,
+                phase: Float,
+                brightBrightness: Float,
+                darkBrightness: Float) {
+        self.viewportSize = viewportSize
+        self.centerPx = centerPx
+        self.radiusPx = radiusPx
+        self.phase = phase
         self.brightBrightness = brightBrightness
         self.darkBrightness = darkBrightness
     }
