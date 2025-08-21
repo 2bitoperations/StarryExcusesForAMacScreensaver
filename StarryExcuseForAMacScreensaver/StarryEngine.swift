@@ -96,6 +96,8 @@ final class StarryEngine {
     private var skylineRenderer: SkylineCoreRenderer?
     private var shootingStarsRenderer: ShootingStarsLayerRenderer?
     private var satellitesRenderer: SatellitesLayerRenderer?
+    // Moon renderer (for preview/CoreGraphics path only)
+    private var moonRenderer: MoonLayerRenderer?
     
     private var size: CGSize
     private var lastInitSize: CGSize
@@ -150,6 +152,7 @@ final class StarryEngine {
         skylineRenderer = nil
         shootingStarsRenderer = nil
         satellitesRenderer = nil
+        moonRenderer = nil
         
         // Moon albedo might change size (radius), request refresh
         moonAlbedoImage = nil
@@ -174,6 +177,7 @@ final class StarryEngine {
         if skylineAffecting {
             skyline = nil
             skylineRenderer = nil
+            moonRenderer = nil
             // Force moon albedo refresh
             moonAlbedoImage = nil
             moonAlbedoDirty = false
@@ -238,7 +242,13 @@ final class StarryEngine {
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
                                                       traceEnabled: config.traceEnabled)
-                // fetch moon albedo once
+                // Moon renderer for preview (CoreGraphics)
+                moonRenderer = MoonLayerRenderer(skyline: skyline,
+                                                 log: log,
+                                                 brightBrightness: CGFloat(config.moonBrightBrightness),
+                                                 darkBrightness: CGFloat(config.moonDarkBrightness),
+                                                 showLightAreaTextureFillMask: config.showLightAreaTextureFillMask)
+                // fetch moon albedo once for GPU
                 if let tex = skyline.getMoon()?.textureImage {
                     moonAlbedoImage = tex
                     moonAlbedoDirty = true
@@ -316,6 +326,7 @@ final class StarryEngine {
                 self.skylineRenderer = nil
                 self.shootingStarsRenderer = nil
                 self.satellitesRenderer = nil
+                self.moonRenderer = nil
                 clearAll = true
                 ensureSkyline()
             }
@@ -372,6 +383,129 @@ final class StarryEngine {
         // Only send albedo once until skyline/moon changes
         moonAlbedoDirty = false
         return drawData
+    }
+    
+    // MARK: - Frame Advancement (Preview CoreGraphics path)
+    // Minimal CPU compositor for config sheet preview (draws current sprites and moon)
+    
+    @discardableResult
+    func advanceFrame() -> CGImage? {
+        ensureSkyline()
+        let now = CACurrentMediaTime()
+        let dt = max(0.0, now - lastFrameTime)
+        lastFrameTime = now
+        
+        updateFPS(dt: dt)
+        sampleCPU(dt: dt)
+        
+        guard let skyline = skyline,
+              let skylineRenderer = skylineRenderer else {
+            // Nothing to draw yet
+            return makeBlackImage(size: size)
+        }
+        
+        if skyline.shouldClearNow() {
+            skylineRenderer.resetFrameCounter()
+            satellitesRenderer?.reset()
+            shootingStarsRenderer?.reset()
+            self.skyline = nil
+            self.skylineRenderer = nil
+            self.shootingStarsRenderer = nil
+            self.satellitesRenderer = nil
+            self.moonRenderer = nil
+            ensureSkyline()
+        }
+        
+        // Generate draw data
+        let baseSprites = skylineRenderer.generateSprites()
+        var satellitesSprites: [SpriteInstance] = []
+        var shootingSprites: [SpriteInstance] = []
+        if config.satellitesEnabled, let sat = satellitesRenderer {
+            let (spr, _) = sat.update(dt: dt)
+            satellitesSprites = spr
+        }
+        if config.shootingStarsEnabled, let ss = shootingStarsRenderer {
+            let (spr, _) = ss.update(dt: dt)
+            shootingSprites = spr
+        }
+        
+        // Create a temporary context and draw sprites
+        guard let ctx = CGContext(data: nil,
+                                  width: Int(size.width),
+                                  height: Int(size.height),
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        // Background
+        ctx.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
+        ctx.fill(CGRect(origin: .zero, size: size))
+        
+        func drawSprites(_ sprites: [SpriteInstance]) {
+            guard !sprites.isEmpty else { return }
+            ctx.saveGState()
+            ctx.setShouldAntialias(true)
+            for s in sprites {
+                let cx = CGFloat(s.centerPx.x)
+                let cy = CGFloat(s.centerPx.y)
+                let hw = CGFloat(s.halfSizePx.x)
+                let hh = CGFloat(s.halfSizePx.y)
+                let rect = CGRect(x: cx - hw, y: cy - hh, width: hw * 2.0, height: hh * 2.0)
+                let c = rgbaFromPremulBGRA(s.colorPremul)
+                ctx.setFillColor(red: c.r, green: c.g, blue: c.b, alpha: c.a)
+                if s.shape == SpriteShape.circle.rawValue {
+                    ctx.fillEllipse(in: rect)
+                } else {
+                    ctx.fill(rect)
+                }
+            }
+            ctx.restoreGState()
+        }
+        
+        drawSprites(baseSprites)
+        drawSprites(satellitesSprites)
+        drawSprites(shootingSprites)
+        
+        // Moon using MoonLayerRenderer onto a transparent layer, then composite
+        if let mr = moonRenderer {
+            if let moonCtx = CGContext(data: nil,
+                                       width: Int(size.width),
+                                       height: Int(size.height),
+                                       bitsPerComponent: 8,
+                                       bytesPerRow: 0,
+                                       space: CGColorSpaceCreateDeviceRGB(),
+                                       bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
+                _ = mr.renderMoon(into: moonCtx)
+                if let moonImg = moonCtx.makeImage() {
+                    ctx.draw(moonImg, in: CGRect(origin: .zero, size: size))
+                }
+            }
+        }
+        
+        return ctx.makeImage()
+    }
+    
+    private func rgbaFromPremulBGRA(_ v: SIMD4<Float>) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
+        let a = CGFloat(max(0.0, min(1.0, v.w)))
+        if a <= 0 { return (0, 0, 0, 0) }
+        let r = CGFloat(v.z) / a
+        let g = CGFloat(v.y) / a
+        let b = CGFloat(v.x) / a
+        return (max(0, min(1, r)), max(0, min(1, g)), max(0, min(1, b)), a)
+    }
+    
+    private func makeBlackImage(size: CGSize) -> CGImage? {
+        guard let ctx = CGContext(data: nil,
+                                  width: Int(size.width),
+                                  height: Int(size.height),
+                                  bitsPerComponent: 8,
+                                  bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
+        ctx.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
+        ctx.fill(CGRect(origin: .zero, size: size))
+        return ctx.makeImage()
     }
     
     // MARK: - CPU/FPS
