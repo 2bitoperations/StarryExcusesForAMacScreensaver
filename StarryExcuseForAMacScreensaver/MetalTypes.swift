@@ -12,7 +12,7 @@ public enum SpriteShape: UInt32 {
 public struct SpriteInstance {
     public var centerPx: SIMD2<Float>     // pixel coordinates
     public var halfSizePx: SIMD2<Float>   // half sizes in pixels (width/2, height/2)
-    public var colorPremul: SIMD4<Float>  // premultiplied color (interpreted as BGRA on CPU; shader converts to RGBA)
+    public var colorPremul: SIMD4<Float>  // premultiplied RGBA color (r,g,b already multiplied by a)
     public var shape: UInt32              // SpriteShape rawValue
     
     public init(centerPx: SIMD2<Float>, halfSizePx: SIMD2<Float>, colorPremul: SIMD4<Float>, shape: SpriteShape) {

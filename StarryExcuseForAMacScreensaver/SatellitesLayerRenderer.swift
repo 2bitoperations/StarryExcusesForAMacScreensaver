@@ -196,7 +196,7 @@ final class SatellitesLayerRenderer {
         for sat in satellites {
             let half = Float(sat.size * 0.5)
             let b = Float(sat.brightness)
-            // Premultiplied BGRA gray
+            // Premultiplied RGBA gray (alpha=1)
             let colorPremul = SIMD4<Float>(b, b, b, 1.0)
             sprites.append(SpriteInstance(centerPx: SIMD2<Float>(Float(sat.x), Float(sat.y)),
                                           halfSizePx: SIMD2<Float>(half, half),

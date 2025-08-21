@@ -41,7 +41,7 @@ fragment float4 TexturedQuadFragment(VertexOut in [[stage_in]],
 struct SpriteInstanceIn {
     float2 centerPx;
     float2 halfSizePx;
-    float4 colorPremul;
+    float4 colorPremul; // EXPECTS premultiplied RGBA
     uint   shape; // 0=rect, 1=circle
 };
 
@@ -80,15 +80,14 @@ vertex SpriteVarying SpriteVertex(uint vid [[vertex_id]],
     
     out.position = float4(ndc, 0, 1);
     out.local = local;
-    out.colorPremul = inst.colorPremul;
+    out.colorPremul = inst.colorPremul; // premultiplied RGBA
     out.shape = inst.shape;
     return out;
 }
 
 fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
-    // CPU provides premultiplied BGRA; convert to premultiplied RGBA for blending
-    float4 c = in.colorPremul;
-    float4 rgba = float4(c.z, c.y, c.x, c.w); // BGRA -> RGBA
+    // colorPremul is premultiplied RGBA
+    float4 rgba = in.colorPremul;
 
     if (in.shape == 0) {
         // Rect
