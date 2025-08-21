@@ -432,7 +432,7 @@ final class StarryMetalRenderer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         }
         // Multiply destination by keepFactor via blend constant
-        encoder.setBlendColor(red: Double(keepFactor), green: Double(keepFactor), blue: Double(keepFactor), alpha: Double(keepFactor))
+        encoder.setBlendColor(red: keepFactor, green: keepFactor, blue: keepFactor, alpha: keepFactor)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.endEncoding()
     }
