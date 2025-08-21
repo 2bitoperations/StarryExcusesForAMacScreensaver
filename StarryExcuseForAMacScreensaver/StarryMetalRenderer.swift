@@ -297,6 +297,13 @@ final class StarryMetalRenderer {
             return
         }
         
+        // Set viewport to drawable size
+        let dvp = MTLViewport(originX: 0, originY: 0,
+                              width: Double(drawable.texture.width),
+                              height: Double(drawable.texture.height),
+                              znear: 0, zfar: 1)
+        encoder.setViewport(dvp)
+        
         // Composite base, satellites, shooting
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
@@ -367,6 +374,11 @@ final class StarryMetalRenderer {
             rpd.colorAttachments[0].storeAction = .store
             rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
             if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
+                // Set viewport to texture size
+                let vp = MTLViewport(originX: 0, originY: 0,
+                                     width: Double(t.width), height: Double(t.height),
+                                     znear: 0, zfar: 1)
+                enc.setViewport(vp)
                 enc.endEncoding()
             }
         }
@@ -388,8 +400,13 @@ final class StarryMetalRenderer {
             spriteBuffer = device.makeBuffer(length: max(byteCount, 1024 * 16), options: .storageModeShared)
             spriteBuffer?.label = "SpriteInstanceBuffer"
         }
-        if let ptr = spriteBuffer?.contents() {
-            ptr.copyMemory(from: sprites, byteCount: byteCount)
+        if let buffer = spriteBuffer {
+            let contents = buffer.contents()
+            sprites.withUnsafeBytes { raw in
+                if let src = raw.baseAddress {
+                    memcpy(contents, src, min(byteCount, raw.count))
+                }
+            }
         }
         
         let rpd = MTLRenderPassDescriptor()
@@ -398,6 +415,13 @@ final class StarryMetalRenderer {
         rpd.colorAttachments[0].storeAction = .store
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        // Set viewport to target size
+        let vp = MTLViewport(originX: 0, originY: 0,
+                             width: Double(target.width),
+                             height: Double(target.height),
+                             znear: 0, zfar: 1)
+        encoder.setViewport(vp)
+        
         encoder.setRenderPipelineState(spritePipeline)
         encoder.setVertexBuffer(spriteBuffer, offset: 0, index: 1)
         var uni = SpriteUniforms(viewportSize: SIMD2<Float>(Float(viewport.width), Float(viewport.height)))
@@ -417,6 +441,12 @@ final class StarryMetalRenderer {
             rpd.colorAttachments[0].storeAction = .store
             rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
             if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
+                // Set viewport to texture size
+                let vp = MTLViewport(originX: 0, originY: 0,
+                                     width: Double(target.width),
+                                     height: Double(target.height),
+                                     znear: 0, zfar: 1)
+                enc.setViewport(vp)
                 enc.endEncoding()
             }
             return
@@ -427,6 +457,13 @@ final class StarryMetalRenderer {
         rpd.colorAttachments[0].loadAction = .load
         rpd.colorAttachments[0].storeAction = .store
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        // Set viewport to texture size
+        let vp = MTLViewport(originX: 0, originY: 0,
+                             width: Double(target.width),
+                             height: Double(target.height),
+                             znear: 0, zfar: 1)
+        encoder.setViewport(vp)
+        
         encoder.setRenderPipelineState(decayPipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
