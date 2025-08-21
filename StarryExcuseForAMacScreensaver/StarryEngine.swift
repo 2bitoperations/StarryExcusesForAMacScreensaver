@@ -426,6 +426,9 @@ final class StarryEngine {
         guard config.debugOverlayEnabled else { return }
         clearDebugTextLayer()
         
+        // Ensure we're on the main thread for AppKit text drawing.
+        assert(Thread.isMainThread, "Debug overlay text drawing should be on the main thread.")
+        
         let dateString = isoDateFormatter.string(from: Date())
         let text = String(format: "FPS: %.1f\nCPU: %.1f%%\nTime: %@", currentFPS, currentCPUPercent, dateString)
         
@@ -445,24 +448,19 @@ final class StarryEngine {
                           width: textSize.width,
                           height: textSize.height)
         
-        // Background box (rounded)
+        // Background box (rounded) drawn with Core Graphics (bottom-left origin).
         let bgRect = rect.insetBy(dx: -4, dy: -3)
         debugTextLayerContext.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.38))
         let path = CGPath(roundedRect: bgRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
         debugTextLayerContext.addPath(path)
         debugTextLayerContext.fillPath()
         
-        // Flip coordinates for AppKit text drawing
-        debugTextLayerContext.saveGState()
-        debugTextLayerContext.translateBy(x: 0, y: size.height)
-        debugTextLayerContext.scaleBy(x: 1, y: -1)
-        // Because we've flipped, adjust Y
-        let flippedRect = CGRect(x: rect.origin.x,
-                                 y: size.height - rect.origin.y - rect.height,
-                                 width: rect.width,
-                                 height: rect.height)
-        attrString.draw(in: flippedRect)
-        debugTextLayerContext.restoreGState()
+        // Bridge to AppKit for attributed string draw.
+        NSGraphicsContext.saveGraphicsState()
+        let nsCtx = NSGraphicsContext(cgContext: debugTextLayerContext, flipped: false)
+        NSGraphicsContext.current = nsCtx
+        attrString.draw(in: rect)
+        NSGraphicsContext.restoreGraphicsState()
     }
     
     // MARK: - CPU Sampling
