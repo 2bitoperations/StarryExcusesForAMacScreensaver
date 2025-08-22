@@ -9,6 +9,8 @@
 import Foundation
 import Cocoa
 import os
+import QuartzCore
+import Metal
 
 class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
     let defaultsManager = StarryDefaultsManager()
@@ -88,10 +90,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var saveCloseButton: NSButton!
     @IBOutlet weak var cancelButton: NSButton!
     
-    // Preview engine
+    // Preview engine (shared logic with saver)
     private var previewEngine: StarryEngine?
     private var previewTimer: Timer?
-    private var previewImageView: NSImageView?
+    
+    // Metal preview (same renderer as screensaver)
+    private var previewMetalLayer: CAMetalLayer?
+    private var previewRenderer: StarryMetalRenderer?
     
     // Pause state
     private var isManuallyPaused = false
@@ -771,20 +776,27 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         }
     }
     
-    // MARK: - Preview Engine Management
+    // MARK: - Preview Engine Management (Metal)
     
     private func setupPreviewEngine() {
         guard let log = log else { return }
         guard moonPreviewView.bounds.width > 0, moonPreviewView.bounds.height > 0 else { return }
         
-        if previewImageView == nil {
-            let iv = NSImageView(frame: moonPreviewView.bounds)
-            iv.autoresizingMask = [.width, .height]
-            iv.imageScaling = .scaleProportionallyUpOrDown
-            moonPreviewView.addSubview(iv)
-            previewImageView = iv
+        // Ensure Metal layer attached to the preview container
+        if previewMetalLayer == nil {
+            moonPreviewView.wantsLayer = true
+            let mLayer = CAMetalLayer()
+            mLayer.frame = moonPreviewView.bounds
+            moonPreviewView.layer?.addSublayer(mLayer)
+            previewMetalLayer = mLayer
         }
         
+        // Ensure renderer
+        if previewRenderer == nil, let mLayer = previewMetalLayer {
+            previewRenderer = StarryMetalRenderer(layer: mLayer, log: log)
+        }
+        
+        // Ensure engine
         previewEngine = StarryEngine(size: moonPreviewView.bounds.size,
                                      log: log,
                                      config: currentPreviewRuntimeConfig())
@@ -797,18 +809,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         guard let log = log else { return }
         stopPreviewTimer()
         previewEngine = nil
-        if let iv = previewImageView {
-            iv.image = nil
-            let size = moonPreviewView.bounds.size
-            if size.width > 0 && size.height > 0 {
-                let img = NSImage(size: size)
-                img.lockFocus()
-                NSColor.black.setFill()
-                NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
-                img.unlockFocus()
-                iv.image = img
-            }
-        }
         os_log("Preview cleared (reason=%{public}@)", log: log, type: .info, reason)
         isManuallyPaused = false
         if previewEngine == nil {
@@ -852,11 +852,21 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func advancePreviewFrame() {
         guard let engine = previewEngine,
-              let iv = previewImageView else { return }
-        engine.resizeIfNeeded(newSize: moonPreviewView.bounds.size)
-        if let cg = engine.advanceFrame() {
-            iv.image = NSImage(cgImage: cg, size: moonPreviewView.bounds.size)
-        }
+              let renderer = previewRenderer,
+              let mLayer = previewMetalLayer else { return }
+        
+        // Keep Metal layer in sync with view size
+        let size = moonPreviewView.bounds.size
+        engine.resizeIfNeeded(newSize: size)
+        mLayer.frame = moonPreviewView.bounds
+        
+        // Use window's backingScaleFactor for crisp rendering
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        renderer.updateDrawableSize(size: size, scale: scale)
+        
+        // Drive GPU path with the same engine as screensaver
+        let drawData = engine.advanceFrameGPU()
+        renderer.render(drawData: drawData)
     }
     
     private func currentPreviewRuntimeConfig() -> StarryRuntimeConfig {
