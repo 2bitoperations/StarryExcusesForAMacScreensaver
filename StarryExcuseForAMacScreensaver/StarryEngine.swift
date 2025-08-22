@@ -134,6 +134,9 @@ final class StarryEngine {
     // Instrumentation
     private var engineFrameIndex: UInt64 = 0
     private var verboseLogging: Bool = true
+
+    // Force-clear request (e.g., on config change or resize)
+    private var forceClearOnNextFrame: Bool = false
     
     init(size: CGSize,
          log: OSLog,
@@ -168,6 +171,9 @@ final class StarryEngine {
         // Moon albedo might change size (radius), request refresh
         moonAlbedoImage = nil
         moonAlbedoDirty = false
+
+        // Ensure persistent GPU layers are cleared on next frame
+        forceClearOnNextFrame = true
     }
     
     // MARK: - Configuration
@@ -228,6 +234,12 @@ final class StarryEngine {
         
         config = newConfig
         os_log("New config applied", log: log, type: .info)
+
+        // Any material change should trigger a visual clear of accumulation textures.
+        if skylineAffecting || shootingStarsAffecting || satellitesAffecting {
+            forceClearOnNextFrame = true
+            os_log("Config change will force full clear on next frame", log: log, type: .info)
+        }
     }
     
     // MARK: - Initialization of Skyline & Shooting Stars & Satellites
@@ -392,6 +404,15 @@ final class StarryEngine {
         } else {
             clearAll = true
         }
+
+        // Honor a forced clear (e.g., config change or resize)
+        if forceClearOnNextFrame {
+            os_log("advanceFrameGPU: forceClearOnNextFrame active — will clear accumulation textures", log: log, type: .info)
+            clearAll = true
+            satellitesKeep = 0.0
+            shootingKeep = 0.0
+            forceClearOnNextFrame = false
+        }
         
         // Moon params
         var moonParams: MoonParams?
@@ -493,6 +514,15 @@ final class StarryEngine {
             }
         } else {
             clearAll = true
+        }
+
+        // Honor a forced clear (e.g., config change or resize)
+        if forceClearOnNextFrame {
+            os_log("advanceFrame(headless): forceClearOnNextFrame active — will clear accumulation textures", log: log, type: .info)
+            clearAll = true
+            satellitesKeep = 0.0
+            shootingKeep = 0.0
+            forceClearOnNextFrame = false
         }
         
         // Moon params

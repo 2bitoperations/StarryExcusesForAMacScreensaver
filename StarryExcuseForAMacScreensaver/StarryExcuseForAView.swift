@@ -227,10 +227,15 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     func settingsChanged() {
-        os_log("settingsChanged: rebuilding engine with persisted defaults", log: log!, type: .info)
-        engine = StarryEngine(size: bounds.size,
-                              log: log!,
-                              config: currentRuntimeConfig())
+        os_log("settingsChanged: applying updated defaults to engine", log: log!, type: .info)
+        if let engine = engine {
+            engine.updateConfig(currentRuntimeConfig())
+        } else {
+            // If engine doesn't exist yet, create it.
+            self.engine = StarryEngine(size: bounds.size,
+                                       log: log!,
+                                       config: currentRuntimeConfig())
+        }
     }
     
     @objc func willStopHandler(_ note: Notification) {
