@@ -41,7 +41,7 @@ final class StarryMetalRenderer {
     private var layerTex = LayerTextures()
     
     // Vertex buffers
-    private var quadVertexBuffer: MTLBuffer? // for textured composite
+    private var quadVertexBuffer: MTLBuffer? // for textured composite + decay fullscreen draws
     // Instanced sprite data (resized per frame)
     private var spriteBuffer: MTLBuffer?
     
@@ -65,6 +65,17 @@ final class StarryMetalRenderer {
     
     // Track last debug mask state for rate-limited logging
     private var lastDebugShowMask: Bool = false
+    
+    // Instrumentation for decay
+    private var frameCounter: UInt64 = 0
+    private var headlessFrameCounter: UInt64 = 0
+    private var decayLogCount: UInt64 = 0
+    private let decayLogFirstN: UInt64 = 8
+    private let decayLogEveryNFrames: UInt64 = 180
+    // Optional: force a visible decay pulse periodically to verify the pass is effective.
+    // Set >0 (e.g., 240) to clamp keepFactor to pulse value every N frames for each layer.
+    private let debugForceDecayPulseEveryNFrames: UInt64 = 0   // disabled by default
+    private let debugDecayPulseKeep: Float = 0.80               // multiply trails by 0.8 on pulse frames
     
     // MARK: - Init (onscreen)
     
@@ -346,6 +357,8 @@ final class StarryMetalRenderer {
     }
     
     func render(drawData: StarryDrawData) {
+        frameCounter &+= 1
+        
         // Prepare moon albedo textures if an upload is requested
         if let img = drawData.moonAlbedoImage {
             if testSkipMoonAlbedoUploads {
@@ -424,9 +437,19 @@ final class StarryMetalRenderer {
         
         // 2) Satellites trail: decay then draw
         if let satTex = layerTex.satellites {
-            if drawData.satellitesKeepFactor < 1.0 {
+            var keep = drawData.satellitesKeepFactor
+            let willApplyDecay = keep < 1.0
+            if debugForceDecayPulseEveryNFrames > 0 && (frameCounter % debugForceDecayPulseEveryNFrames == 0) {
+                keep = min(keep, debugDecayPulseKeep)
+                logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: "PULSE")
+            } else if willApplyDecay {
+                logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: keep <= 0 ? "CLEAR" : "MULTIPLY")
+            } else {
+                logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: "SKIP(keep=1)")
+            }
+            if keep < 1.0 {
                 applyDecay(into: satTex,
-                           keepFactor: drawData.satellitesKeepFactor,
+                           keepFactor: keep,
                            commandBuffer: commandBuffer)
             }
             if !drawData.satellitesSprites.isEmpty {
@@ -439,9 +462,19 @@ final class StarryMetalRenderer {
         
         // 3) Shooting stars trail: decay then draw
         if let shootTex = layerTex.shooting {
-            if drawData.shootingKeepFactor < 1.0 {
+            var keep = drawData.shootingKeepFactor
+            let willApplyDecay = keep < 1.0
+            if debugForceDecayPulseEveryNFrames > 0 && (frameCounter % debugForceDecayPulseEveryNFrames == 0) {
+                keep = min(keep, debugDecayPulseKeep)
+                logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: "PULSE")
+            } else if willApplyDecay {
+                logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: keep <= 0 ? "CLEAR" : "MULTIPLY")
+            } else {
+                logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: "SKIP(keep=1)")
+            }
+            if keep < 1.0 {
                 applyDecay(into: shootTex,
-                           keepFactor: drawData.shootingKeepFactor,
+                           keepFactor: keep,
                            commandBuffer: commandBuffer)
             }
             if !drawData.shootingSprites.isEmpty {
@@ -483,6 +516,8 @@ final class StarryMetalRenderer {
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
+        } else {
+            os_log("WARN: quadVertexBuffer is nil during composite", log: log, type: .error)
         }
         func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
@@ -519,6 +554,8 @@ final class StarryMetalRenderer {
     
     // Headless preview: render same content into an offscreen texture and return CGImage.
     func renderToImage(drawData: StarryDrawData) -> CGImage? {
+        headlessFrameCounter &+= 1
+        
         // Prepare moon albedo if provided
         if let img = drawData.moonAlbedoImage {
             if testSkipMoonAlbedoUploads {
@@ -581,9 +618,16 @@ final class StarryMetalRenderer {
         
         // 2) Satellites trail: decay then draw
         if let satTex = layerTex.satellites {
-            if drawData.satellitesKeepFactor < 1.0 {
+            var keep = drawData.satellitesKeepFactor
+            if debugForceDecayPulseEveryNFrames > 0 && (headlessFrameCounter % debugForceDecayPulseEveryNFrames == 0) {
+                keep = min(keep, debugDecayPulseKeep)
+                logDecayDecision(layer: "Satellites(headless)", texture: satTex, keep: keep, action: "PULSE")
+            } else {
+                logDecayDecision(layer: "Satellites(headless)", texture: satTex, keep: keep, action: keep < 1.0 ? (keep <= 0 ? "CLEAR" : "MULTIPLY") : "SKIP(keep=1)")
+            }
+            if keep < 1.0 {
                 applyDecay(into: satTex,
-                           keepFactor: drawData.satellitesKeepFactor,
+                           keepFactor: keep,
                            commandBuffer: commandBuffer)
             }
             if !drawData.satellitesSprites.isEmpty {
@@ -596,9 +640,16 @@ final class StarryMetalRenderer {
         
         // 3) Shooting stars trail: decay then draw
         if let shootTex = layerTex.shooting {
-            if drawData.shootingKeepFactor < 1.0 {
+            var keep = drawData.shootingKeepFactor
+            if debugForceDecayPulseEveryNFrames > 0 && (headlessFrameCounter % debugForceDecayPulseEveryNFrames == 0) {
+                keep = min(keep, debugDecayPulseKeep)
+                logDecayDecision(layer: "Shooting(headless)", texture: shootTex, keep: keep, action: "PULSE")
+            } else {
+                logDecayDecision(layer: "Shooting(headless)", texture: shootTex, keep: keep, action: keep < 1.0 ? (keep <= 0 ? "CLEAR" : "MULTIPLY") : "SKIP(keep=1)")
+            }
+            if keep < 1.0 {
                 applyDecay(into: shootTex,
-                           keepFactor: drawData.shootingKeepFactor,
+                           keepFactor: keep,
                            commandBuffer: commandBuffer)
             }
             if !drawData.shootingSprites.isEmpty {
@@ -632,6 +683,8 @@ final class StarryMetalRenderer {
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
+        } else {
+            os_log("WARN(headless): quadVertexBuffer is nil during composite", log: log, type: .error)
         }
         func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
@@ -830,10 +883,25 @@ final class StarryMetalRenderer {
         encoder.setRenderPipelineState(decayPipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
+        } else {
+            os_log("WARN: quadVertexBuffer is nil during decay", log: log, type: .error)
         }
         // Multiply destination by keepFactor via blend constant
         encoder.setBlendColor(red: keepFactor, green: keepFactor, blue: keepFactor, alpha: keepFactor)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.endEncoding()
+    }
+    
+    // MARK: - Debug logging
+    
+    private func logDecayDecision(layer: String, texture: MTLTexture, keep: Float, action: String) {
+        // Rate-limit: log first N times and then every M frames thereafter
+        let shouldLogEarly = decayLogCount < decayLogFirstN
+        let shouldLogPeriodic = ((frameCounter % decayLogEveryNFrames) == 0)
+        if !(shouldLogEarly || shouldLogPeriodic) { return }
+        decayLogCount &+= 1
+        os_log("Decay[%{public}@] frame=%{public}llu tex=%{public}@ size=%{public}dx%{public}d keep=%{public}.3f action=%{public}@",
+               log: log, type: .info,
+               layer, frameCounter, texture.label ?? "unnamed", texture.width, texture.height, Double(keep), action)
     }
 }
