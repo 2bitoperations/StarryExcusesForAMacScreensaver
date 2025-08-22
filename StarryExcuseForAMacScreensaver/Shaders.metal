@@ -120,8 +120,8 @@ struct MoonUniforms {
     float2 centerPx;
     float  radiusPx;
     float  phase;             // 0=new, 0.5=full
-    float  brightBrightness;  // lit multiplier
-    float  darkBrightness;    // unlit multiplier
+    float  brightBrightness;  // lit multiplier (uniformly across lit hemisphere)
+    float  darkBrightness;    // unlit multiplier (uniformly across dark hemisphere)
     float  debugShowMask;     // >0 to show mask/debug
 };
 
@@ -155,7 +155,7 @@ vertex MoonVarying MoonVertex(uint vid [[vertex_id]],
 fragment float4 MoonFragment(MoonVarying in [[stage_in]],
                              constant MoonUniforms &uni [[buffer(2)]],
                              texture2d<float, access::sample> albedoTex [[texture(0)]]) {
-    // Use nearest for crisp edges/details in mask
+    // Use nearest for crisp edges/details in mask/texture
     constexpr sampler s(address::clamp_to_edge, filter::nearest, coord::normalized);
     float r2 = dot(in.local, in.local);
     if (r2 > 1.0) {
@@ -170,8 +170,10 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
     float phi = PI * (1.0 - 2.0 * uni.phase);
     float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
     
-    float k = max(dot(n, l), 0.0); // Lambertian term
-    float brightness = mix(uni.darkBrightness, uni.brightBrightness, k);
+    // Compute a crisp lit-hemisphere mask with a very small feather around the terminator.
+    float ndotl = dot(n, l);
+    const float terminatorFeather = 0.01; // tweak for desired sharpness
+    float litMask = smoothstep(-terminatorFeather, terminatorFeather, ndotl); // ~0 on dark side, ~1 on lit side
     
     // Map local [-1,1] -> [0,1] for texture sample
     float2 uv = in.local * 0.5 + 0.5;
@@ -180,16 +182,17 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
         float4 c = albedoTex.sample(s, uv);
         albedo = c.r;
     }
-    // Edge falloff: ensure smoothstep edge0 < edge1 (narrow feather for crisp edge)
-    float edge = smoothstep(0.95, 1.0, 1.0 - r2);
+    // Limb softening (edge anti-alias) — keep it tight to avoid overall fuzziness
+    float edge = smoothstep(0.995, 1.0, 1.0 - r2);
     
     if (uni.debugShowMask > 0.0) {
-        // Visualize mask: red shows albedo (lit area) modulated by edge clip
-        float mask = albedo * k;
+        // Visualize the lit hemisphere mask (crisp crescent), modulated only by limb edge alpha
         float a = edge;
-        return float4(mask * a, 0.0, 0.0, a);
+        return float4(litMask * a, 0.0, 0.0, a);
     }
     
+    // Uniform brightness on lit vs. unlit sides (use albedo for detail if provided)
+    float brightness = mix(uni.darkBrightness, uni.brightBrightness, litMask);
     float3 rgb = float3(albedo * brightness);
     return float4(rgb * edge, edge); // premultiplied alpha
 }
