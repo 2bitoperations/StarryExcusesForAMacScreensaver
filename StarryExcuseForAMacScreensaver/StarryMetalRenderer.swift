@@ -262,7 +262,6 @@ final class StarryMetalRenderer {
         if let img = drawData.moonAlbedoImage {
             setMoonAlbedo(image: img)
         }
-        
         // Ensure textures
         if drawData.size != layerTex.size {
             allocateTextures(size: drawData.size)
@@ -503,7 +502,8 @@ final class StarryMetalRenderer {
         // Create CGImage (BGRA8 premultiplied first, little-endian)
         let cs = CGColorSpaceCreateDeviceRGB()
         let provider = CGDataProvider(data: NSData(bytes: &bytes, length: bytes.count))!
-        let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(CGImageAlphaInfo.premultipliedFirst)
+        let alphaFirst = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(alphaFirst)
         return CGImage(width: w,
                        height: h,
                        bitsPerComponent: 8,
