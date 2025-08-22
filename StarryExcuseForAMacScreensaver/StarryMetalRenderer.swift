@@ -258,6 +258,10 @@ final class StarryMetalRenderer {
         // Allocate private textures at logical (unscaled) size when changed and valid.
         if size.width >= 1, size.height >= 1, size != layerTex.size {
             allocateTextures(size: size)
+            // Immediately clear newly allocated render targets to avoid sampling uninitialized contents.
+            clearOffscreenTextures()
+            os_log("updateDrawableSize: allocated and cleared layer textures for size %{public}.0fx%{public}.0f",
+                   log: log, type: .info, Double(size.width), Double(size.height))
             if metalLayer == nil {
                 offscreenComposite = nil
                 offscreenSize = .zero
