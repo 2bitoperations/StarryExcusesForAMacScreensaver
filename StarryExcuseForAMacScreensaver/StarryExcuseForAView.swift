@@ -22,6 +22,7 @@ class StarryExcuseForAView: ScreenSaverView {
     private var log: OSLog?
     private var engine: StarryEngine?
     private var traceEnabled: Bool
+    private var frameIndex: UInt64 = 0
     
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
@@ -39,10 +40,11 @@ class StarryExcuseForAView: ScreenSaverView {
         if log == nil {
             log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         }
-        os_log("StarryExcuseForAView internal init (preview=%{public}@)",
-               log: log!, type: .info, isPreview ? "true" : "false")
+        os_log("StarryExcuseForAView internal init (preview=%{public}@) bounds=%{public}@",
+               log: log!, type: .info, isPreview ? "true" : "false", NSStringFromRect(bounds))
         
         defaultsManager.validateAndCorrectMoonSettings(log: log!)
+        os_log("Animation interval set to %{public}.3f s", log: log!, type: .info, animationTimeInterval)
         animationTimeInterval = 0.1
         registerListeners()
     }
@@ -56,6 +58,7 @@ class StarryExcuseForAView: ScreenSaverView {
         _ = configSheetController.window
         
         if let win = configSheetController.window {
+            os_log("Config sheet window loaded", log: log!, type: .info)
             return win
         } else {
             os_log("Nib-based config sheet failed to load, providing fallback sheet window", log: log!, type: .error)
@@ -66,39 +69,76 @@ class StarryExcuseForAView: ScreenSaverView {
     override var hasConfigureSheet: Bool { true }
     
     override func animateOneFrame() {
+        frameIndex &+= 1
+        let verbose = (frameIndex <= 5) || (frameIndex % 60 == 0)
+        if verbose {
+            os_log("animateOneFrame #%{public}llu begin", log: log!, type: .info, frameIndex)
+        }
         autoreleasepool {
             let size = bounds.size
-            guard size.width >= 1, size.height >= 1 else { return }
-            guard let engine = engine,
-                  let metalRenderer = metalRenderer,
-                  let metalLayer = metalLayer else { return }
+            if !(size.width >= 1 && size.height >= 1) {
+                os_log("animateOneFrame: invalid bounds size %{public}.1fx%{public}.1f — skipping", log: log!, type: .error, Double(size.width), Double(size.height))
+                return
+            }
+            guard let engine = engine else {
+                os_log("animateOneFrame: engine is nil — skipping frame", log: log!, type: .error)
+                return
+            }
+            guard let metalRenderer = metalRenderer else {
+                os_log("animateOneFrame: metalRenderer is nil — skipping frame", log: log!, type: .error)
+                return
+            }
+            guard let metalLayer = metalLayer else {
+                os_log("animateOneFrame: metalLayer is nil — skipping frame", log: log!, type: .error)
+                return
+            }
             
             // Prefer the view's screen scale (handles multi-display correctly)
             let backingScale = window?.screen?.backingScaleFactor
                 ?? window?.backingScaleFactor
                 ?? NSScreen.main?.backingScaleFactor
                 ?? 2.0
-            
-            // If the scaled size would be invalid, skip this frame to avoid CAMetalLayer warnings.
             let wPx = Int(round(size.width * backingScale))
             let hPx = Int(round(size.height * backingScale))
-            guard wPx > 0, hPx > 0 else { return }
+            if verbose {
+                os_log("animateOneFrame: bounds=%{public}.1fx%{public}.1f scale=%{public}.2f drawable target=%{public}dx%{public}d", log: log!, type: .info,
+                       Double(size.width), Double(size.height), Double(backingScale), wPx, hPx)
+            }
+            guard wPx > 0, hPx > 0 else {
+                os_log("animateOneFrame: invalid drawable size w=%{public}d h=%{public}d — skipping", log: log!, type: .error, wPx, hPx)
+                return
+            }
             
             engine.resizeIfNeeded(newSize: size)
             metalLayer.frame = bounds
             metalRenderer.updateDrawableSize(size: size, scale: backingScale)
             
+            let t0 = CACurrentMediaTime()
             let drawData = engine.advanceFrameGPU()
+            if verbose {
+                os_log("animateOneFrame: drawData base=%{public}d sat=%{public}d shoot=%{public}d keep(sat=%{public}.3f,shoot=%{public}.3f) moon=%{public}@ clearAll=%{public}@",
+                       log: log!, type: .info,
+                       drawData.baseSprites.count, drawData.satellitesSprites.count, drawData.shootingSprites.count,
+                       Double(drawData.satellitesKeepFactor), Double(drawData.shootingKeepFactor),
+                       drawData.moon != nil ? "yes" : "no",
+                       drawData.clearAll ? "yes" : "no")
+            }
             metalRenderer.render(drawData: drawData)
+            let t1 = CACurrentMediaTime()
+            if verbose {
+                os_log("animateOneFrame #%{public}llu end (%.2f ms)", log: log!, type: .info, frameIndex, (t1 - t0) * 1000.0)
+            }
         }
     }
     
     override func startAnimation() {
         super.startAnimation()
+        os_log("startAnimation called", log: log!, type: .info)
         Task { await setupAnimation() }
     }
     
     override func stopAnimation() {
+        os_log("stopAnimation called", log: log!, type: .info)
         super.stopAnimation()
     }
     
@@ -108,6 +148,7 @@ class StarryExcuseForAView: ScreenSaverView {
             engine = StarryEngine(size: bounds.size,
                                   log: log!,
                                   config: currentRuntimeConfig())
+            os_log("Engine created (size=%{public}.0fx%{public}.0f)", log: log!, type: .info, Double(bounds.width), Double(bounds.height))
         }
         await MainActor.run {
             if self.metalLayer == nil {
@@ -122,17 +163,27 @@ class StarryExcuseForAView: ScreenSaverView {
                 mLayer.contentsScale = scale
                 self.layer?.addSublayer(mLayer)
                 self.metalLayer = mLayer
+                os_log("CAMetalLayer created and added. contentsScale=%{public}.2f", log: self.log!, type: .info, Double(scale))
                 if let log = self.log {
                     self.metalRenderer = StarryMetalRenderer(layer: mLayer, log: log)
+                    if self.metalRenderer == nil {
+                        os_log("Failed to create StarryMetalRenderer", log: self.log!, type: .fault)
+                    } else {
+                        os_log("StarryMetalRenderer created", log: self.log!, type: .info)
+                    }
                     // Ensure drawable is sized before first frame if valid
                     let size = self.bounds.size
                     let wPx = Int(round(size.width * scale))
                     let hPx = Int(round(size.height * scale))
                     if wPx > 0, hPx > 0 {
                         self.metalRenderer?.updateDrawableSize(size: size, scale: scale)
+                        os_log("Initial drawableSize update applied (%{public}dx%{public}d)", log: self.log!, type: .info, wPx, hPx)
+                    } else {
+                        os_log("Initial drawableSize update skipped due to invalid size (%{public}dx%{public}d)", log: self.log!, type: .error, wPx, hPx)
                     }
                 }
             } else {
+                os_log("setupAnimation: reusing existing CAMetalLayer", log: self.log!, type: .info)
                 metalLayer?.frame = bounds
             }
         }
@@ -176,7 +227,7 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     func settingsChanged() {
-        // Rebuild the engine with the persisted defaults after user saves changes.
+        os_log("settingsChanged: rebuilding engine with persisted defaults", log: log!, type: .info)
         engine = StarryEngine(size: bounds.size,
                               log: log!,
                               config: currentRuntimeConfig())
@@ -186,10 +237,13 @@ class StarryExcuseForAView: ScreenSaverView {
         if !isPreview {
             os_log("willStop received, exiting.", log: log!)
             NSApplication.shared.terminate(nil)
+        } else {
+            os_log("willStop received (preview mode), ignoring terminate", log: log!, type: .info)
         }
     }
     
     private func deallocateResources() {
+        os_log("Deallocating resources: tearing down renderer, layer, engine", log: log!, type: .info)
         metalLayer?.removeFromSuperlayer()
         metalLayer = nil
         metalRenderer = nil
@@ -197,6 +251,7 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     private func registerListeners() {
+        os_log("Registering willStop listener", log: log!, type: .info)
         DistributedNotificationCenter.default.addObserver(
             self,
             selector: #selector(self.willStopHandler(_:)),

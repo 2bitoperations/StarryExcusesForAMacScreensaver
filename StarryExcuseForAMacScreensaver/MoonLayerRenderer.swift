@@ -37,6 +37,9 @@ final class MoonLayerRenderer {
     // Last drawn (pixel-aligned) center. If unchanged and no regenerate needed, skip redraw.
     private var lastDrawnCenter: CGPoint?
     
+    // Instrumentation
+    private var frameIndex: UInt64 = 0
+    
     init(skyline: Skyline,
          log: OSLog,
          brightBrightness: CGFloat,
@@ -54,8 +57,17 @@ final class MoonLayerRenderer {
     
     // Returns true if the moon layer was (re)rendered.
     func renderMoon(into context: CGContext) -> Bool {
-        guard let moon = skyline.getMoon(),
-              let texture = moon.textureImage else { return false }
+        frameIndex &+= 1
+        let logThis = (frameIndex <= 5) || (frameIndex % 60 == 0)
+        
+        guard let moon = skyline.getMoon() else {
+            if logThis { os_log("MoonLayerRenderer: no Moon available", log: log, type: .debug) }
+            return false
+        }
+        guard let texture = moon.textureImage else {
+            if logThis { os_log("MoonLayerRenderer: Moon has no textureImage", log: log, type: .debug) }
+            return false
+        }
         
         let rawCenter = moon.currentCenter()
         let r = CGFloat(moon.radius)
@@ -83,10 +95,15 @@ final class MoonLayerRenderer {
         
         // If nothing changed (disk reused) AND center unchanged, skip redraw entirely.
         if !needsRegenerate, let lastCenter = lastDrawnCenter, lastCenter == center {
+            if logThis { os_log("MoonLayerRenderer: skip redraw (cache reused, center unchanged)", log: log, type: .debug) }
             return false
         }
         
         if needsRegenerate {
+            if logThis {
+                os_log("MoonLayerRenderer: regenerating disk (r=%{public}.1f phase=%{public}.4f bright=%{public}.2f dark=%{public}.2f debug=%{public}@)",
+                       log: log, type: .info, Double(r), Double(f), Double(brightBrightness), Double(darkBrightness), showLightAreaTextureFillMask ? "on" : "off")
+            }
             cachedDiskImage = buildShadedDiskImage(texture: texture,
                                                    radius: r,
                                                    fraction: f)
@@ -96,9 +113,14 @@ final class MoonLayerRenderer {
             cachedBright = brightBrightness
             cachedDark = darkBrightness
             lastShadingRenderTime = now
+        } else if logThis {
+            os_log("MoonLayerRenderer: reusing cached disk (center changed)", log: log, type: .debug)
         }
         
-        guard let diskImage = cachedDiskImage else { return false }
+        guard let diskImage = cachedDiskImage else {
+            if logThis { os_log("MoonLayerRenderer: cachedDiskImage nil after generation", log: log, type: .error) }
+            return false
+        }
         
         // Clear entire layer before drawing new moon (position or disk changed)
         let fullRect = CGRect(x: 0, y: 0, width: context.width, height: context.height)
@@ -111,6 +133,9 @@ final class MoonLayerRenderer {
         context.draw(diskImage, in: moonRect)
         context.restoreGState()
         lastDrawnCenter = center
+        if logThis {
+            os_log("MoonLayerRenderer: drew disk at center=(%{public}.1f,%{public}.1f) r=%{public}.1f", log: log, type: .info, Double(center.x), Double(center.y), Double(r))
+        }
         return true
     }
     
@@ -118,9 +143,15 @@ final class MoonLayerRenderer {
     private func buildShadedDiskImage(texture: CGImage,
                                       radius r: CGFloat,
                                       fraction f: CGFloat) -> CGImage? {
-        if r <= 0 { return nil }
+        if r <= 0 {
+            os_log("MoonLayerRenderer: invalid radius %{public}.3f", log: log, type: .error, Double(r))
+            return nil
+        }
         let size = Int(ceil(2*r))
-        guard size > 0 else { return nil }
+        guard size > 0 else {
+            os_log("MoonLayerRenderer: invalid size computed %{public}d", log: log, type: .error, size)
+            return nil
+        }
         
         guard let diskCtx = CGContext(data: nil,
                                       width: size,
@@ -129,6 +160,7 @@ final class MoonLayerRenderer {
                                       bytesPerRow: 0,
                                       space: CGColorSpaceCreateDeviceRGB(),
                                       bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue) else {
+            os_log("MoonLayerRenderer: failed to create disk context", log: log, type: .error)
             return nil
         }
         diskCtx.interpolationQuality = .none

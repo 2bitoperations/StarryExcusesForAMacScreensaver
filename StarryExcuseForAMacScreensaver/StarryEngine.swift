@@ -131,6 +131,10 @@ final class StarryEngine {
     // Headless Metal renderer for preview CGImage output
     private var previewMetalRenderer: StarryMetalRenderer?
     
+    // Instrumentation
+    private var engineFrameIndex: UInt64 = 0
+    private var verboseLogging: Bool = true
+    
     init(size: CGSize,
          log: OSLog,
          config: StarryRuntimeConfig) {
@@ -142,12 +146,15 @@ final class StarryEngine {
         // Log full configuration on engine startup for diagnostics
         os_log("StarryEngine initialized with config:\n%{public}@",
                log: log, type: .info, config.description)
+        os_log("Initial size: %{public}.0fx%{public}.0f", log: log, type: .info, Double(size.width), Double(size.height))
     }
     
     // MARK: - Resizing
     
     func resizeIfNeeded(newSize: CGSize) {
         guard newSize != lastInitSize, newSize.width > 0, newSize.height > 0 else { return }
+        os_log("Resize: %{public}.0fx%{public}.0f -> %{public}.0fx%{public}.0f", log: log, type: .info,
+               Double(lastInitSize.width), Double(lastInitSize.height), Double(newSize.width), Double(newSize.height))
         size = newSize
         lastInitSize = newSize
         
@@ -179,6 +186,7 @@ final class StarryEngine {
             config.showLightAreaTextureFillMask != newConfig.showLightAreaTextureFillMask
         
         if skylineAffecting {
+            os_log("Config changed (skyline affecting) — resetting skyline, renderers, and moon albedo", log: log, type: .info)
             skyline = nil
             skylineRenderer = nil
             moonRenderer = nil
@@ -200,6 +208,7 @@ final class StarryEngine {
             config.shootingStarsDebugShowSpawnBounds != newConfig.shootingStarsDebugShowSpawnBounds
         
         if shootingStarsAffecting {
+            os_log("Config changed (shooting-stars affecting) — resetting shootingStarsRenderer", log: log, type: .info)
             shootingStarsRenderer = nil
         }
         
@@ -213,10 +222,12 @@ final class StarryEngine {
             config.satellitesTrailDecay != newConfig.satellitesTrailDecay
         
         if satellitesAffecting {
+            os_log("Config changed (satellites affecting) — resetting satellitesRenderer", log: log, type: .info)
             satellitesRenderer = nil
         }
         
         config = newConfig
+        os_log("New config applied", log: log, type: .info)
     }
     
     // MARK: - Initialization of Skyline & Shooting Stars & Satellites
@@ -227,6 +238,7 @@ final class StarryEngine {
             ensureShootingStarsRenderer()
             return
         }
+        os_log("Initializing skyline/renderers for size %{public}dx%{public}d", log: log, type: .info, Int(size.width), Int(size.height))
         do {
             let traversalSeconds = Double(config.moonTraversalMinutes) * 60.0
             skyline = try Skyline(screenXMax: Int(size.width),
@@ -251,22 +263,27 @@ final class StarryEngine {
                                   moonPhaseOverrideEnabled: config.moonPhaseOverrideEnabled,
                                   moonPhaseOverrideValue: config.moonPhaseOverrideValue)
             if let skyline = skyline {
+                os_log("Skyline created. Stars/update=%{public}d, clearAfter=%{public}.1fs", log: log, type: .info, config.starsPerUpdate, config.secsBetweenClears)
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
                                                       traceEnabled: config.traceEnabled)
+                os_log("SkylineCoreRenderer created", log: log, type: .info)
                 // Moon renderer for preview (CoreGraphics)
                 moonRenderer = MoonLayerRenderer(skyline: skyline,
                                                  log: log,
                                                  brightBrightness: CGFloat(config.moonBrightBrightness),
                                                  darkBrightness: CGFloat(config.moonDarkBrightness),
                                                  showLightAreaTextureFillMask: config.showLightAreaTextureFillMask)
+                os_log("MoonLayerRenderer (preview/CG) created", log: log, type: .info)
                 // fetch moon albedo once for GPU
                 if let tex = skyline.getMoon()?.textureImage {
                     moonAlbedoImage = tex
                     moonAlbedoDirty = true
+                    os_log("Fetched moon albedo image for GPU upload (size=%{public}dx%{public}d)", log: log, type: .info, tex.width, tex.height)
                 } else {
                     moonAlbedoImage = nil
                     moonAlbedoDirty = false
+                    os_log("No moon albedo image available (yet)", log: log, type: .info)
                 }
             }
         } catch {
@@ -293,6 +310,7 @@ final class StarryEngine {
             brightness: CGFloat(config.shootingStarsBrightness),
             trailDecay: CGFloat(config.shootingStarsTrailDecay),
             debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
+        os_log("ShootingStarsLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.shootingStarsEnabled ? "true" : "false", config.shootingStarsAvgSeconds)
     }
     
     private func ensureSatellitesRenderer() {
@@ -308,11 +326,18 @@ final class StarryEngine {
                                                      brightness: CGFloat(config.satellitesBrightness),
                                                      trailing: config.satellitesTrailing,
                                                      trailDecay: CGFloat(config.satellitesTrailDecay))
+        os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.satellitesEnabled ? "true" : "false", config.satellitesAvgSpawnSeconds)
     }
     
     // MARK: - Frame Advancement (GPU path)
     
     func advanceFrameGPU() -> StarryDrawData {
+        engineFrameIndex &+= 1
+        let logThisFrame = verboseLogging && (engineFrameIndex <= 5 || engineFrameIndex % 60 == 0)
+        if logThisFrame {
+            os_log("advanceFrameGPU: begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
+        }
+        
         ensureSkyline()
         let now = CACurrentMediaTime()
         let dt = max(0.0, now - lastFrameTime)
@@ -331,6 +356,7 @@ final class StarryEngine {
         if let skyline = skyline,
            let skylineRenderer = skylineRenderer {
             if skyline.shouldClearNow() {
+                os_log("advanceFrameGPU: skyline requested clear — resetting state", log: log, type: .info)
                 skylineRenderer.resetFrameCounter()
                 satellitesRenderer?.reset()
                 shootingStarsRenderer?.reset()
@@ -381,6 +407,15 @@ final class StarryEngine {
                                     darkBrightness: Float(config.moonDarkBrightness))
         }
         
+        if logThisFrame {
+            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d keep sat=%{public}.3f shoot=%{public}.3f moon=%{public}@ clearAll=%{public}@",
+                   log: log, type: .info,
+                   baseSprites.count, satellitesSprites.count, shootingSprites.count,
+                   Double(satellitesKeep), Double(shootingKeep),
+                   moonParams != nil ? "yes" : "no",
+                   clearAll ? "yes" : "no")
+        }
+        
         let drawData = StarryDrawData(
             size: size,
             clearAll: clearAll,
@@ -393,6 +428,9 @@ final class StarryEngine {
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil
         )
         // Only send albedo once until skyline/moon changes
+        if moonAlbedoDirty && logThisFrame {
+            os_log("advanceFrameGPU: moon albedo image attached for upload", log: log, type: .info)
+        }
         moonAlbedoDirty = false
         return drawData
     }
@@ -402,6 +440,12 @@ final class StarryEngine {
     
     @discardableResult
     func advanceFrame() -> CGImage? {
+        engineFrameIndex &+= 1
+        let logThisFrame = verboseLogging && (engineFrameIndex <= 5 || engineFrameIndex % 60 == 0)
+        if logThisFrame {
+            os_log("advanceFrame (headless): begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
+        }
+        
         ensureSkyline()
         let now = CACurrentMediaTime()
         let dt = max(0.0, now - lastFrameTime)
@@ -421,6 +465,7 @@ final class StarryEngine {
         if let skyline = skyline,
            let skylineRenderer = skylineRenderer {
             if skyline.shouldClearNow() {
+                os_log("advanceFrame(headless): skyline requested clear — resetting state", log: log, type: .info)
                 skylineRenderer.resetFrameCounter()
                 satellitesRenderer?.reset()
                 shootingStarsRenderer?.reset()
@@ -463,6 +508,15 @@ final class StarryEngine {
                                     darkBrightness: Float(config.moonDarkBrightness))
         }
         
+        if logThisFrame {
+            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d keep sat=%{public}.3f shoot=%{public}.3f moon=%{public}@ clearAll=%{public}@",
+                   log: log, type: .info,
+                   baseSprites.count, satellitesSprites.count, shootingSprites.count,
+                   Double(satellitesKeep), Double(shootingKeep),
+                   moonParams != nil ? "yes" : "no",
+                   clearAll ? "yes" : "no")
+        }
+        
         let drawData = StarryDrawData(
             size: size,
             clearAll: clearAll,
@@ -474,14 +528,27 @@ final class StarryEngine {
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil
         )
+        if moonAlbedoDirty && logThisFrame {
+            os_log("advanceFrame(headless): moon albedo image attached for upload", log: log, type: .info)
+        }
         moonAlbedoDirty = false
         
         if previewMetalRenderer == nil {
+            os_log("Creating headless StarryMetalRenderer", log: log, type: .info)
             previewMetalRenderer = StarryMetalRenderer(log: log)
         }
-        guard let renderer = previewMetalRenderer else { return nil }
+        guard let renderer = previewMetalRenderer else {
+            os_log("Headless render failed: previewMetalRenderer is nil", log: log, type: .error)
+            return nil
+        }
         renderer.updateDrawableSize(size: size, scale: 1.0)
-        return renderer.renderToImage(drawData: drawData)
+        let img = renderer.renderToImage(drawData: drawData)
+        if img == nil {
+            os_log("Headless renderer returned nil CGImage", log: log, type: .error)
+        } else if logThisFrame {
+            os_log("Headless renderer returned CGImage", log: log, type: .info)
+        }
+        return img
     }
     
     private func rgbaFromPremulRGBA(_ v: SIMD4<Float>) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
@@ -548,6 +615,7 @@ final class StarryEngine {
             fpsAccumulatedTime = 0
             fpsFrameCount = 0
             lastDebugOverlayString = String(format: "FPS: %.1f  CPU: %.1f%%  Time: %@", currentFPS, currentCPUPercent, isoDateFormatter.string(from: Date()))
+            os_log("Stats: FPS=%.1f CPU=%.1f%%", log: log, type: .debug, currentFPS, currentCPUPercent)
         }
     }
 }

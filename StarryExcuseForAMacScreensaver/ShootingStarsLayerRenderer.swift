@@ -62,6 +62,9 @@ final class ShootingStarsLayerRenderer {
     private var safeMinY: CGFloat = 0
     private var spawnAttemptsPerFrame = 8
     
+    // Instrumentation
+    private var updateCount: UInt64 = 0
+    
     init(width: Int,
          height: Int,
          skyline: Skyline,
@@ -87,10 +90,13 @@ final class ShootingStarsLayerRenderer {
         self.trailDecay = trailDecay
         self.debugShowSpawnBounds = debugShowSpawnBounds
         computeSafeMinY()
+        os_log("ShootingStarsLayerRenderer init: avg=%{public}.2fs speed=%{public}.1f len=%{public}.1f thick=%{public}.1f bright=%{public}.2f decay=%{public}.3f mode=%{public}d",
+               log: log, type: .info, avgSeconds, Double(speed), Double(length), Double(thickness), Double(brightness), Double(trailDecay), directionMode.rawValue)
     }
     
     func reset() {
         active.removeAll()
+        os_log("ShootingStarsLayerRenderer reset: cleared active stars", log: log, type: .info)
     }
     
     private func computeSafeMinY() {
@@ -100,6 +106,7 @@ final class ShootingStarsLayerRenderer {
         } else {
             safeMinY = 0
         }
+        os_log("ShootingStarsLayerRenderer safeMinY set to %{public}.1f", log: log, type: .debug, Double(safeMinY))
     }
     
     // MARK: - Update
@@ -107,6 +114,9 @@ final class ShootingStarsLayerRenderer {
     // Advance simulation and emit sprite instances for this frame.
     // Returns (sprites, keepFactor) where keepFactor=trailDecay^dt, or 0 if trails disabled.
     func update(dt: CFTimeInterval) -> ([SpriteInstance], Float) {
+        updateCount &+= 1
+        let logThis = (updateCount <= 5) || (updateCount % 120 == 0)
+        
         spawnIfNeeded(dt: dt)
         
         // Advance positions
@@ -117,15 +127,13 @@ final class ShootingStarsLayerRenderer {
         }
         
         // Remove old
+        let before = active.count
         active.removeAll { $0.done }
+        let removed = before - active.count
         
         var sprites: [SpriteInstance] = []
         for s in active {
             appendStarSprites(s, into: &sprites)
-        }
-        
-        if debugShowSpawnBounds {
-            // Optional: draw spawn bounds as thin line (disabled to avoid clutter in GPU path)
         }
         
         let keepFactor: Float
@@ -133,6 +141,11 @@ final class ShootingStarsLayerRenderer {
         else {
             let k = pow(Double(trailDecay), dt)
             keepFactor = Float(max(0.0, min(1.0, k)))
+        }
+        
+        if logThis {
+            os_log("ShootingStars update: active=%{public}d spawnedSprites=%{public}d removed=%{public}d keep=%{public}.3f",
+                   log: log, type: .info, active.count, sprites.count, removed, Double(keepFactor))
         }
         return (sprites, keepFactor)
     }
@@ -151,6 +164,9 @@ final class ShootingStarsLayerRenderer {
         for _ in 0..<spawnAttemptsPerFrame {
             if let star = makeStar() {
                 active.append(star)
+                os_log("ShootingStars spawn: y=%{public}.1f dir=(%{public}.2f,%{public}.2f) len=%{public}.1f speed=%{public}.1f",
+                       log: log, type: .debug,
+                       Double(star.head.y), Double(star.dir.dx), Double(star.dir.dy), Double(star.length), Double(star.speed))
                 break
             }
         }

@@ -34,9 +34,21 @@ class SkylineCoreRenderer {
         }
         frameCounter &+= 1
         var sprites: [SpriteInstance] = []
+        let startCount = sprites.count
         appendStars(into: &sprites)
+        let afterStars = sprites.count
         appendBuildingLights(into: &sprites)
+        let afterLights = sprites.count
         appendFlasher(into: &sprites)
+        if traceEnabled && (frameCounter <= 5 || frameCounter % 60 == 0) {
+            os_log("SkylineCoreRenderer frame=%{public}d starsAdded=%{public}d lightsAdded=%{public}d flasherAdded=%{public}d total=%{public}d",
+                   log: log, type: .info,
+                   frameCounter,
+                   afterStars - startCount,
+                   afterLights - afterStars,
+                   sprites.count - afterLights,
+                   sprites.count)
+        }
         return sprites
     }
     

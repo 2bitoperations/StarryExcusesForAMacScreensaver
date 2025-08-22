@@ -46,6 +46,9 @@ final class SatellitesLayerRenderer {
     private var timeUntilNextSpawn: Double = 0.0
     private var rng = SystemRandomNumberGenerator()
     
+    // Instrumentation
+    private var updateCount: UInt64 = 0
+    
     // MARK: - Init
     
     init(width: Int,
@@ -67,6 +70,8 @@ final class SatellitesLayerRenderer {
         self.trailing = trailing
         self.trailDecay = min(max(0.0, trailDecay), 0.999)
         scheduleNextSpawn()
+        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f",
+               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay))
     }
     
     // MARK: - Public reconfiguration
@@ -77,7 +82,9 @@ final class SatellitesLayerRenderer {
         isEnabled = enabled
         if !enabled {
             satellites.removeAll()
+            os_log("Satellites disabled: clearing active satellites", log: log, type: .info)
         } else {
+            os_log("Satellites enabled", log: log, type: .info)
             scheduleNextSpawn()
         }
     }
@@ -86,12 +93,14 @@ final class SatellitesLayerRenderer {
     func resetAndDisable() {
         satellites.removeAll()
         isEnabled = false
+        os_log("Satellites resetAndDisable: cleared and disabled", log: log, type: .info)
     }
     
     /// Reset satellites and timers (preserves current parameter values and enabled state).
     func reset() {
         satellites.removeAll()
         scheduleNextSpawn()
+        os_log("Satellites reset: cleared and rescheduled next spawn", log: log, type: .info)
     }
     
     /// Update runtime parameters. Any nil parameter is left unchanged.
@@ -109,6 +118,7 @@ final class SatellitesLayerRenderer {
             if clamped != self.avgSpawnSeconds {
                 self.avgSpawnSeconds = clamped
                 reschedule = true
+                os_log("Satellites param changed: avgSpawnSeconds=%{public}.2f", log: log, type: .info, clamped)
             }
         }
         if let s = speed {
@@ -139,6 +149,7 @@ final class SatellitesLayerRenderer {
         // Use Darwin.log to avoid shadowing by the OSLog property named 'log'.
         let u = Double.random(in: 0.00001...0.99999, using: &rng)
         timeUntilNextSpawn = -Darwin.log(1 - u) * avgSpawnSeconds
+        os_log("Satellites: next spawn in %{public}.2fs", log: log, type: .debug, timeUntilNextSpawn)
     }
     
     private func spawn() {
@@ -156,6 +167,8 @@ final class SatellitesLayerRenderer {
                           size: sizePx,
                           brightness: brightness * CGFloat.random(in: 0.8...1.05, using: &rng))
         satellites.append(s)
+        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f speed=%{public}.1f size=%{public}.1f",
+               log: log, type: .debug, fromLeft ? "L→R" : "R→L", Double(y), Double(speed), Double(sizePx))
     }
     
     // MARK: - Emission to GPU
@@ -163,22 +176,29 @@ final class SatellitesLayerRenderer {
     // Advance simulation, emit sprites for this frame, and compute keep factor for trails.
     // keepFactor = trailing ? (trailDecay^dt) : 0
     func update(dt: CFTimeInterval) -> ([SpriteInstance], Float) {
+        updateCount &+= 1
+        let logThis = (updateCount <= 5) || (updateCount % 120 == 0)
+        
         // If disabled, just clear state and request texture clear (keep 0)
         guard isEnabled else {
             satellites.removeAll()
+            if logThis { os_log("Satellites update: disabled -> clear layer", log: log, type: .info) }
             return ([], 0.0)
         }
         
         // Advance satellites & prune
         var idx = 0
         let dtf = CGFloat(dt)
+        var removed = 0
         while idx < satellites.count {
             satellites[idx].x += satellites[idx].vx * dtf
             if satellites[idx].vx > 0 && satellites[idx].x - satellites[idx].size > CGFloat(width) {
                 satellites.remove(at: idx)
+                removed += 1
                 continue
             } else if satellites[idx].vx < 0 && satellites[idx].x + satellites[idx].size < 0 {
                 satellites.remove(at: idx)
+                removed += 1
                 continue
             }
             idx += 1
@@ -205,6 +225,10 @@ final class SatellitesLayerRenderer {
         }
         
         let keep: Float = trailing ? Float(pow(Double(trailDecay), dt)) : 0.0
+        if logThis {
+            os_log("Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d",
+                   log: log, type: .info, satellites.count, sprites.count, Double(keep), removed)
+        }
         return (sprites, max(0.0, min(1.0, keep)))
     }
 }
