@@ -114,15 +114,13 @@ fragment float4 DecayFragment() {
 }
 
 // MARK: - Moon shading
+// Use 16-byte-friendly packing for constant buffer to match Swift/Metal layouts.
 
 struct MoonUniforms {
-    float2 viewportSize;
-    float2 centerPx;
-    float  radiusPx;
-    float  phase;             // 0=new, 0.5=full
-    float  brightBrightness;  // lit multiplier (uniformly across lit hemisphere)
-    float  darkBrightness;    // unlit multiplier (uniformly across dark hemisphere)
-    float  debugShowMask;     // >0 to show mask/debug
+    float2 viewportSize;   // in points/pixels (consistent with centerPx/radiusPx units)
+    float2 centerPx;       // center in same units as viewportSize
+    float4 params0;        // x=radiusPx, y=phase, z=brightBrightness, w=darkBrightness
+    float4 params1;        // x=debugShowMask, y/z/w padding
 };
 
 struct MoonVarying {
@@ -142,7 +140,8 @@ vertex MoonVarying MoonVertex(uint vid [[vertex_id]],
         float2( 1.0,  1.0)
     };
     float2 local = corners[vid]; // [-1,1]
-    float2 offsetPx = local * uni.radiusPx;
+    float radiusPx = uni.params0.x;
+    float2 offsetPx = local * radiusPx;
     float2 posPx = uni.centerPx + offsetPx;
     float2 ndc = float2((posPx.x / uni.viewportSize.x) * 2.0 - 1.0,
                         (posPx.y / uni.viewportSize.y) * 2.0 - 1.0);
@@ -167,10 +166,15 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
     
     // Phase mapping:
     // phase 0.0=new (light from -Z), 0.5=full (light from +Z), 1.0=new (-Z again)
-    float phi = PI * (1.0 - 2.0 * uni.phase);
+    float phase = uni.params0.y;
+    float brightB = uni.params0.z;
+    float darkB = uni.params0.w;
+    float debugShowMask = uni.params1.x;
+    
+    float phi = PI * (1.0 - 2.0 * phase);
     float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
     
-    // Compute a crisp lit-hemisphere mask with a very small feather around the terminator.
+    // Compute a crisp lit-hemisphere mask with a small feather around the terminator.
     float ndotl = dot(n, l);
     const float terminatorFeather = 0.01; // tweak for desired sharpness
     float litMask = smoothstep(-terminatorFeather, terminatorFeather, ndotl); // ~0 on dark side, ~1 on lit side
@@ -185,14 +189,14 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
     // Limb softening (edge anti-alias) — keep it tight to avoid overall fuzziness
     float edge = smoothstep(0.995, 1.0, 1.0 - r2);
     
-    if (uni.debugShowMask > 0.0) {
+    if (debugShowMask > 0.0) {
         // Visualize the lit hemisphere mask (crisp crescent), modulated only by limb edge alpha
         float a = edge;
         return float4(litMask * a, 0.0, 0.0, a);
     }
     
     // Uniform brightness on lit vs. unlit sides (use albedo for detail if provided)
-    float brightness = mix(uni.darkBrightness, uni.brightBrightness, litMask);
+    float brightness = mix(darkB, brightB, litMask);
     float3 rgb = float3(albedo * brightness);
     return float4(rgb * edge, edge); // premultiplied alpha
 }

@@ -17,15 +17,12 @@ final class StarryMetalRenderer {
     }
     
     // Swift-side copy of Moon uniforms used by MoonVertex/MoonFragment.
-    // Kept local to avoid any cross-file visibility issues; layout must match Shaders.metal.
+    // Memory layout matches Shaders.metal (float2, float2, float4, float4)
     private struct MoonUniformsSwift {
-        var viewportSize: SIMD2<Float>
-        var centerPx: SIMD2<Float>
-        var radiusPx: Float
-        var phase: Float
-        var brightBrightness: Float
-        var darkBrightness: Float
-        var debugShowMask: Float
+        var viewportSize: SIMD2<Float>   // width,height (points/pixels consistently)
+        var centerPx: SIMD2<Float>       // center
+        var params0: SIMD4<Float>        // radiusPx, phase, brightB, darkB
+        var params1: SIMD4<Float>        // debugShowMask, pad, pad, pad
     }
     
     // MARK: - Properties
@@ -499,15 +496,12 @@ final class StarryMetalRenderer {
         // Moon
         if let moon = drawData.moon {
             encoder.setRenderPipelineState(moonPipeline)
-            // Uniforms
+            // Uniforms (match Shaders.metal packing)
             var uni = MoonUniformsSwift(
                 viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
                 centerPx: moon.centerPx,
-                radiusPx: moon.radiusPx,
-                phase: moon.phaseFraction,
-                brightBrightness: moon.brightBrightness,
-                darkBrightness: moon.darkBrightness,
-                debugShowMask: drawData.showLightAreaTextureFillMask ? 1.0 : 0.0
+                params0: SIMD4<Float>(moon.radiusPx, moon.phaseFraction, moon.brightBrightness, moon.darkBrightness),
+                params1: SIMD4<Float>(drawData.showLightAreaTextureFillMask ? 1.0 : 0.0, 0, 0, 0)
             )
             encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
             encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
@@ -651,14 +645,12 @@ final class StarryMetalRenderer {
         // Moon (on top)
         if let moon = drawData.moon {
             encoder.setRenderPipelineState(moonPipeline)
+            // Uniforms (match Shaders.metal packing)
             var uni = MoonUniformsSwift(
                 viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
                 centerPx: moon.centerPx,
-                radiusPx: moon.radiusPx,
-                phase: moon.phaseFraction,
-                brightBrightness: moon.brightBrightness,
-                darkBrightness: moon.darkBrightness,
-                debugShowMask: drawData.showLightAreaTextureFillMask ? 1.0 : 0.0
+                params0: SIMD4<Float>(moon.radiusPx, moon.phaseFraction, moon.brightBrightness, moon.darkBrightness),
+                params1: SIMD4<Float>(drawData.showLightAreaTextureFillMask ? 1.0 : 0.0, 0, 0, 0)
             )
             encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
             encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
