@@ -92,6 +92,9 @@ public struct StarryDrawData {
     public var moon: MoonParams?                      // draw on top (directly to final drawable)
     public var moonAlbedoImage: CGImage?              // provide when available/changed (optional)
     
+    // Debug: show the illuminated region mask (in red) instead of bright texture
+    public var showLightAreaTextureFillMask: Bool
+    
     public init(size: CGSize,
                 clearAll: Bool,
                 baseSprites: [SpriteInstance],
@@ -100,7 +103,8 @@ public struct StarryDrawData {
                 shootingSprites: [SpriteInstance],
                 shootingKeepFactor: Float,
                 moon: MoonParams?,
-                moonAlbedoImage: CGImage?) {
+                moonAlbedoImage: CGImage?,
+                showLightAreaTextureFillMask: Bool) {
         self.size = size
         self.clearAll = clearAll
         self.baseSprites = baseSprites
@@ -110,5 +114,6 @@ public struct StarryDrawData {
         self.shootingKeepFactor = shootingKeepFactor
         self.moon = moon
         self.moonAlbedoImage = moonAlbedoImage
+        self.showLightAreaTextureFillMask = showLightAreaTextureFillMask
     }
 }

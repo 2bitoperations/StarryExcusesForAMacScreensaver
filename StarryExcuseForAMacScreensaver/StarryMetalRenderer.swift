@@ -25,6 +25,7 @@ final class StarryMetalRenderer {
         var phase: Float
         var brightBrightness: Float
         var darkBrightness: Float
+        var debugShowMask: Float
     }
     
     // MARK: - Properties
@@ -64,6 +65,9 @@ final class StarryMetalRenderer {
     private let testSkipMoonAlbedoUploads: Bool = false
     private var skippedMoonUploadCount: UInt64 = 0
     private var drawableNilLogCount: UInt64 = 0
+    
+    // Track last debug mask state for rate-limited logging
+    private var lastDebugShowMask: Bool = false
     
     // MARK: - Init (onscreen)
     
@@ -381,6 +385,12 @@ final class StarryMetalRenderer {
             return
         }
         
+        // Log mask toggle changes
+        if drawData.showLightAreaTextureFillMask != lastDebugShowMask {
+            lastDebugShowMask = drawData.showLightAreaTextureFillMask
+            os_log("Moon debug mask is now %{public}@", log: log, type: .info, lastDebugShowMask ? "ENABLED" : "disabled")
+        }
+        
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
         commandBuffer.label = "Starry Frame CommandBuffer"
         
@@ -496,7 +506,8 @@ final class StarryMetalRenderer {
                 radiusPx: moon.radiusPx,
                 phase: moon.phaseFraction,
                 brightBrightness: moon.brightBrightness,
-                darkBrightness: moon.darkBrightness
+                darkBrightness: moon.darkBrightness,
+                debugShowMask: drawData.showLightAreaTextureFillMask ? 1.0 : 0.0
             )
             encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
             encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
@@ -646,7 +657,8 @@ final class StarryMetalRenderer {
                 radiusPx: moon.radiusPx,
                 phase: moon.phaseFraction,
                 brightBrightness: moon.brightBrightness,
-                darkBrightness: moon.darkBrightness
+                darkBrightness: moon.darkBrightness,
+                debugShowMask: drawData.showLightAreaTextureFillMask ? 1.0 : 0.0
             )
             encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
             encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
