@@ -47,8 +47,10 @@ final class StarryMetalRenderer {
     // Instanced sprite data (resized per frame)
     private var spriteBuffer: MTLBuffer?
     
-    // Moon albedo
-    private var moonAlbedoTexture: MTLTexture?
+    // Moon albedo textures (staging + final)
+    private var moonAlbedoTexture: MTLTexture?              // final, private, sampled by fragment
+    private var moonAlbedoStagingTexture: MTLTexture?       // shared, CPU-upload source
+    private var moonAlbedoNeedsBlit: Bool = false           // if true, schedule blit at next render
     
     // Offscreen composite target for headless preview rendering
     private var offscreenComposite: MTLTexture?
@@ -58,7 +60,7 @@ final class StarryMetalRenderer {
     private var lastAppliedDrawableSize: CGSize = .zero
     
     // Test toggle: skip moon albedo uploads to isolate stalls caused by replaceRegion/driver compression.
-    // Re-enable uploads now that we only send albedo when dirty and use uncompressed R8.
+    // Re-enable uploads now that we only send albedo when dirty and use staging + GPU blit to private.
     private let testSkipMoonAlbedoUploads: Bool = false
     private var skippedMoonUploadCount: UInt64 = 0
     private var drawableNilLogCount: UInt64 = 0
@@ -270,40 +272,54 @@ final class StarryMetalRenderer {
         }
     }
     
+    // Prepare moon albedo textures and stage CPU upload for GPU blit (no blocking on main thread).
     func setMoonAlbedo(image: CGImage) {
-        // Upload as R8 texture
         let width = image.width
         let height = image.height
         guard width > 0, height > 0 else { return }
-        os_log("setMoonAlbedo: preparing upload (%{public}dx%{public}d)", log: log, type: .info, width, height)
-        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
-                                                            width: width,
-                                                            height: height,
-                                                            mipmapped: false)
-        desc.usage = [.shaderRead]
-        desc.storageMode = .private
-        guard let tex = device.makeTexture(descriptor: desc) else {
-            os_log("setMoonAlbedo: failed to make texture descriptor", log: log, type: .error)
-            return
+        os_log("setMoonAlbedo: preparing upload via staging+blit (%{public}dx%{public}d)", log: log, type: .info, width, height)
+        
+        // Create/resize final private texture if needed (R8)
+        if moonAlbedoTexture == nil || moonAlbedoTexture!.width != width || moonAlbedoTexture!.height != height {
+            let dstDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
+                                                                   width: width,
+                                                                   height: height,
+                                                                   mipmapped: false)
+            dstDesc.usage = [.shaderRead]
+            dstDesc.storageMode = .private
+            moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
+            moonAlbedoTexture?.label = "MoonAlbedo (private)"
+            if moonAlbedoTexture == nil {
+                os_log("setMoonAlbedo: failed to create destination texture", log: log, type: .error)
+                return
+            }
         }
         
-        // Extract raw grayscale bytes from CGImage (will convert if not grayscale)
-        guard let provider = image.dataProvider,
-              let data = provider.data else {
-            os_log("setMoonAlbedo: image has no dataProvider/data", log: log, type: .error)
+        // Create staging shared texture
+        let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
+                                                                   width: width,
+                                                                   height: height,
+                                                                   mipmapped: false)
+        stagingDesc.storageMode = .shared
+        stagingDesc.usage = [] // no special usage required for blit source
+        guard let staging = device.makeTexture(descriptor: stagingDesc) else {
+            os_log("setMoonAlbedo: failed to create staging texture", log: log, type: .error)
             return
         }
-        let nsdata = data as Data
-        // If image is not 8bpp gray tight, we convert into tight buffer.
-        // We'll draw into a grayscale context to guarantee layout.
-        var bytes: [UInt8]
+        staging.label = "MoonAlbedo (staging)"
+        
+        // Extract raw grayscale bytes from CGImage (convert if needed) into tight R8 buffer
         var bytesPerRow = width
-        if image.bitsPerPixel == 8, image.colorSpace?.model == .monochrome, image.bytesPerRow == width {
-            bytes = [UInt8](nsdata)
+        var uploadBytes: [UInt8]
+        if let provider = image.dataProvider, let data = provider.data,
+           image.bitsPerPixel == 8,
+           image.colorSpace?.model == .monochrome,
+           image.bytesPerRow == width {
+            uploadBytes = [UInt8]((data as Data))
         } else {
-            bytes = [UInt8](repeating: 0, count: width * height)
+            uploadBytes = [UInt8](repeating: 0, count: width * height)
             let cs = CGColorSpaceCreateDeviceGray()
-            if let ctx = CGContext(data: &bytes,
+            if let ctx = CGContext(data: &uploadBytes,
                                    width: width,
                                    height: height,
                                    bitsPerComponent: 8,
@@ -316,16 +332,20 @@ final class StarryMetalRenderer {
                 os_log("setMoonAlbedo: failed to create grayscale CGContext for conversion", log: log, type: .error)
             }
         }
-        tex.replace(region: MTLRegionMake2D(0, 0, width, height),
-                    mipmapLevel: 0,
-                    withBytes: bytes,
-                    bytesPerRow: bytesPerRow)
-        moonAlbedoTexture = tex
-        os_log("setMoonAlbedo: uploaded and set moon albedo texture (%{public}dx%{public}d)", log: log, type: .info, width, height)
+        // Upload into staging (shared): cheap and non-blocking
+        staging.replace(region: MTLRegionMake2D(0, 0, width, height),
+                        mipmapLevel: 0,
+                        withBytes: uploadBytes,
+                        bytesPerRow: bytesPerRow)
+        
+        // Store staging and mark for blit on next render command buffer
+        moonAlbedoStagingTexture = staging
+        moonAlbedoNeedsBlit = true
+        os_log("setMoonAlbedo: staged bytes; will blit to private on next command buffer", log: log, type: .info)
     }
     
     func render(drawData: StarryDrawData) {
-        // Upload moon albedo if provided (now enabled)
+        // Prepare moon albedo textures if an upload is requested
         if let img = drawData.moonAlbedoImage {
             if testSkipMoonAlbedoUploads {
                 skippedMoonUploadCount &+= 1
@@ -362,6 +382,30 @@ final class StarryMetalRenderer {
         }
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        commandBuffer.label = "Starry Frame CommandBuffer"
+        
+        // If a moon albedo upload is pending, schedule a GPU blit now (before any draws)
+        if moonAlbedoNeedsBlit, let staging = moonAlbedoStagingTexture, let dst = moonAlbedoTexture {
+            if let blit = commandBuffer.makeBlitCommandEncoder() {
+                blit.label = "Blit MoonAlbedo staging->private"
+                let srcOrigin = MTLOrigin(x: 0, y: 0, z: 0)
+                let dstOrigin = MTLOrigin(x: 0, y: 0, z: 0)
+                let size = MTLSize(width: staging.width, height: staging.height, depth: 1)
+                blit.copy(from: staging,
+                          sourceSlice: 0,
+                          sourceLevel: 0,
+                          sourceOrigin: srcOrigin,
+                          sourceSize: size,
+                          to: dst,
+                          destinationSlice: 0,
+                          destinationLevel: 0,
+                          destinationOrigin: dstOrigin)
+                blit.endEncoding()
+                os_log("render: enqueued moon albedo GPU blit (%{public}dx%{public}d)", log: log, type: .info, dst.width, dst.height)
+            }
+            moonAlbedoNeedsBlit = false
+            moonAlbedoStagingTexture = nil
+        }
         
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
@@ -470,7 +514,7 @@ final class StarryMetalRenderer {
     
     // Headless preview: render same content into an offscreen texture and return CGImage.
     func renderToImage(drawData: StarryDrawData) -> CGImage? {
-        // Upload moon albedo if provided (now enabled)
+        // Prepare moon albedo if provided
         if let img = drawData.moonAlbedoImage {
             if testSkipMoonAlbedoUploads {
                 skippedMoonUploadCount &+= 1
@@ -497,6 +541,30 @@ final class StarryMetalRenderer {
         guard let finalTarget = offscreenComposite else { return nil }
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return nil }
+        commandBuffer.label = "Starry Headless CommandBuffer"
+        
+        // If a moon albedo upload is pending, schedule a GPU blit now
+        if moonAlbedoNeedsBlit, let staging = moonAlbedoStagingTexture, let dst = moonAlbedoTexture {
+            if let blit = commandBuffer.makeBlitCommandEncoder() {
+                blit.label = "Blit MoonAlbedo staging->private (headless)"
+                let srcOrigin = MTLOrigin(x: 0, y: 0, z: 0)
+                let dstOrigin = MTLOrigin(x: 0, y: 0, z: 0)
+                let size = MTLSize(width: staging.width, height: staging.height, depth: 1)
+                blit.copy(from: staging,
+                          sourceSlice: 0,
+                          sourceLevel: 0,
+                          sourceOrigin: srcOrigin,
+                          sourceSize: size,
+                          to: dst,
+                          destinationSlice: 0,
+                          destinationLevel: 0,
+                          destinationOrigin: dstOrigin)
+                blit.endEncoding()
+                os_log("renderToImage: enqueued moon albedo GPU blit (%{public}dx%{public}d)", log: log, type: .info, dst.width, dst.height)
+            }
+            moonAlbedoNeedsBlit = false
+            moonAlbedoStagingTexture = nil
+        }
         
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
