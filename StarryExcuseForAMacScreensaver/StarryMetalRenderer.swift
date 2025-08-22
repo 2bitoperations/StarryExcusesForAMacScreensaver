@@ -105,7 +105,19 @@ final class StarryMetalRenderer {
     // MARK: - Setup
     
     private func buildPipelines() throws {
-        let library = try device.makeDefaultLibrary(bundle: Bundle(for: StarryMetalRenderer.self))
+        // Try to load the Metal library from our bundle; fall back to process default if needed.
+        let library: MTLLibrary
+        do {
+            library = try device.makeDefaultLibrary(bundle: Bundle(for: StarryMetalRenderer.self))
+        } catch {
+            os_log("makeDefaultLibrary(bundle:) failed, falling back to process default: %{public}@",
+                   log: log, type: .error, "\(error)")
+            if let lib = device.makeDefaultLibrary() {
+                library = lib
+            } else {
+                throw error
+            }
+        }
         // Composite textured quad
         do {
             let desc = MTLRenderPipelineDescriptor()
@@ -270,6 +282,19 @@ final class StarryMetalRenderer {
         }
         if drawData.clearAll {
             clearOffscreenTextures()
+        }
+        
+        // Skip expensive work if there's nothing to draw and no decay/clear needed
+        let nothingToDraw =
+            drawData.baseSprites.isEmpty &&
+            drawData.satellitesSprites.isEmpty &&
+            drawData.shootingSprites.isEmpty &&
+            drawData.moon == nil &&
+            drawData.satellitesKeepFactor >= 1.0 &&
+            drawData.shootingKeepFactor >= 1.0 &&
+            drawData.clearAll == false
+        if nothingToDraw {
+            return
         }
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }

@@ -66,17 +66,26 @@ class StarryExcuseForAView: ScreenSaverView {
     override var hasConfigureSheet: Bool { true }
     
     override func animateOneFrame() {
-        guard let engine = engine,
-              let metalRenderer = metalRenderer,
-              let metalLayer = metalLayer else { return }
-        
-        let backingScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-        engine.resizeIfNeeded(newSize: bounds.size)
-        metalLayer.frame = bounds
-        metalRenderer.updateDrawableSize(size: bounds.size, scale: backingScale)
-        
-        let drawData = engine.advanceFrameGPU()
-        metalRenderer.render(drawData: drawData)
+        autoreleasepool {
+            let size = bounds.size
+            guard size.width >= 1, size.height >= 1 else { return }
+            guard let engine = engine,
+                  let metalRenderer = metalRenderer,
+                  let metalLayer = metalLayer else { return }
+            
+            // Prefer the view's screen scale (handles multi-display correctly)
+            let backingScale = window?.screen?.backingScaleFactor
+                ?? window?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor
+                ?? 2.0
+            
+            engine.resizeIfNeeded(newSize: size)
+            metalLayer.frame = bounds
+            metalRenderer.updateDrawableSize(size: size, scale: backingScale)
+            
+            let drawData = engine.advanceFrameGPU()
+            metalRenderer.render(drawData: drawData)
+        }
     }
     
     override func startAnimation() {
@@ -100,10 +109,18 @@ class StarryExcuseForAView: ScreenSaverView {
                 self.wantsLayer = true
                 let mLayer = CAMetalLayer()
                 mLayer.frame = self.bounds
+                // Initialize contentsScale immediately for crisp output and correct drawable sizing
+                let scale = self.window?.screen?.backingScaleFactor
+                    ?? self.window?.backingScaleFactor
+                    ?? NSScreen.main?.backingScaleFactor
+                    ?? 2.0
+                mLayer.contentsScale = scale
                 self.layer?.addSublayer(mLayer)
                 self.metalLayer = mLayer
                 if let log = self.log {
                     self.metalRenderer = StarryMetalRenderer(layer: mLayer, log: log)
+                    // Ensure drawable is sized before first frame
+                    self.metalRenderer?.updateDrawableSize(size: self.bounds.size, scale: scale)
                 }
             } else {
                 metalLayer?.frame = bounds
