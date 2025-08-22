@@ -58,7 +58,8 @@ final class StarryMetalRenderer {
     private var lastAppliedDrawableSize: CGSize = .zero
     
     // Test toggle: skip moon albedo uploads to isolate stalls caused by replaceRegion/driver compression.
-    private let testSkipMoonAlbedoUploads: Bool = true
+    // Re-enable uploads now that we only send albedo when dirty and use uncompressed R8.
+    private let testSkipMoonAlbedoUploads: Bool = false
     private var skippedMoonUploadCount: UInt64 = 0
     private var drawableNilLogCount: UInt64 = 0
     
@@ -274,17 +275,22 @@ final class StarryMetalRenderer {
         let width = image.width
         let height = image.height
         guard width > 0, height > 0 else { return }
+        os_log("setMoonAlbedo: preparing upload (%{public}dx%{public}d)", log: log, type: .info, width, height)
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
                                                             width: width,
                                                             height: height,
                                                             mipmapped: false)
         desc.usage = [.shaderRead]
         desc.storageMode = .private
-        guard let tex = device.makeTexture(descriptor: desc) else { return }
+        guard let tex = device.makeTexture(descriptor: desc) else {
+            os_log("setMoonAlbedo: failed to make texture descriptor", log: log, type: .error)
+            return
+        }
         
         // Extract raw grayscale bytes from CGImage (will convert if not grayscale)
         guard let provider = image.dataProvider,
               let data = provider.data else {
+            os_log("setMoonAlbedo: image has no dataProvider/data", log: log, type: .error)
             return
         }
         let nsdata = data as Data
@@ -306,6 +312,8 @@ final class StarryMetalRenderer {
                                    bitmapInfo: CGImageAlphaInfo.none.rawValue) {
                 ctx.interpolationQuality = .none
                 ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            } else {
+                os_log("setMoonAlbedo: failed to create grayscale CGContext for conversion", log: log, type: .error)
             }
         }
         tex.replace(region: MTLRegionMake2D(0, 0, width, height),
@@ -313,10 +321,11 @@ final class StarryMetalRenderer {
                     withBytes: bytes,
                     bytesPerRow: bytesPerRow)
         moonAlbedoTexture = tex
+        os_log("setMoonAlbedo: uploaded and set moon albedo texture (%{public}dx%{public}d)", log: log, type: .info, width, height)
     }
     
     func render(drawData: StarryDrawData) {
-        // Upload moon albedo if provided (temporarily skipped for diagnostics)
+        // Upload moon albedo if provided (now enabled)
         if let img = drawData.moonAlbedoImage {
             if testSkipMoonAlbedoUploads {
                 skippedMoonUploadCount &+= 1
@@ -461,7 +470,7 @@ final class StarryMetalRenderer {
     
     // Headless preview: render same content into an offscreen texture and return CGImage.
     func renderToImage(drawData: StarryDrawData) -> CGImage? {
-        // Upload moon albedo if provided (temporarily skipped for diagnostics)
+        // Upload moon albedo if provided (now enabled)
         if let img = drawData.moonAlbedoImage {
             if testSkipMoonAlbedoUploads {
                 skippedMoonUploadCount &+= 1

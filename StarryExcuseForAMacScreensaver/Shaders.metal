@@ -178,7 +178,8 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
         float4 c = albedoTex.sample(s, uv);
         albedo = c.r;
     }
-    float edge = smoothstep(1.0, 0.95, 1.0 - r2);
+    // Fix edge falloff: ensure smoothstep edge0 < edge1
+    float edge = smoothstep(0.95, 1.0, 1.0 - r2);
     float3 rgb = float3(albedo * brightness);
     return float4(rgb * edge, edge); // premultiplied alpha
 }
