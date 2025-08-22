@@ -154,49 +154,61 @@ vertex MoonVarying MoonVertex(uint vid [[vertex_id]],
 fragment float4 MoonFragment(MoonVarying in [[stage_in]],
                              constant MoonUniforms &uni [[buffer(2)]],
                              texture2d<float, access::sample> albedoTex [[texture(0)]]) {
-    // Use nearest for crisp edges/details in mask/texture
+    // Use nearest for crisp, blocky texture sampling
     constexpr sampler s(address::clamp_to_edge, filter::nearest, coord::normalized);
-    float r2 = dot(in.local, in.local);
+
+    // Circle mask in local [-1,1] (unit disk)
+    float2 local = in.local;
+    float r2 = dot(local, local);
     if (r2 > 1.0) {
         discard_fragment();
     }
-    // Reconstruct sphere normal from disk coordinates
+
+    // One-pixel feather on the limb only (anti-aliased circumference).
+    // Convert one screen pixel to local-units (1.0 local = radius).
+    float radiusPx = max(uni.params0.x, 1.0);
+    float r = sqrt(r2);
+    float featherLocal = clamp(1.5f / radiusPx, 0.001f, 0.10f); // ~1.5px feather, clamped
+    // Alpha is 1 inside, fades to 0 from r in [1-featherLocal, 1].
+    float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
+
+    // Sphere normal from disk coordinates
     float z = sqrt(max(0.0, 1.0 - r2));
-    float3 n = normalize(float3(in.local.x, in.local.y, z));
-    
+    float3 n = normalize(float3(local.x, local.y, z));
+
     // Phase mapping:
-    // phase 0.0=new (light from -Z), 0.5=full (light from +Z), 1.0=new (-Z again)
+    // phase 0.0=new (-Z light), 0.5=full (+Z light), 1.0=new (-Z)
     float phase = uni.params0.y;
     float brightB = uni.params0.z;
     float darkB = uni.params0.w;
     float debugShowMask = uni.params1.x;
-    
+
     float phi = PI * (1.0 - 2.0 * phase);
     float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
-    
-    // Compute a crisp lit-hemisphere mask with a small feather around the terminator.
+
+    // CRISP lit hemisphere (no feather) to match legacy CG aesthetics.
     float ndotl = dot(n, l);
-    const float terminatorFeather = 0.01; // tweak for desired sharpness
-    float litMask = smoothstep(-terminatorFeather, terminatorFeather, ndotl); // ~0 on dark side, ~1 on lit side
-    
-    // Map local [-1,1] -> [0,1] for texture sample
-    float2 uv = in.local * 0.5 + 0.5;
+    float litMask = step(0.0, ndotl); // 0 on dark side, 1 on lit side
+
+    // Sample blocky albedo
+    float2 uv = local * 0.5 + 0.5;
     float albedo = 1.0;
     if (albedoTex.get_width() > 0) {
         float4 c = albedoTex.sample(s, uv);
         albedo = c.r;
     }
-    // Limb softening (edge anti-alias) — keep it tight to avoid overall fuzziness
-    float edge = smoothstep(0.995, 1.0, 1.0 - r2);
-    
+
     if (debugShowMask > 0.0) {
-        // Visualize the lit hemisphere mask (crisp crescent), modulated only by limb edge alpha
-        float a = edge;
+        // Visualize illuminated region, solid red, with limb alpha only
+        float a = edgeAlpha * 0.9;
         return float4(litMask * a, 0.0, 0.0, a);
     }
-    
-    // Uniform brightness on lit vs. unlit sides (use albedo for detail if provided)
+
+    // Legacy look: draw full dark disk, then bright region once.
+    // Equivalent here as a per-pixel mix between dark and bright sides.
     float brightness = mix(darkB, brightB, litMask);
     float3 rgb = float3(albedo * brightness);
-    return float4(rgb * edge, edge); // premultiplied alpha
+
+    // Premultiplied alpha output
+    return float4(rgb * edgeAlpha, edgeAlpha);
 }
