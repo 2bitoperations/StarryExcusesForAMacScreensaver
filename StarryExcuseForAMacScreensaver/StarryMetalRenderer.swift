@@ -57,6 +57,11 @@ final class StarryMetalRenderer {
     // Track last valid drawable size we applied (to avoid spamming invalid sizes)
     private var lastAppliedDrawableSize: CGSize = .zero
     
+    // Test toggle: skip moon albedo uploads to isolate stalls caused by replaceRegion/driver compression.
+    private let testSkipMoonAlbedoUploads: Bool = true
+    private var skippedMoonUploadCount: UInt64 = 0
+    private var drawableNilLogCount: UInt64 = 0
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -307,9 +312,18 @@ final class StarryMetalRenderer {
     }
     
     func render(drawData: StarryDrawData) {
-        // Upload moon albedo if provided
+        // Upload moon albedo if provided (temporarily skipped for diagnostics)
         if let img = drawData.moonAlbedoImage {
-            setMoonAlbedo(image: img)
+            if testSkipMoonAlbedoUploads {
+                skippedMoonUploadCount &+= 1
+                if skippedMoonUploadCount <= 5 || (skippedMoonUploadCount % 60 == 0) {
+                    os_log("TEST: Skipping moon albedo upload this frame (count=%{public}llu, img=%{public}dx%{public}d)",
+                           log: log, type: .info,
+                           skippedMoonUploadCount, img.width, img.height)
+                }
+            } else {
+                setMoonAlbedo(image: img)
+            }
         }
         // Ensure textures (only when logical size valid)
         if drawData.size.width >= 1, drawData.size.height >= 1, drawData.size != layerTex.size {
@@ -376,6 +390,10 @@ final class StarryMetalRenderer {
         
         // 4) Composite to drawable and draw moon on top
         guard let drawable = metalLayer?.nextDrawable() else {
+            drawableNilLogCount &+= 1
+            if drawableNilLogCount <= 5 || (drawableNilLogCount % 60 == 0) {
+                os_log("No CAMetalLayer drawable available this frame (count=%{public}llu)", log: log, type: .error, drawableNilLogCount)
+            }
             commandBuffer.commit()
             return
         }
@@ -439,9 +457,18 @@ final class StarryMetalRenderer {
     
     // Headless preview: render same content into an offscreen texture and return CGImage.
     func renderToImage(drawData: StarryDrawData) -> CGImage? {
-        // Upload moon albedo if provided
+        // Upload moon albedo if provided (temporarily skipped for diagnostics)
         if let img = drawData.moonAlbedoImage {
-            setMoonAlbedo(image: img)
+            if testSkipMoonAlbedoUploads {
+                skippedMoonUploadCount &+= 1
+                if skippedMoonUploadCount <= 5 || (skippedMoonUploadCount % 60 == 0) {
+                    os_log("TEST(headless): Skipping moon albedo upload this frame (count=%{public}llu, img=%{public}dx%{public}d)",
+                           log: log, type: .info,
+                           skippedMoonUploadCount, img.width, img.height)
+                }
+            } else {
+                setMoonAlbedo(image: img)
+            }
         }
         
         // Ensure persistent textures only when valid size
