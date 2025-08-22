@@ -780,13 +780,20 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func setupPreviewEngine() {
         guard let log = log else { return }
-        guard moonPreviewView.bounds.width > 0, moonPreviewView.bounds.height > 0 else { return }
+        let size = moonPreviewView.bounds.size
+        guard size.width > 0, size.height > 0 else { return }
         
         // Ensure Metal layer attached to the preview container
         if previewMetalLayer == nil {
             moonPreviewView.wantsLayer = true
             let mLayer = CAMetalLayer()
             mLayer.frame = moonPreviewView.bounds
+            // Set scale immediately to avoid invalid 0 drawable sizes
+            let scale = moonPreviewView.window?.screen?.backingScaleFactor
+                ?? moonPreviewView.window?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor
+                ?? 2.0
+            mLayer.contentsScale = scale
             moonPreviewView.layer?.addSublayer(mLayer)
             previewMetalLayer = mLayer
         }
@@ -794,10 +801,20 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // Ensure renderer
         if previewRenderer == nil, let mLayer = previewMetalLayer {
             previewRenderer = StarryMetalRenderer(layer: mLayer, log: log)
+            // Initialize drawable size if valid
+            let scale = moonPreviewView.window?.screen?.backingScaleFactor
+                ?? moonPreviewView.window?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor
+                ?? 2.0
+            let wPx = Int(round(size.width * scale))
+            let hPx = Int(round(size.height * scale))
+            if wPx > 0, hPx > 0 {
+                previewRenderer?.updateDrawableSize(size: size, scale: scale)
+            }
         }
         
         // Ensure engine
-        previewEngine = StarryEngine(size: moonPreviewView.bounds.size,
+        previewEngine = StarryEngine(size: size,
                                      log: log,
                                      config: currentPreviewRuntimeConfig())
         if !isManuallyPaused && !isAutoPaused {
@@ -857,11 +874,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         // Keep Metal layer in sync with view size
         let size = moonPreviewView.bounds.size
+        guard size.width >= 1, size.height >= 1 else { return }
         engine.resizeIfNeeded(newSize: size)
         mLayer.frame = moonPreviewView.bounds
         
         // Use window's backingScaleFactor for crisp rendering
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        let wPx = Int(round(size.width * scale))
+        let hPx = Int(round(size.height * scale))
+        guard wPx > 0, hPx > 0 else { return }
         renderer.updateDrawableSize(size: size, scale: scale)
         
         // Drive GPU path with the same engine as screensaver

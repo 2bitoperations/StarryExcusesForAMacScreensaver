@@ -79,6 +79,11 @@ class StarryExcuseForAView: ScreenSaverView {
                 ?? NSScreen.main?.backingScaleFactor
                 ?? 2.0
             
+            // If the scaled size would be invalid, skip this frame to avoid CAMetalLayer warnings.
+            let wPx = Int(round(size.width * backingScale))
+            let hPx = Int(round(size.height * backingScale))
+            guard wPx > 0, hPx > 0 else { return }
+            
             engine.resizeIfNeeded(newSize: size)
             metalLayer.frame = bounds
             metalRenderer.updateDrawableSize(size: size, scale: backingScale)
@@ -119,8 +124,13 @@ class StarryExcuseForAView: ScreenSaverView {
                 self.metalLayer = mLayer
                 if let log = self.log {
                     self.metalRenderer = StarryMetalRenderer(layer: mLayer, log: log)
-                    // Ensure drawable is sized before first frame
-                    self.metalRenderer?.updateDrawableSize(size: self.bounds.size, scale: scale)
+                    // Ensure drawable is sized before first frame if valid
+                    let size = self.bounds.size
+                    let wPx = Int(round(size.width * scale))
+                    let hPx = Int(round(size.height * scale))
+                    if wPx > 0, hPx > 0 {
+                        self.metalRenderer?.updateDrawableSize(size: size, scale: scale)
+                    }
                 }
             } else {
                 metalLayer?.frame = bounds

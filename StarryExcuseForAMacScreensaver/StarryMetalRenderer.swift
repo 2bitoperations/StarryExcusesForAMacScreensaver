@@ -54,6 +54,9 @@ final class StarryMetalRenderer {
     private var offscreenComposite: MTLTexture?
     private var offscreenSize: CGSize = .zero
     
+    // Track last valid drawable size we applied (to avoid spamming invalid sizes)
+    private var lastAppliedDrawableSize: CGSize = .zero
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -105,19 +108,7 @@ final class StarryMetalRenderer {
     // MARK: - Setup
     
     private func buildPipelines() throws {
-        // Try to load the Metal library from our bundle; fall back to process default if needed.
-        let library: MTLLibrary
-        do {
-            library = try device.makeDefaultLibrary(bundle: Bundle(for: StarryMetalRenderer.self))
-        } catch {
-            os_log("makeDefaultLibrary(bundle:) failed, falling back to process default: %{public}@",
-                   log: log, type: .error, "\(error)")
-            if let lib = device.makeDefaultLibrary() {
-                library = lib
-            } else {
-                throw error
-            }
-        }
+        let library = try makeShaderLibrary()
         // Composite textured quad
         do {
             let desc = MTLRenderPipelineDescriptor()
@@ -188,6 +179,38 @@ final class StarryMetalRenderer {
         }
     }
     
+    // Try several ways to load a shader library to avoid "Unable to open mach-O" issues.
+    private func makeShaderLibrary() throws -> MTLLibrary {
+        // 1) Preferred: .metallib inside our bundle
+        let bundle = Bundle(for: StarryMetalRenderer.self)
+        if let urls = bundle.urls(forResourcesWithExtension: "metallib", subdirectory: nil) {
+            for url in urls {
+                do {
+                    let lib = try device.makeLibrary(URL: url)
+                    os_log("Loaded Metal library from URL: %{public}@", log: log, type: .info, url.lastPathComponent)
+                    return lib
+                } catch {
+                    os_log("Failed to load metallib at %{public}@ : %{public}@", log: log, type: .error, url.path, "\(error)")
+                    continue
+                }
+            }
+        }
+        // 2) Fallback: Xcode default library in our bundle (default.metallib)
+        do {
+            let lib = try device.makeDefaultLibrary(bundle: bundle)
+            os_log("Loaded default Metal library via bundle", log: log, type: .info)
+            return lib
+        } catch {
+            os_log("makeDefaultLibrary(bundle:) failed: %{public}@", log: log, type: .error, "\(error)")
+        }
+        // 3) Last resort: process default library (may not exist in plugin context)
+        if let lib = device.makeDefaultLibrary() {
+            os_log("Loaded process default Metal library", log: log, type: .info)
+            return lib
+        }
+        throw NSError(domain: "StarryMetalRenderer", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to load any Metal shader library"])
+    }
+    
     private func buildQuad() {
         // 6 vertices (two triangles) with position (x,y) and texCoord (u,v)
         struct V { var p: SIMD2<Float>; var t: SIMD2<Float> }
@@ -208,14 +231,28 @@ final class StarryMetalRenderer {
     // MARK: - Public
     
     func updateDrawableSize(size: CGSize, scale: CGFloat) {
+        // Validate inputs to avoid CAMetalLayer logs about invalid sizes.
+        guard scale > 0 else { return }
+        let wPx = Int(round(size.width * scale))
+        let hPx = Int(round(size.height * scale))
+        // If either dimension is zero or negative, do not touch the layer or textures yet.
+        guard wPx > 0, hPx > 0 else { return }
+        
+        // Apply to CAMetalLayer (only when changed) to avoid repeated log spam.
         if let layer = metalLayer {
-            layer.contentsScale = scale
-            layer.drawableSize = CGSize(width: size.width * scale,
-                                        height: size.height * scale)
+            let newDrawable = CGSize(width: CGFloat(wPx), height: CGFloat(hPx))
+            if newDrawable != lastAppliedDrawableSize {
+                layer.contentsScale = scale
+                layer.drawableSize = newDrawable
+                lastAppliedDrawableSize = newDrawable
+            } else {
+                // Still update contentsScale in case only scale changed with same drawable size
+                layer.contentsScale = scale
+            }
         }
-        if size != layerTex.size {
+        // Allocate private textures at logical (unscaled) size when changed and valid.
+        if size.width >= 1, size.height >= 1, size != layerTex.size {
             allocateTextures(size: size)
-            // If headless, reset offscreen composite as well
             if metalLayer == nil {
                 offscreenComposite = nil
                 offscreenSize = .zero
@@ -274,8 +311,8 @@ final class StarryMetalRenderer {
         if let img = drawData.moonAlbedoImage {
             setMoonAlbedo(image: img)
         }
-        // Ensure textures
-        if drawData.size != layerTex.size {
+        // Ensure textures (only when logical size valid)
+        if drawData.size.width >= 1, drawData.size.height >= 1, drawData.size != layerTex.size {
             allocateTextures(size: drawData.size)
             // Newly allocated: clear all
             clearOffscreenTextures()
@@ -407,8 +444,8 @@ final class StarryMetalRenderer {
             setMoonAlbedo(image: img)
         }
         
-        // Ensure persistent textures
-        if drawData.size != layerTex.size {
+        // Ensure persistent textures only when valid size
+        if drawData.size.width >= 1, drawData.size.height >= 1, drawData.size != layerTex.size {
             allocateTextures(size: drawData.size)
             clearOffscreenTextures()
         }
@@ -564,8 +601,8 @@ final class StarryMetalRenderer {
     
     private func ensureOffscreenComposite(size: CGSize) {
         if offscreenComposite != nil && offscreenSize == size { return }
-        let w = max(1, Int(size.width))
-        let h = max(1, Int(size.height))
+        let w = max(1, Int(max(1, size.width)))
+        let h = max(1, Int(max(1, size.height)))
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
                                                             width: w,
                                                             height: h,
