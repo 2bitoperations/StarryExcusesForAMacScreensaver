@@ -964,11 +964,11 @@ final class StarryMetalRenderer {
         // Log texture identity (addresses) to confirm distinct allocations
         os_log("Allocated textures: base=%{public}@ sat=%{public}@ satScratch=%{public}@ shoot=%{public}@ shootScratch=%{public}@",
                log: log, type: .info,
-               ptrString(layerTex.base),
-               ptrString(layerTex.satellites),
-               ptrString(layerTex.satellitesScratch),
-               ptrString(layerTex.shooting),
-               ptrString(layerTex.shootingScratch))
+               ptrString(layerTex.base!),
+               ptrString(layerTex.satellites!),
+               ptrString(layerTex.satellitesScratch!),
+               ptrString(layerTex.shooting!),
+               ptrString(layerTex.shootingScratch!))
     }
     
     private func ensureOffscreenComposite(size: CGSize) {
