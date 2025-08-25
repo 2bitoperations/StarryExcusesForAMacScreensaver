@@ -124,6 +124,17 @@ final class StarryMetalRenderer {
     private var rbProbeSat: MTLBuffer?
     private var rbProbeShoot: MTLBuffer?
     
+    // NEW: phase readbacks around decay for deeper debugging
+    private let debugPhaseReadbacks: Bool = true
+    private var rbSatPre: MTLBuffer?
+    private var rbSatPostDecay: MTLBuffer?
+    private var rbSatPostEmit: MTLBuffer?
+    private var rbShootPre: MTLBuffer?
+    private var rbShootPostDecay: MTLBuffer?
+    private var rbShootPostEmit: MTLBuffer?
+    private var lastKeepSatUsed: Float = 1.0
+    private var lastKeepShootUsed: Float = 1.0
+    
     // Track when we explicitly clear, to correlate with logs
     private var lastClearReason: String = "none"
     
@@ -493,6 +504,21 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
+        // Optional: pre-decay center readbacks (phase diagnostics)
+        if shouldReadbackThisFrame() && debugPhaseReadbacks {
+            ensurePhaseReadbackBuffers()
+            if let blit = commandBuffer.makeBlitCommandEncoder() {
+                blit.label = "PhaseReadback-PreDecay"
+                if let sat = layerTex.satellites, let buf = rbSatPre {
+                    enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
+                }
+                if let shoot = layerTex.shooting, let buf = rbShootPre {
+                    enqueueCenterReadback(blit: blit, texture: shoot, buffer: buf)
+                }
+                blit.endEncoding()
+            }
+        }
+        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             os_log("renderSprites: target=%{public}@ ptr=%{public}@ count=%{public}d",
@@ -505,19 +531,42 @@ final class StarryMetalRenderer {
         }
         
         // 2) Satellites trail: decay then draw (with optional diagnostics)
-        if let satTex = layerTex.satellites {
+        if let satTexCurrent = layerTex.satellites {
             var keep = drawData.satellitesKeepFactor
             let willApplyDecay = keep < 1.0
             if debugForceDecayPulseEveryNFrames > 0 && (frameCounter % debugForceDecayPulseEveryNFrames == 0) {
                 keep = min(keep, debugDecayPulseKeep)
-                logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: "PULSE")
+                logDecayDecision(layer: "Satellites", texture: satTexCurrent, keep: keep, action: "PULSE")
             } else if willApplyDecay {
-                logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: keep <= 0 ? "CLEAR" : "DECAY_SAMPLE")
+                logDecayDecision(layer: "Satellites", texture: satTexCurrent, keep: keep, action: keep <= 0 ? "CLEAR" : "DECAY_SAMPLE")
             } else {
-                logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: "SKIP(keep=1)")
+                logDecayDecision(layer: "Satellites", texture: satTexCurrent, keep: keep, action: "SKIP(keep=1)")
             }
+            lastKeepSatUsed = keep
             if keep < 1.0 {
+                os_log("Decay(Sat): src=%{public}@ dst(scratch)=%{public}@ keep=%{public}.3f",
+                       log: log, type: .debug,
+                       ptrString(layerTex.satellites!), ptrString(layerTex.satellitesScratch!), Double(keep))
                 applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
+                if shouldReadbackThisFrame() && debugPhaseReadbacks {
+                    if let blit = commandBuffer.makeBlitCommandEncoder() {
+                        blit.label = "PhaseReadback-Sat-PostDecay"
+                        if let satPost = layerTex.satellites, let buf = rbSatPostDecay {
+                            enqueueCenterReadback(blit: blit, texture: satPost, buffer: buf)
+                        }
+                        blit.endEncoding()
+                    }
+                }
+            } else {
+                if shouldReadbackThisFrame() && debugPhaseReadbacks {
+                    if let blit = commandBuffer.makeBlitCommandEncoder() {
+                        blit.label = "PhaseReadback-Sat-NoDecay"
+                        if let satNo = layerTex.satellites, let buf = rbSatPostDecay {
+                            enqueueCenterReadback(blit: blit, texture: satNo, buffer: buf)
+                        }
+                        blit.endEncoding()
+                    }
+                }
             }
             // Draw a one-time probe dot to test decay (center of screen)
             if debugDrawDecayProbe && !decayProbeInitializedSat, let dst = layerTex.satellites {
@@ -534,23 +583,66 @@ final class StarryMetalRenderer {
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
+                if shouldReadbackThisFrame() && debugPhaseReadbacks {
+                    if let blit = commandBuffer.makeBlitCommandEncoder() {
+                        blit.label = "PhaseReadback-Sat-PostEmit"
+                        if let satPostEmit = layerTex.satellites, let buf = rbSatPostEmit {
+                            enqueueCenterReadback(blit: blit, texture: satPostEmit, buffer: buf)
+                        }
+                        blit.endEncoding()
+                    }
+                }
+            } else {
+                if shouldReadbackThisFrame() && debugPhaseReadbacks {
+                    // Still capture postEmit (same as postDecay when no emission)
+                    if let blit = commandBuffer.makeBlitCommandEncoder() {
+                        blit.label = "PhaseReadback-Sat-PostEmit(NoSprites)"
+                        if let satPostEmit = layerTex.satellites, let buf = rbSatPostEmit {
+                            enqueueCenterReadback(blit: blit, texture: satPostEmit, buffer: buf)
+                        }
+                        blit.endEncoding()
+                    }
+                }
             }
         }
         
         // 3) Shooting stars trail: decay then draw (with optional diagnostics)
-        if let shootTex = layerTex.shooting {
+        if let shootTexCurrent = layerTex.shooting {
             var keep = drawData.shootingKeepFactor
             let willApplyDecay = keep < 1.0
             if debugForceDecayPulseEveryNFrames > 0 && (frameCounter % debugForceDecayPulseEveryNFrames == 0) {
                 keep = min(keep, debugDecayPulseKeep)
-                logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: "PULSE")
+                logDecayDecision(layer: "Shooting", texture: shootTexCurrent, keep: keep, action: "PULSE")
             } else if willApplyDecay {
-                logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: keep <= 0 ? "CLEAR" : "DECAY_SAMPLE")
+                logDecayDecision(layer: "Shooting", texture: shootTexCurrent, keep: keep, action: keep <= 0 ? "CLEAR" : "DECAY_SAMPLE")
             } else {
-                logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: "SKIP(keep=1)")
+                logDecayDecision(layer: "Shooting", texture: shootTexCurrent, keep: keep, action: "SKIP(keep=1)")
             }
+            lastKeepShootUsed = keep
             if keep < 1.0 {
+                os_log("Decay(Shoot): src=%{public}@ dst(scratch)=%{public}@ keep=%{public}.3f",
+                       log: log, type: .debug,
+                       ptrString(layerTex.shooting!), ptrString(layerTex.shootingScratch!), Double(keep))
                 applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
+                if shouldReadbackThisFrame() && debugPhaseReadbacks {
+                    if let blit = commandBuffer.makeBlitCommandEncoder() {
+                        blit.label = "PhaseReadback-Shoot-PostDecay"
+                        if let shPost = layerTex.shooting, let buf = rbShootPostDecay {
+                            enqueueCenterReadback(blit: blit, texture: shPost, buffer: buf)
+                        }
+                        blit.endEncoding()
+                    }
+                }
+            } else {
+                if shouldReadbackThisFrame() && debugPhaseReadbacks {
+                    if let blit = commandBuffer.makeBlitCommandEncoder() {
+                        blit.label = "PhaseReadback-Shoot-NoDecay"
+                        if let shNo = layerTex.shooting, let buf = rbShootPostDecay {
+                            enqueueCenterReadback(blit: blit, texture: shNo, buffer: buf)
+                        }
+                        blit.endEncoding()
+                    }
+                }
             }
             // One-time probe dot
             if debugDrawDecayProbe && !decayProbeInitializedShoot, let dst = layerTex.shooting {
@@ -566,6 +658,25 @@ final class StarryMetalRenderer {
                               sprites: drawData.shootingSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
+                if shouldReadbackThisFrame() && debugPhaseReadbacks {
+                    if let blit = commandBuffer.makeBlitCommandEncoder() {
+                        blit.label = "PhaseReadback-Shoot-PostEmit"
+                        if let shPostEmit = layerTex.shooting, let buf = rbShootPostEmit {
+                            enqueueCenterReadback(blit: blit, texture: shPostEmit, buffer: buf)
+                        }
+                        blit.endEncoding()
+                    }
+                }
+            } else {
+                if shouldReadbackThisFrame() && debugPhaseReadbacks {
+                    if let blit = commandBuffer.makeBlitCommandEncoder() {
+                        blit.label = "PhaseReadback-Shoot-PostEmit(NoSprites)"
+                        if let shPostEmit = layerTex.shooting, let buf = rbShootPostEmit {
+                            enqueueCenterReadback(blit: blit, texture: shPostEmit, buffer: buf)
+                        }
+                        blit.endEncoding()
+                    }
+                }
             }
         }
 
@@ -634,6 +745,7 @@ final class StarryMetalRenderer {
             commandBuffer.commit()
             return
         }
+        encoder.pushDebugGroup("Composite+Moon")
         
         // Set viewport to drawable size
         let dvp = MTLViewport(originX: 0, originY: 0,
@@ -703,7 +815,7 @@ final class StarryMetalRenderer {
             // Draw quad (6 verts) via implicit corners in shader
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        
+        encoder.popDebugGroup()
         encoder.endEncoding()
         
         // 4.5) Read back the center pixel and ROI of the onscreen drawable after composite (for comparison)
@@ -861,6 +973,7 @@ final class StarryMetalRenderer {
             commandBuffer.waitUntilCompleted()
             return nil
         }
+        encoder.pushDebugGroup("Headless Composite+Moon")
         
         let vp = MTLViewport(originX: 0, originY: 0,
                              width: Double(finalTarget.width),
@@ -906,7 +1019,7 @@ final class StarryMetalRenderer {
             }
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        
+        encoder.popDebugGroup()
         encoder.endEncoding()
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
@@ -1017,10 +1130,12 @@ final class StarryMetalRenderer {
             rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
             if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
                 // Set viewport to texture size
+                enc.pushDebugGroup("Clear \(t.label ?? "tex")")
                 let vp = MTLViewport(originX: 0, originY: 0,
                                      width: Double(t.width), height: Double(t.height),
                                      znear: 0, zfar: 1)
                 enc.setViewport(vp)
+                enc.popDebugGroup()
                 enc.endEncoding()
             }
         }
@@ -1065,6 +1180,7 @@ final class StarryMetalRenderer {
         rpd.colorAttachments[0].storeAction = .store
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        encoder.pushDebugGroup("RenderSprites -> \(target.label ?? "tex")")
         // Set viewport to target size
         let vp = MTLViewport(originX: 0, originY: 0,
                              width: Double(target.width),
@@ -1077,6 +1193,7 @@ final class StarryMetalRenderer {
         var uni = SpriteUniforms(viewportSize: SIMD2<Float>(Float(viewport.width), Float(viewport.height)))
         encoder.setVertexBytes(&uni, length: MemoryLayout<SpriteUniforms>.stride, index: 2)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: sprites.count)
+        encoder.popDebugGroup()
         encoder.endEncoding()
     }
     
@@ -1098,11 +1215,13 @@ final class StarryMetalRenderer {
             rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
             if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd),
                let t = target {
+                enc.pushDebugGroup("Decay Clear -> \(t.label ?? "tex")")
                 // Set viewport to texture size
                 let vp = MTLViewport(originX: 0, originY: 0,
                                      width: Double(t.width), height: Double(t.height),
                                      znear: 0, zfar: 1)
                 enc.setViewport(vp)
+                enc.popDebugGroup()
                 enc.endEncoding()
             }
             return
@@ -1118,6 +1237,7 @@ final class StarryMetalRenderer {
         rpd.colorAttachments[0].storeAction = .store
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        encoder.pushDebugGroup("DecaySampled src=\(src.label ?? "src") -> dst=\(dst.label ?? "dst")")
         // Set viewport to target size
         let vp = MTLViewport(originX: 0, originY: 0,
                              width: Double(dst.width),
@@ -1135,6 +1255,7 @@ final class StarryMetalRenderer {
         encoder.setFragmentTexture(src, index: 0)
         encoder.setFragmentBytes(&keepColor, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+        encoder.popDebugGroup()
         encoder.endEncoding()
         
         // Swap textures so that the decayed result becomes the new current layer.
@@ -1147,6 +1268,11 @@ final class StarryMetalRenderer {
             layerTex.shooting = layerTex.shootingScratch
             layerTex.shootingScratch = tmp
         }
+        os_log("Decay swap(%{public}@): now current=%{public}@ scratch=%{public}@",
+               log: log, type: .debug,
+               which == .satellites ? "Sat" : "Shoot",
+               ptrString((which == .satellites) ? layerTex.satellites! : layerTex.shooting!),
+               ptrString((which == .satellites) ? layerTex.satellitesScratch! : layerTex.shootingScratch!))
     }
     
     // Draw a small bright probe dot once; if decay works, this dot will fade over time.
@@ -1220,6 +1346,22 @@ final class StarryMetalRenderer {
         rbProbeShoot?.label = "RB_Probe_Shoot_Center"
     }
     
+    private func ensurePhaseReadbackBuffers() {
+        let len = 256
+        if rbSatPre == nil { rbSatPre = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbSatPostDecay == nil { rbSatPostDecay = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbSatPostEmit == nil { rbSatPostEmit = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbShootPre == nil { rbShootPre = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbShootPostDecay == nil { rbShootPostDecay = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbShootPostEmit == nil { rbShootPostEmit = device.makeBuffer(length: len, options: .storageModeShared) }
+        rbSatPre?.label = "RB_Sat_PreDecay"
+        rbSatPostDecay?.label = "RB_Sat_PostDecay"
+        rbSatPostEmit?.label = "RB_Sat_PostEmit"
+        rbShootPre?.label = "RB_Shoot_PreDecay"
+        rbShootPostDecay?.label = "RB_Shoot_PostDecay"
+        rbShootPostEmit?.label = "RB_Shoot_PostEmit"
+    }
+    
     private func enqueueCenterReadback(blit: MTLBlitCommandEncoder, texture: MTLTexture, buffer: MTLBuffer) {
         let x = texture.width / 2
         let y = texture.height / 2
@@ -1262,6 +1404,7 @@ final class StarryMetalRenderer {
         rpd.colorAttachments[0].storeAction = .store
         rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        encoder.pushDebugGroup("CompositeTrailsOnly")
         let vp = MTLViewport(originX: 0, originY: 0,
                              width: Double(target.width),
                              height: Double(target.height),
@@ -1272,14 +1415,16 @@ final class StarryMetalRenderer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         }
         // Draw satellites + shooting only (omit base)
-        if let sat = layerTex.satellites {
-            encoder.setFragmentTexture(sat, index: 0)
+        func setTintAndDraw(_ tex: MTLTexture?, r: Float, g: Float, b: Float) {
+            guard let t = tex else { return }
+            var color: SIMD4<Float> = debugTintLayers ? SIMD4<Float>(r, g, b, 1.0) : SIMD4<Float>(1, 1, 1, 1)
+            encoder.setFragmentTexture(t, index: 0)
+            encoder.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        if let shoot = layerTex.shooting {
-            encoder.setFragmentTexture(shoot, index: 0)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
-        }
+        setTintAndDraw(layerTex.satellites, r: 0.6, g: 1.0, b: 0.6)
+        setTintAndDraw(layerTex.shooting,   r: 1.0, g: 0.5, b: 0.5)
+        encoder.popDebugGroup()
         encoder.endEncoding()
     }
     
@@ -1412,6 +1557,34 @@ final class StarryMetalRenderer {
             os_log("RB Drawable ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
         }
         
+        // Phase diagnostics: compare measured decay to keep factor
+        if debugPhaseReadbacks {
+            let satPre = read(rbSatPre)
+            let satPost = read(rbSatPostDecay)
+            let satEmit = read(rbSatPostEmit)
+            let shPre = read(rbShootPre)
+            let shPost = read(rbShootPostDecay)
+            let shEmit = read(rbShootPostEmit)
+            func frac(_ num: UInt8, _ den: UInt8) -> Double {
+                if den == 0 { return Double.nan }
+                return Double(num) / Double(den)
+            }
+            if let pre = satPre, let post = satPost {
+                let k = Double(lastKeepSatUsed)
+                let ratioA = frac(post.a, pre.a)
+                os_log("PHASE Sat: keep=%.3f preA=%{public}u postDecayA=%{public}u ratio=%.3f postEmitA=%{public}@",
+                       log: log, type: .info, k, pre.a, post.a, ratioA,
+                       satEmit != nil ? "\(satEmit!.a)" : "nil")
+            }
+            if let pre = shPre, let post = shPost {
+                let k = Double(lastKeepShootUsed)
+                let ratioA = frac(post.a, pre.a)
+                os_log("PHASE Shoot: keep=%.3f preA=%{public}u postDecayA=%{public}u ratio=%.3f postEmitA=%{public}@",
+                       log: log, type: .info, k, pre.a, post.a, ratioA,
+                       shEmit != nil ? "\(shEmit!.a)" : "nil")
+            }
+        }
+        
         // Compute and compare expected composite from layers vs actual drawable (premultiplied alpha)
         if let b = base, let s = sat, let sh = shoot, let d = draw {
             func norm(_ u: UInt8) -> Float { return Float(u) / 255.0 }
@@ -1448,8 +1621,9 @@ final class StarryMetalRenderer {
             let actual = d
             os_log("Composite check (layers-only): predicted BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
                    log: log, type: .info, predLayers.b, predLayers.g, predLayers.r, predLayers.a)
-            os_log("Composite check (incl bg): predicted BGRA=(%{public}u,%{public}u,%{public}u,%{public}u) vs drawable BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
+            os_log("Composite check (incl bg, NOTE: onscreen uses tint=%{public}@): predicted BGRA=(%{public}u,%{public}u,%{public}u,%{public}u) vs drawable BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
                    log: log, type: .info,
+                   debugTintLayers ? "YES" : "no",
                    predWithBg.b, predWithBg.g, predWithBg.r, predWithBg.a, actual.b, actual.g, actual.r, actual.a)
             let db = Int32(actual.b) - Int32(predWithBg.b)
             let dg = Int32(actual.g) - Int32(predWithBg.g)
