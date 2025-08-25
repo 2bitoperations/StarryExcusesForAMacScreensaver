@@ -89,7 +89,8 @@ final class StarryMetalRenderer {
     private var decayProbeInitializedShoot: Bool = false
 
     // 3) Readback diagnostics: sample center pixel periodically from each trail texture after decay+emission.
-    private let debugReadbackEveryNFrames: UInt64 = 10
+    // Increase to every frame for this investigation.
+    private let debugReadbackEveryNFrames: UInt64 = 1
     private var rbBufferSat: MTLBuffer?
     private var rbBufferShoot: MTLBuffer?
     private var rbLogCounter: UInt64 = 0
@@ -116,6 +117,12 @@ final class StarryMetalRenderer {
     private var rbBufferSatROI: MTLBuffer?
     private var rbBufferShootROI: MTLBuffer?
     private var rbBufferDrawableROI: MTLBuffer?
+    
+    // NEW: one-shot probe verification buffers (compare base vs trail layer at center pixel)
+    private var probeCheckScheduled: Bool = false
+    private var rbProbeBase: MTLBuffer?
+    private var rbProbeSat: MTLBuffer?
+    private var rbProbeShoot: MTLBuffer?
     
     // Track when we explicitly clear, to correlate with logs
     private var lastClearReason: String = "none"
@@ -488,6 +495,9 @@ final class StarryMetalRenderer {
         
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
+            os_log("renderSprites: target=%{public}@ ptr=%{public}@ count=%{public}d",
+                   log: log, type: .debug,
+                   baseTex.label ?? "Base?", ptrString(baseTex), drawData.baseSprites.count)
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
                           viewport: drawData.size,
@@ -513,8 +523,13 @@ final class StarryMetalRenderer {
             if debugDrawDecayProbe && !decayProbeInitializedSat, let dst = layerTex.satellites {
                 drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "SatProbe")
                 decayProbeInitializedSat = true
+                // Immediately schedule a one-shot base vs satellite center readback to confirm no write into base.
+                scheduleProbeCenterReadbacks(commandBuffer: commandBuffer)
             }
             if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
+                os_log("renderSprites: target=%{public}@ ptr=%{public}@ count=%{public}d",
+                       log: log, type: .debug,
+                       dst.label ?? "Satellites?", ptrString(dst), drawData.satellitesSprites.count)
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
@@ -541,8 +556,12 @@ final class StarryMetalRenderer {
             if debugDrawDecayProbe && !decayProbeInitializedShoot, let dst = layerTex.shooting {
                 drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "ShootProbe")
                 decayProbeInitializedShoot = true
+                scheduleProbeCenterReadbacks(commandBuffer: commandBuffer)
             }
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
+                os_log("renderSprites: target=%{public}@ ptr=%{public}@ count=%{public}d",
+                       log: log, type: .debug,
+                       dst.label ?? "Shooting?", ptrString(dst), drawData.shootingSprites.count)
                 renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
                               viewport: drawData.size,
@@ -765,6 +784,9 @@ final class StarryMetalRenderer {
         
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
+            os_log("renderSprites(headless): target=%{public}@ ptr=%{public}@ count=%{public}d",
+                   log: log, type: .debug,
+                   baseTex.label ?? "Base?", ptrString(baseTex), drawData.baseSprites.count)
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
                           viewport: drawData.size,
@@ -786,8 +808,12 @@ final class StarryMetalRenderer {
             if debugDrawDecayProbe && !decayProbeInitializedSat, let dst = layerTex.satellites {
                 drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "SatProbe(headless)")
                 decayProbeInitializedSat = true
+                scheduleProbeCenterReadbacks(commandBuffer: commandBuffer)
             }
             if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
+                os_log("renderSprites(headless): target=%{public}@ ptr=%{public}@ count=%{public}d",
+                       log: log, type: .debug,
+                       dst.label ?? "Satellites?", ptrString(dst), drawData.satellitesSprites.count)
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
@@ -810,8 +836,12 @@ final class StarryMetalRenderer {
             if debugDrawDecayProbe && !decayProbeInitializedShoot, let dst = layerTex.shooting {
                 drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "ShootProbe(headless)")
                 decayProbeInitializedShoot = true
+                scheduleProbeCenterReadbacks(commandBuffer: commandBuffer)
             }
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
+                os_log("renderSprites(headless): target=%{public}@ ptr=%{public}@ count=%{public}d",
+                       log: log, type: .debug,
+                       dst.label ?? "Shooting?", ptrString(dst), drawData.shootingSprites.count)
                 renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
                               viewport: drawData.size,
@@ -932,11 +962,6 @@ final class StarryMetalRenderer {
         layerTex.shootingScratch?.label = "ShootingStarsLayerScratch"
         
         // Log texture identity (addresses) to confirm distinct allocations
-        func ptrString(_ t: MTLTexture?) -> String {
-            guard let t = t else { return "nil" }
-            let p = Unmanaged.passUnretained(t as AnyObject).toOpaque()
-            return String(describing: p)
-        }
         os_log("Allocated textures: base=%{public}@ sat=%{public}@ satScratch=%{public}@ shoot=%{public}@ shootScratch=%{public}@",
                log: log, type: .info,
                ptrString(layerTex.base),
@@ -1011,6 +1036,7 @@ final class StarryMetalRenderer {
         // Reset probe flags after full clear
         decayProbeInitializedSat = false
         decayProbeInitializedShoot = false
+        probeCheckScheduled = false
     }
     
     private func renderSprites(into target: MTLTexture,
@@ -1138,7 +1164,8 @@ final class StarryMetalRenderer {
                                       colorPremul: colorPremul,
                                       shape: .rect))
         renderSprites(into: target, sprites: sprites, viewport: viewport, commandBuffer: commandBuffer)
-        os_log("DecayProbe: drew one-time probe dot into %{public}@ at (%{public}.0f,%{public}.0f)", log: log, type: .info, label, Double(cx), Double(cy))
+        os_log("DecayProbe: drew one-time probe dot into %{public}@ at (%{public}.0f,%{public}.0f) on tex=%{public}@ ptr=%{public}@",
+               log: log, type: .info, label, Double(cx), Double(cy), target.label ?? "unnamed", ptrString(target))
     }
     
     // MARK: - Readback diagnostics
@@ -1183,6 +1210,14 @@ final class StarryMetalRenderer {
         rbBufferSatROI?.label = "RB_Sat_ROI64"
         rbBufferShootROI?.label = "RB_Shoot_ROI64"
         rbBufferDrawableROI?.label = "RB_Drawable_ROI64"
+        
+        // Probe buffers (single pixels)
+        if rbProbeBase == nil { rbProbeBase = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbProbeSat == nil { rbProbeSat = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbProbeShoot == nil { rbProbeShoot = device.makeBuffer(length: len, options: .storageModeShared) }
+        rbProbeBase?.label = "RB_Probe_Base_Center"
+        rbProbeSat?.label = "RB_Probe_Sat_Center"
+        rbProbeShoot?.label = "RB_Probe_Shoot_Center"
     }
     
     private func enqueueCenterReadback(blit: MTLBlitCommandEncoder, texture: MTLTexture, buffer: MTLBuffer) {
@@ -1248,6 +1283,51 @@ final class StarryMetalRenderer {
         encoder.endEncoding()
     }
     
+    private func scheduleProbeCenterReadbacks(commandBuffer: MTLCommandBuffer) {
+        guard !probeCheckScheduled else { return }
+        ensureReadbackBuffers()
+        guard let blit = commandBuffer.makeBlitCommandEncoder() else { return }
+        blit.label = "ProbeCenterReadbacks"
+        if let base = layerTex.base, let buf = rbProbeBase {
+            enqueueCenterReadback(blit: blit, texture: base, buffer: buf)
+        }
+        if let sat = layerTex.satellites, let buf = rbProbeSat {
+            enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
+        }
+        if let shoot = layerTex.shooting, let buf = rbProbeShoot {
+            enqueueCenterReadback(blit: blit, texture: shoot, buffer: buf)
+        }
+        blit.endEncoding()
+        probeCheckScheduled = true
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            self?.logProbeCenters()
+        }
+    }
+    
+    private func logProbeCenters() {
+        probeCheckScheduled = false
+        func read(_ buf: MTLBuffer?) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8)? {
+            guard let buf = buf else { return nil }
+            let p = buf.contents().assumingMemoryBound(to: UInt8.self)
+            return (p[0], p[1], p[2], p[3])
+        }
+        if let v = read(rbProbeBase) {
+            os_log("PROBE Base center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .error, v.0, v.1, v.2, v.3)
+        } else {
+            os_log("PROBE Base center: nil", log: log, type: .error)
+        }
+        if let v = read(rbProbeSat) {
+            os_log("PROBE Satellites center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .error, v.0, v.1, v.2, v.3)
+        } else {
+            os_log("PROBE Satellites center: nil", log: log, type: .error)
+        }
+        if let v = read(rbProbeShoot) {
+            os_log("PROBE Shooting center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .error, v.0, v.1, v.2, v.3)
+        } else {
+            os_log("PROBE Shooting center: nil", log: log, type: .error)
+        }
+    }
+    
     private func logReadbackValues() {
         rbLogCounter &+= 1
         func read(_ buf: MTLBuffer?) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8)? {
@@ -1294,49 +1374,46 @@ final class StarryMetalRenderer {
         let trailsROI = roiStats(rbBufferTrailsROI)
         let drawableROI = roiStats(rbBufferDrawableROI)
         
-        // Rate limit logs (same policy as before)
-        let shouldLog = (rbLogCounter <= 10) || ((rbLogCounter % 60) == 0)
-        if shouldLog {
-            if let v = base {
-                os_log("RB Base center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
-            } else {
-                os_log("RB Base center: nil", log: log, type: .info)
-            }
-            if let v = sat {
-                os_log("RB Sat center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
-            }
-            if let v = shoot {
-                os_log("RB Shoot center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
-            }
-            if let d = draw {
-                os_log("RB Drawable(center) BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, d.b, d.g, d.r, d.a)
-            } else {
-                os_log("RB Drawable(center): nil (no onscreen readback this frame)", log: log, type: .info)
-            }
-            if let t = trailsC {
-                os_log("RB TrailsOnly center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, t.b, t.g, t.r, t.a)
-            } else {
-                os_log("RB TrailsOnly center: nil (readback not enqueued?)", log: log, type: .error)
-            }
-            if let s = baseROI {
-                os_log("RB Base ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-            }
-            if let s = satROI {
-                os_log("RB Sat ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-            }
-            if let s = shootROI {
-                os_log("RB Shoot ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-            }
-            if let s = trailsROI {
-                os_log("RB TrailsOnly ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-            }
-            if let s = drawableROI {
-                os_log("RB Drawable ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-            }
+        // Log every time (temporary) to catch state precisely
+        if let v = base {
+            os_log("RB Base center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
+        } else {
+            os_log("RB Base center: nil", log: log, type: .info)
+        }
+        if let v = sat {
+            os_log("RB Sat center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
+        }
+        if let v = shoot {
+            os_log("RB Shoot center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
+        }
+        if let d = draw {
+            os_log("RB Drawable(center) BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, d.b, d.g, d.r, d.a)
+        } else {
+            os_log("RB Drawable(center): nil (no onscreen readback this frame)", log: log, type: .info)
+        }
+        if let t = trailsC {
+            os_log("RB TrailsOnly center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, t.b, t.g, t.r, t.a)
+        } else {
+            os_log("RB TrailsOnly center: nil (readback not enqueued?)", log: log, type: .error)
+        }
+        if let s = baseROI {
+            os_log("RB Base ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
+        }
+        if let s = satROI {
+            os_log("RB Sat ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
+        }
+        if let s = shootROI {
+            os_log("RB Shoot ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
+        }
+        if let s = trailsROI {
+            os_log("RB TrailsOnly ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
+        }
+        if let s = drawableROI {
+            os_log("RB Drawable ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
         }
         
         // Compute and compare expected composite from layers vs actual drawable (premultiplied alpha)
-        if let b = base, let s = sat, let sh = shoot, let d = draw, shouldLog {
+        if let b = base, let s = sat, let sh = shoot, let d = draw {
             func norm(_ u: UInt8) -> Float { return Float(u) / 255.0 }
             func denorm(_ f: Float) -> UInt8 {
                 let clamped = max(0.0, min(1.0, f))
@@ -1396,5 +1473,10 @@ final class StarryMetalRenderer {
         os_log("Decay[%{public}@] frame=%{public}llu tex=%{public}@ size=%{public}dx%{public}d keep=%{public}.3f action=%{public}@",
                log: log, type: .info,
                layer, frameCounter, texture.label ?? "unnamed", texture.width, texture.height, Double(keep), action)
+    }
+    
+    private func ptrString(_ t: MTLTexture) -> String {
+        let p = Unmanaged.passUnretained(t as AnyObject).toOpaque()
+        return String(describing: p)
     }
 }
