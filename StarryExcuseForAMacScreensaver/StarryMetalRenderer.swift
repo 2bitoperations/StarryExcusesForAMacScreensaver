@@ -105,7 +105,7 @@ final class StarryMetalRenderer {
     private let debugROIHSize: Int = 32 // half-size -> ROI width/height = 64
 
     // Visual diagnostic: present trails-only onscreen once every N frames (0 disables)
-    private let debugPresentTrailsOnlyEveryNFrames: UInt64 = 120
+    private let debugPresentTrailsOnlyEveryNFrames: UInt64 = 50
     
     // MARK: - Init (onscreen)
     
@@ -607,7 +607,7 @@ final class StarryMetalRenderer {
         encoder.setViewport(dvp)
         
         // Decide if this frame should present trails-only onscreen (visual diagnostic)
-        let presentTrailsOnlyThisFrame = (debugPresentTrailsOnlyEveryNFrames > 0) && ((frameCounter % debugPresentTrailsOnlyEveryNFrames) == 0)
+        let presentTrailsOnlyThisFrame = (debugPresentTrailsOnlyEveryNFrames > 0) && ((frameCounter % (debugPresentTrailsOnlyEveryNFrames * 2)) <= debugReadbackEveryNFrames)
         if presentTrailsOnlyThisFrame {
             os_log("Debug: presenting trails-only this frame", log: log, type: .info)
         }
