@@ -36,6 +36,21 @@ fragment float4 TexturedQuadFragment(VertexOut in [[stage_in]],
     return c; // premultiplied alpha content already
 }
 
+// Debug/diagnostic: same as above but applies a per-draw tint multiplier (premultiplied-friendly)
+fragment float4 TexturedQuadFragmentTinted(VertexOut in [[stage_in]],
+                                           texture2d<float, access::sample> colorTex [[texture(0)]],
+                                           constant float4 &tint [[buffer(3)]]) {
+    constexpr sampler s(address::clamp_to_edge,
+                        filter::linear,
+                        coord::normalized);
+    if (!colorTex.get_width()) {
+        return float4(0,0,0,0);
+    }
+    float4 c = colorTex.sample(s, in.texCoord);
+    // Multiply premultiplied RGBA by tint (tint expected in non-premul range 0..1)
+    return c * tint;
+}
+
 // MARK: - Instanced sprites (rect or circle)
 
 struct SpriteInstanceIn {

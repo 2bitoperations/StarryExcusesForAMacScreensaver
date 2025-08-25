@@ -107,6 +107,19 @@ final class StarryMetalRenderer {
     // Visual diagnostic: present trails-only onscreen once every N frames (0 disables)
     private let debugPresentTrailsOnlyEveryNFrames: UInt64 = 50
     
+    // NEW: per-layer tint diagnostic (visually confirms which layer contributes to the composite)
+    // base=bluish, satellites=greenish, shooting=reddish
+    private let debugTintLayers: Bool = true
+    
+    // NEW: ROI buffers for each layer and the onscreen drawable
+    private var rbBufferBaseROI: MTLBuffer?
+    private var rbBufferSatROI: MTLBuffer?
+    private var rbBufferShootROI: MTLBuffer?
+    private var rbBufferDrawableROI: MTLBuffer?
+    
+    // Track when we explicitly clear, to correlate with logs
+    private var lastClearReason: String = "none"
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -160,12 +173,12 @@ final class StarryMetalRenderer {
     
     private func buildPipelines() throws {
         let library = try makeShaderLibrary()
-        // Composite textured quad
+        // Composite textured quad (tinted for diagnostics)
         do {
             let desc = MTLRenderPipelineDescriptor()
-            desc.label = "Composite"
+            desc.label = "CompositeTinted"
             desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex")
-            desc.fragmentFunction = library.makeFunction(name: "TexturedQuadFragment")
+            desc.fragmentFunction = library.makeFunction(name: "TexturedQuadFragmentTinted")
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
             let blend = desc.colorAttachments[0]
             blend?.isBlendingEnabled = true
@@ -317,7 +330,7 @@ final class StarryMetalRenderer {
         if size.width >= 1, size.height >= 1, size != layerTex.size {
             allocateTextures(size: size)
             // Immediately clear newly allocated render targets to avoid sampling uninitialized contents.
-            clearOffscreenTextures()
+            clearOffscreenTextures(reason: "Resize/allocate")
             os_log("updateDrawableSize: allocated and cleared layer textures for size %{public}.0fx%{public}.0f",
                    log: log, type: .info, Double(size.width), Double(size.height))
             if metalLayer == nil {
@@ -421,10 +434,11 @@ final class StarryMetalRenderer {
         if drawData.size.width >= 1, drawData.size.height >= 1, drawData.size != layerTex.size {
             allocateTextures(size: drawData.size)
             // Newly allocated: clear all
-            clearOffscreenTextures()
+            clearOffscreenTextures(reason: "Allocate on render()")
         }
         if drawData.clearAll {
-            clearOffscreenTextures()
+            os_log("Render: Clear requested via drawData.clearAll (reason=UserClearAll)", log: log, type: .info)
+            clearOffscreenTextures(reason: "UserClearAll")
         }
         
         // Skip expensive work if there's nothing to draw and no decay/clear needed
@@ -536,20 +550,23 @@ final class StarryMetalRenderer {
             }
         }
 
-        // 3.5) Readback diagnostics: sample center pixel from trail textures post-decay+emission
+        // 3.5) Readback diagnostics: sample center pixel and 64x64 ROI from each layer post-decay+emission
         if shouldReadbackThisFrame() {
             ensureReadbackBuffers()
             ensureDebugTrailsComposite(size: drawData.size)
             if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "TrailCenterReadback"
-                if let base = layerTex.base, let buf = rbBufferBase {
-                    enqueueCenterReadback(blit: blit, texture: base, buffer: buf)
+                blit.label = "LayerCentersAndROIsReadback"
+                if let base = layerTex.base, let bufC = rbBufferBase, let bufROI = rbBufferBaseROI {
+                    enqueueCenterReadback(blit: blit, texture: base, buffer: bufC)
+                    enqueueROIReadback(blit: blit, texture: base, halfSize: debugROIHSize, buffer: bufROI)
                 }
-                if let sat = layerTex.satellites, let buf = rbBufferSat {
-                    enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
+                if let sat = layerTex.satellites, let bufC = rbBufferSat, let bufROI = rbBufferSatROI {
+                    enqueueCenterReadback(blit: blit, texture: sat, buffer: bufC)
+                    enqueueROIReadback(blit: blit, texture: sat, halfSize: debugROIHSize, buffer: bufROI)
                 }
-                if let shoot = layerTex.shooting, let buf = rbBufferShoot {
-                    enqueueCenterReadback(blit: blit, texture: shoot, buffer: buf)
+                if let shoot = layerTex.shooting, let bufC = rbBufferShoot, let bufROI = rbBufferShootROI {
+                    enqueueCenterReadback(blit: blit, texture: shoot, buffer: bufC)
+                    enqueueROIReadback(blit: blit, texture: shoot, halfSize: debugROIHSize, buffer: bufROI)
                 }
                 blit.endEncoding()
             }
@@ -612,27 +629,41 @@ final class StarryMetalRenderer {
             os_log("Debug: presenting trails-only this frame", log: log, type: .info)
         }
         
-        // Composite
+        // Log a concise summary each readback interval (and at first few frames)
+        if (frameCounter < 5) || shouldReadbackThisFrame() {
+            os_log("Frame #%{public}llu summary: baseSprites=%{public}d satSprites=%{public}d shootSprites=%{public}d keep(sat)=%.3f keep(shoot)=%.3f presentTrailsOnly=%{public}@ clearReason=%{public}@",
+                   log: log, type: .info,
+                   frameCounter, drawData.baseSprites.count, drawData.satellitesSprites.count, drawData.shootingSprites.count,
+                   Double(drawData.satellitesKeepFactor), Double(drawData.shootingKeepFactor),
+                   presentTrailsOnlyThisFrame ? "YES" : "no", lastClearReason)
+        }
+        
+        // Composite with per-layer tint
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         } else {
             os_log("WARN: quadVertexBuffer is nil during composite", log: log, type: .error)
         }
-        func drawTex(_ tex: MTLTexture?) {
+        func tint(_ r: Float, _ g: Float, _ b: Float) -> SIMD4<Float> {
+            return debugTintLayers ? SIMD4<Float>(r, g, b, 1.0) : SIMD4<Float>(1, 1, 1, 1)
+        }
+        func drawTex(_ tex: MTLTexture?, tintColor: SIMD4<Float>) {
             guard let t = tex else { return }
+            var color = tintColor
             encoder.setFragmentTexture(t, index: 0)
+            encoder.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
         if presentTrailsOnlyThisFrame {
             // Trails-only: omit base; draw satellites + shooting
-            drawTex(layerTex.satellites)
-            drawTex(layerTex.shooting)
+            drawTex(layerTex.satellites, tintColor: tint(0.6, 1.0, 0.6)) // greenish
+            drawTex(layerTex.shooting, tintColor: tint(1.0, 0.5, 0.5))   // reddish
         } else {
             // Normal: base + satellites + shooting
-            drawTex(layerTex.base)
-            drawTex(layerTex.satellites)
-            drawTex(layerTex.shooting)
+            drawTex(layerTex.base, tintColor: tint(0.7, 0.9, 1.0))       // bluish
+            drawTex(layerTex.satellites, tintColor: tint(0.6, 1.0, 0.6)) // greenish
+            drawTex(layerTex.shooting, tintColor: tint(1.0, 0.5, 0.5))   // reddish
         }
         
         // Moon
@@ -656,13 +687,16 @@ final class StarryMetalRenderer {
         
         encoder.endEncoding()
         
-        // 4.5) Read back the center pixel of the onscreen drawable after composite (for comparison)
+        // 4.5) Read back the center pixel and ROI of the onscreen drawable after composite (for comparison)
         if shouldReadbackThisFrame() {
             ensureReadbackBuffers()
             if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "DrawableCenterReadback"
+                blit.label = "DrawableCenterAndROIReadback"
                 if let buf = rbBufferDrawable {
                     enqueueCenterReadback(blit: blit, texture: drawable.texture, buffer: buf)
+                }
+                if let bufROI = rbBufferDrawableROI {
+                    enqueueROIReadback(blit: blit, texture: drawable.texture, halfSize: debugROIHSize, buffer: bufROI)
                 }
                 blit.endEncoding()
             }
@@ -693,10 +727,11 @@ final class StarryMetalRenderer {
         // Ensure persistent textures only when valid size
         if drawData.size.width >= 1, drawData.size.height >= 1, drawData.size != layerTex.size {
             allocateTextures(size: drawData.size)
-            clearOffscreenTextures()
+            clearOffscreenTextures(reason: "Allocate on renderToImage()")
         }
         if drawData.clearAll {
-            clearOffscreenTextures()
+            os_log("RenderToImage: Clear requested via drawData.clearAll (reason=UserClearAll)", log: log, type: .info)
+            clearOffscreenTextures(reason: "UserClearAll(headless)")
         }
         // Ensure offscreen composite target (shared so CPU can read)
         ensureOffscreenComposite(size: drawData.size)
@@ -803,21 +838,26 @@ final class StarryMetalRenderer {
                              znear: 0, zfar: 1)
         encoder.setViewport(vp)
         
-        // Composite base, satellites, shooting
+        // Composite base, satellites, shooting with per-layer tint
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         } else {
             os_log("WARN(headless): quadVertexBuffer is nil during composite", log: log, type: .error)
         }
-        func drawTex(_ tex: MTLTexture?) {
+        func tint(_ r: Float, _ g: Float, _ b: Float) -> SIMD4<Float> {
+            return debugTintLayers ? SIMD4<Float>(r, g, b, 1.0) : SIMD4<Float>(1, 1, 1, 1)
+        }
+        func drawTex(_ tex: MTLTexture?, tintColor: SIMD4<Float>) {
             guard let t = tex else { return }
+            var color = tintColor
             encoder.setFragmentTexture(t, index: 0)
+            encoder.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        drawTex(layerTex.base)
-        drawTex(layerTex.satellites)
-        drawTex(layerTex.shooting)
+        drawTex(layerTex.base, tintColor: tint(0.7, 0.9, 1.0))       // bluish
+        drawTex(layerTex.satellites, tintColor: tint(0.6, 1.0, 0.6)) // greenish
+        drawTex(layerTex.shooting, tintColor: tint(1.0, 0.5, 0.5))   // reddish
         
         // Moon (on top)
         if let moon = drawData.moon {
@@ -890,6 +930,20 @@ final class StarryMetalRenderer {
         layerTex.shooting?.label = "ShootingStarsLayer"
         layerTex.shootingScratch = device.makeTexture(descriptor: desc)
         layerTex.shootingScratch?.label = "ShootingStarsLayerScratch"
+        
+        // Log texture identity (addresses) to confirm distinct allocations
+        func ptrString(_ t: MTLTexture?) -> String {
+            guard let t = t else { return "nil" }
+            let p = Unmanaged.passUnretained(t as AnyObject).toOpaque()
+            return String(describing: p)
+        }
+        os_log("Allocated textures: base=%{public}@ sat=%{public}@ satScratch=%{public}@ shoot=%{public}@ shootScratch=%{public}@",
+               log: log, type: .info,
+               ptrString(layerTex.base),
+               ptrString(layerTex.satellites),
+               ptrString(layerTex.satellitesScratch),
+               ptrString(layerTex.shooting),
+               ptrString(layerTex.shootingScratch))
     }
     
     private func ensureOffscreenComposite(size: CGSize) {
@@ -922,8 +976,13 @@ final class StarryMetalRenderer {
         debugTrailsComposite?.label = "DebugTrailsComposite"
     }
     
-    private func clearOffscreenTextures() {
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+    private func clearOffscreenTextures(reason: String = "unspecified") {
+        lastClearReason = reason
+        os_log("ClearOffscreenTextures: begin (reason=%{public}@)", log: log, type: .info, reason)
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            os_log("ClearOffscreenTextures: failed to make command buffer", log: log, type: .error)
+            return
+        }
         func clear(texture: MTLTexture?) {
             guard let t = texture else { return }
             let rpd = MTLRenderPassDescriptor()
@@ -947,6 +1006,7 @@ final class StarryMetalRenderer {
         clear(texture: layerTex.shootingScratch)
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
+        os_log("ClearOffscreenTextures: complete (reason=%{public}@)", log: log, type: .info, reason)
         
         // Reset probe flags after full clear
         decayProbeInitializedSat = false
@@ -1101,12 +1161,28 @@ final class StarryMetalRenderer {
         if rbBufferTrailsROI == nil || rbBufferTrailsROI!.length < roiLen {
             rbBufferTrailsROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
         }
+        if rbBufferBaseROI == nil || rbBufferBaseROI!.length < roiLen {
+            rbBufferBaseROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
+        }
+        if rbBufferSatROI == nil || rbBufferSatROI!.length < roiLen {
+            rbBufferSatROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
+        }
+        if rbBufferShootROI == nil || rbBufferShootROI!.length < roiLen {
+            rbBufferShootROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
+        }
+        if rbBufferDrawableROI == nil || rbBufferDrawableROI!.length < roiLen {
+            rbBufferDrawableROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
+        }
         rbBufferSat?.label = "RB_Sat_Center"
         rbBufferShoot?.label = "RB_Shoot_Center"
         rbBufferBase?.label = "RB_Base_Center"
         rbBufferDrawable?.label = "RB_Drawable_Center"
         rbBufferTrailsCenter?.label = "RB_TrailsOnly_Center"
         rbBufferTrailsROI?.label = "RB_TrailsOnly_ROI64"
+        rbBufferBaseROI?.label = "RB_Base_ROI64"
+        rbBufferSatROI?.label = "RB_Sat_ROI64"
+        rbBufferShootROI?.label = "RB_Shoot_ROI64"
+        rbBufferDrawableROI?.label = "RB_Drawable_ROI64"
     }
     
     private func enqueueCenterReadback(blit: MTLBlitCommandEncoder, texture: MTLTexture, buffer: MTLBuffer) {
@@ -1184,11 +1260,39 @@ final class StarryMetalRenderer {
             let a = p[3]
             return (b,g,r,a)
         }
+        func roiStats(_ buf: MTLBuffer?) -> (avgA: Double, maxA: UInt8)? {
+            guard let buf = buf else { return nil }
+            let ptr = buf.contents().assumingMemoryBound(to: UInt8.self)
+            var sumA: UInt64 = 0
+            var maxA: UInt8 = 0
+            let width = 64
+            let height = 64
+            let rowBytes = 256
+            for y in 0..<height {
+                let row = ptr + y * rowBytes
+                var x = 0
+                while x < width {
+                    let a = row[x*4 + 3] // BGRA
+                    sumA &+= UInt64(a)
+                    if a > maxA { maxA = a }
+                    x &+= 1
+                }
+            }
+            let avgA: Double = Double(sumA) / Double(width * height)
+            return (avgA, maxA)
+        }
+        
         let sat = read(rbBufferSat)
         let shoot = read(rbBufferShoot)
         let base = read(rbBufferBase)
         let draw = read(rbBufferDrawable)
         let trailsC = read(rbBufferTrailsCenter)
+        
+        let baseROI = roiStats(rbBufferBaseROI)
+        let satROI = roiStats(rbBufferSatROI)
+        let shootROI = roiStats(rbBufferShootROI)
+        let trailsROI = roiStats(rbBufferTrailsROI)
+        let drawableROI = roiStats(rbBufferDrawableROI)
         
         // Rate limit logs (same policy as before)
         let shouldLog = (rbLogCounter <= 10) || ((rbLogCounter % 60) == 0)
@@ -1214,28 +1318,20 @@ final class StarryMetalRenderer {
             } else {
                 os_log("RB TrailsOnly center: nil (readback not enqueued?)", log: log, type: .error)
             }
-            if let roiBuf = rbBufferTrailsROI {
-                // Compute average and max alpha in 64x64 ROI (bytesPerRow=256)
-                let ptr = roiBuf.contents().assumingMemoryBound(to: UInt8.self)
-                var sumA: UInt64 = 0
-                var maxA: UInt8 = 0
-                let width = 64
-                let height = 64
-                let rowBytes = 256
-                for y in 0..<height {
-                    let row = ptr + y * rowBytes
-                    var x = 0
-                    while x < width {
-                        let a = row[x*4 + 3] // BGRA
-                        sumA &+= UInt64(a)
-                        if a > maxA { maxA = a }
-                        x &+= 1
-                    }
-                }
-                let avgA: Double = Double(sumA) / Double(width * height)
-                os_log("RB TrailsOnly ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, avgA, maxA)
-            } else {
-                os_log("RB TrailsOnly ROI buffer is nil", log: log, type: .error)
+            if let s = baseROI {
+                os_log("RB Base ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
+            }
+            if let s = satROI {
+                os_log("RB Sat ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
+            }
+            if let s = shootROI {
+                os_log("RB Shoot ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
+            }
+            if let s = trailsROI {
+                os_log("RB TrailsOnly ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
+            }
+            if let s = drawableROI {
+                os_log("RB Drawable ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
             }
         }
         
