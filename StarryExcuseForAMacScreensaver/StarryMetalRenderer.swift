@@ -12,7 +12,9 @@ final class StarryMetalRenderer {
     private struct LayerTextures {
         var base: MTLTexture?
         var satellites: MTLTexture?
+        var satellitesScratch: MTLTexture?
         var shooting: MTLTexture?
+        var shootingScratch: MTLTexture?
         var size: CGSize = .zero
     }
     
@@ -35,7 +37,8 @@ final class StarryMetalRenderer {
     // Pipelines
     private var compositePipeline: MTLRenderPipelineState!
     private var spritePipeline: MTLRenderPipelineState!
-    private var decayPipeline: MTLRenderPipelineState!
+    private var decayPipeline: MTLRenderPipelineState!          // legacy blend-based (kept for reference; unused)
+    private var decaySampledPipeline: MTLRenderPipelineState!   // robust sampled copy: dst = keep * src
     private var moonPipeline: MTLRenderPipelineState!
     
     private var layerTex = LayerTextures()
@@ -163,16 +166,16 @@ final class StarryMetalRenderer {
             blend?.alphaBlendOperation = .add
             spritePipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
-        // Decay pipeline: robust multiply via src = keepColor, srcFactor = dest, dstFactor = 0
+        // Decay pipeline (legacy blend-constant approach) — kept for reference; not used now.
         do {
             let desc = MTLRenderPipelineDescriptor()
-            desc.label = "Decay"
-            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex") // fullscreen quad
+            desc.label = "Decay (blend-constant legacy)"
+            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex")
             desc.fragmentFunction = library.makeFunction(name: "DecayFragment")
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
             let blend = desc.colorAttachments[0]
             blend?.isBlendingEnabled = true
-            // out = src * dst + dst * 0 = keep * dst
+            // out = src * dst + dst * 0 = keep * dst (src=keepColor, srcFactor=dst, dstFactor=0)
             blend?.sourceRGBBlendFactor = .destinationColor
             blend?.sourceAlphaBlendFactor = .destinationAlpha
             blend?.destinationRGBBlendFactor = .zero
@@ -180,6 +183,17 @@ final class StarryMetalRenderer {
             blend?.rgbBlendOperation = .add
             blend?.alphaBlendOperation = .add
             decayPipeline = try device.makeRenderPipelineState(descriptor: desc)
+        }
+        // Decay sampled pipeline: robust pass that samples source texture and multiplies by keep into scratch target.
+        do {
+            let desc = MTLRenderPipelineDescriptor()
+            desc.label = "DecaySampled"
+            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex")
+            desc.fragmentFunction = library.makeFunction(name: "DecaySampledFragment")
+            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+            // No blending; we write keep * src directly into the scratch target.
+            desc.colorAttachments[0].isBlendingEnabled = false
+            decaySampledPipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
         // Moon pipeline
         do {
@@ -444,17 +458,15 @@ final class StarryMetalRenderer {
                 keep = min(keep, debugDecayPulseKeep)
                 logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: "PULSE")
             } else if willApplyDecay {
-                logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: keep <= 0 ? "CLEAR" : "MULTIPLY")
+                logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: keep <= 0 ? "CLEAR" : "DECAY_SAMPLE")
             } else {
                 logDecayDecision(layer: "Satellites", texture: satTex, keep: keep, action: "SKIP(keep=1)")
             }
             if keep < 1.0 {
-                applyDecay(into: satTex,
-                           keepFactor: keep,
-                           commandBuffer: commandBuffer)
+                applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
             }
-            if !drawData.satellitesSprites.isEmpty {
-                renderSprites(into: satTex,
+            if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
+                renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
@@ -469,17 +481,15 @@ final class StarryMetalRenderer {
                 keep = min(keep, debugDecayPulseKeep)
                 logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: "PULSE")
             } else if willApplyDecay {
-                logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: keep <= 0 ? "CLEAR" : "MULTIPLY")
+                logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: keep <= 0 ? "CLEAR" : "DECAY_SAMPLE")
             } else {
                 logDecayDecision(layer: "Shooting", texture: shootTex, keep: keep, action: "SKIP(keep=1)")
             }
             if keep < 1.0 {
-                applyDecay(into: shootTex,
-                           keepFactor: keep,
-                           commandBuffer: commandBuffer)
+                applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
             }
-            if !drawData.shootingSprites.isEmpty {
-                renderSprites(into: shootTex,
+            if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
+                renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
@@ -618,21 +628,19 @@ final class StarryMetalRenderer {
         }
         
         // 2) Satellites trail: decay then draw
-        if let satTex = layerTex.satellites {
+        if let _ = layerTex.satellites {
             var keep = drawData.satellitesKeepFactor
             if debugForceDecayPulseEveryNFrames > 0 && (headlessFrameCounter % debugForceDecayPulseEveryNFrames == 0) {
                 keep = min(keep, debugDecayPulseKeep)
-                logDecayDecision(layer: "Satellites(headless)", texture: satTex, keep: keep, action: "PULSE")
+                logDecayDecision(layer: "Satellites(headless)", texture: layerTex.satellites!, keep: keep, action: "PULSE")
             } else {
-                logDecayDecision(layer: "Satellites(headless)", texture: satTex, keep: keep, action: keep < 1.0 ? (keep <= 0 ? "CLEAR" : "MULTIPLY") : "SKIP(keep=1)")
+                logDecayDecision(layer: "Satellites(headless)", texture: layerTex.satellites!, keep: keep, action: keep < 1.0 ? (keep <= 0 ? "CLEAR" : "DECAY_SAMPLE") : "SKIP(keep=1)")
             }
             if keep < 1.0 {
-                applyDecay(into: satTex,
-                           keepFactor: keep,
-                           commandBuffer: commandBuffer)
+                applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
             }
-            if !drawData.satellitesSprites.isEmpty {
-                renderSprites(into: satTex,
+            if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
+                renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
@@ -640,21 +648,19 @@ final class StarryMetalRenderer {
         }
         
         // 3) Shooting stars trail: decay then draw
-        if let shootTex = layerTex.shooting {
+        if let _ = layerTex.shooting {
             var keep = drawData.shootingKeepFactor
             if debugForceDecayPulseEveryNFrames > 0 && (headlessFrameCounter % debugForceDecayPulseEveryNFrames == 0) {
                 keep = min(keep, debugDecayPulseKeep)
-                logDecayDecision(layer: "Shooting(headless)", texture: shootTex, keep: keep, action: "PULSE")
+                logDecayDecision(layer: "Shooting(headless)", texture: layerTex.shooting!, keep: keep, action: "PULSE")
             } else {
-                logDecayDecision(layer: "Shooting(headless)", texture: shootTex, keep: keep, action: keep < 1.0 ? (keep <= 0 ? "CLEAR" : "MULTIPLY") : "SKIP(keep=1)")
+                logDecayDecision(layer: "Shooting(headless)", texture: layerTex.shooting!, keep: keep, action: keep < 1.0 ? (keep <= 0 ? "CLEAR" : "DECAY_SAMPLE") : "SKIP(keep=1)")
             }
             if keep < 1.0 {
-                applyDecay(into: shootTex,
-                           keepFactor: keep,
-                           commandBuffer: commandBuffer)
+                applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
             }
-            if !drawData.shootingSprites.isEmpty {
-                renderSprites(into: shootTex,
+            if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
+                renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
@@ -761,8 +767,12 @@ final class StarryMetalRenderer {
         layerTex.base?.label = "BaseLayer"
         layerTex.satellites = device.makeTexture(descriptor: desc)
         layerTex.satellites?.label = "SatellitesLayer"
+        layerTex.satellitesScratch = device.makeTexture(descriptor: desc)
+        layerTex.satellitesScratch?.label = "SatellitesLayerScratch"
         layerTex.shooting = device.makeTexture(descriptor: desc)
         layerTex.shooting?.label = "ShootingStarsLayer"
+        layerTex.shootingScratch = device.makeTexture(descriptor: desc)
+        layerTex.shootingScratch?.label = "ShootingStarsLayerScratch"
     }
     
     private func ensureOffscreenComposite(size: CGSize) {
@@ -801,7 +811,9 @@ final class StarryMetalRenderer {
         }
         clear(texture: layerTex.base)
         clear(texture: layerTex.satellites)
+        clear(texture: layerTex.satellitesScratch)
         clear(texture: layerTex.shooting)
+        clear(texture: layerTex.shootingScratch)
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
     }
@@ -847,20 +859,27 @@ final class StarryMetalRenderer {
         encoder.endEncoding()
     }
     
-    private func applyDecay(into target: MTLTexture,
+    private enum TrailLayer {
+        case satellites
+        case shooting
+    }
+    
+    private func applyDecay(into which: TrailLayer,
                             keepFactor: Float,
                             commandBuffer: MTLCommandBuffer) {
-        // If keepFactor == 0 -> clear
+        // If keepFactor == 0 -> clear the current target texture
         if keepFactor <= 0 {
+            let target: MTLTexture? = (which == .satellites) ? layerTex.satellites : layerTex.shooting
             let rpd = MTLRenderPassDescriptor()
             rpd.colorAttachments[0].texture = target
             rpd.colorAttachments[0].loadAction = .clear
             rpd.colorAttachments[0].storeAction = .store
             rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
-            if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
+            if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd),
+               let t = target {
                 // Set viewport to texture size
                 let vp = MTLViewport(originX: 0, originY: 0,
-                                     width: Double(target.width), height: Double(target.height),
+                                     width: Double(t.width), height: Double(t.height),
                                      znear: 0, zfar: 1)
                 enc.setViewport(vp)
                 enc.endEncoding()
@@ -868,29 +887,45 @@ final class StarryMetalRenderer {
             return
         }
         
+        // Sample-based decay: render keep * src into the scratch texture, then swap.
+        guard let src = (which == .satellites) ? layerTex.satellites : layerTex.shooting else { return }
+        guard let dst = (which == .satellites) ? layerTex.satellitesScratch : layerTex.shootingScratch else { return }
+        
         let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = target
-        rpd.colorAttachments[0].loadAction = .load
+        rpd.colorAttachments[0].texture = dst
+        rpd.colorAttachments[0].loadAction = .dontCare
         rpd.colorAttachments[0].storeAction = .store
+        
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
-        // Set viewport to texture size
+        // Set viewport to target size
         let vp = MTLViewport(originX: 0, originY: 0,
-                             width: Double(target.width),
-                             height: Double(target.height),
+                             width: Double(dst.width),
+                             height: Double(dst.height),
                              znear: 0, zfar: 1)
         encoder.setViewport(vp)
         
-        encoder.setRenderPipelineState(decayPipeline)
+        encoder.setRenderPipelineState(decaySampledPipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         } else {
-            os_log("WARN: quadVertexBuffer is nil during decay", log: log, type: .error)
+            os_log("WARN: quadVertexBuffer is nil during decay-sampled", log: log, type: .error)
         }
-        // Pass keep color to fragment; blending uses srcFactor = dest, so out = keep * dest.
         var keepColor = SIMD4<Float>(repeating: keepFactor)
+        encoder.setFragmentTexture(src, index: 0)
         encoder.setFragmentBytes(&keepColor, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.endEncoding()
+        
+        // Swap textures so that the decayed result becomes the new current layer.
+        if which == .satellites {
+            let tmp = layerTex.satellites
+            layerTex.satellites = layerTex.satellitesScratch
+            layerTex.satellitesScratch = tmp
+        } else {
+            let tmp = layerTex.shooting
+            layerTex.shooting = layerTex.shootingScratch
+            layerTex.shootingScratch = tmp
+        }
     }
     
     // MARK: - Debug logging

@@ -104,11 +104,26 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
     }
 }
 
-// MARK: - Decay (fade trails): robust multiply using src = keepColor, srcFactor = dest, dstFactor = 0
+// MARK: - Decay (two implementations)
 
+// Legacy: uses destination color as blend factor (kept for reference; not used now).
 // Fragment returns the keep color; blending multiplies this by the current destination and writes it.
 fragment float4 DecayFragment(constant float4 &keepColor [[buffer(3)]]) {
     return keepColor;
+}
+
+// Robust: sample source texture and multiply by keep; render into scratch target (no blending).
+fragment float4 DecaySampledFragment(VertexOut in [[stage_in]],
+                                     texture2d<float, access::sample> srcTex [[texture(0)]],
+                                     constant float4 &keepColor [[buffer(3)]]) {
+    constexpr sampler s(address::clamp_to_edge,
+                        filter::nearest,
+                        coord::normalized);
+    if (!srcTex.get_width()) {
+        return float4(0,0,0,0);
+    }
+    float4 c = srcTex.sample(s, in.texCoord);
+    return c * keepColor;
 }
 
 // MARK: - Moon shading
