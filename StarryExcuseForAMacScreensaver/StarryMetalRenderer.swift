@@ -103,6 +103,9 @@ final class StarryMetalRenderer {
     private var rbBufferTrailsROI: MTLBuffer?
     // Use a 64x64 ROI centered; bytesPerRow must be multiple of 256 for texture->buffer blit, so 64*4 = 256 is perfect.
     private let debugROIHSize: Int = 32 // half-size -> ROI width/height = 64
+
+    // Visual diagnostic: present trails-only onscreen once every N frames (0 disables)
+    private let debugPresentTrailsOnlyEveryNFrames: UInt64 = 120
     
     // MARK: - Init (onscreen)
     
@@ -603,7 +606,13 @@ final class StarryMetalRenderer {
                               znear: 0, zfar: 1)
         encoder.setViewport(dvp)
         
-        // Composite base, satellites, shooting
+        // Decide if this frame should present trails-only onscreen (visual diagnostic)
+        let presentTrailsOnlyThisFrame = (debugPresentTrailsOnlyEveryNFrames > 0) && ((frameCounter % debugPresentTrailsOnlyEveryNFrames) == 0)
+        if presentTrailsOnlyThisFrame {
+            os_log("Debug: presenting trails-only this frame", log: log, type: .info)
+        }
+        
+        // Composite
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
@@ -615,9 +624,16 @@ final class StarryMetalRenderer {
             encoder.setFragmentTexture(t, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        drawTex(layerTex.base)
-        drawTex(layerTex.satellites)
-        drawTex(layerTex.shooting)
+        if presentTrailsOnlyThisFrame {
+            // Trails-only: omit base; draw satellites + shooting
+            drawTex(layerTex.satellites)
+            drawTex(layerTex.shooting)
+        } else {
+            // Normal: base + satellites + shooting
+            drawTex(layerTex.base)
+            drawTex(layerTex.satellites)
+            drawTex(layerTex.shooting)
+        }
         
         // Moon
         if let moon = drawData.moon {
