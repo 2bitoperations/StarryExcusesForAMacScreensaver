@@ -104,13 +104,11 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
     }
 }
 
-// MARK: - Decay (fade trails): uses blending to multiply dest by constant
+// MARK: - Decay (fade trails): robust multiply using src = keepColor, srcFactor = dest, dstFactor = 0
 
-// Vertex: reuse the textured-quad unit, but we don't need a texture.
-// Fragment returns zero; pipeline blending must be configured to:
-// src = 0, dst = blendColor (constant). See pipeline setup in Swift.
-fragment float4 DecayFragment() {
-    return float4(0,0,0,0);
+// Fragment returns the keep color; blending multiplies this by the current destination and writes it.
+fragment float4 DecayFragment(constant float4 &keepColor [[buffer(3)]]) {
+    return keepColor;
 }
 
 // MARK: - Moon shading

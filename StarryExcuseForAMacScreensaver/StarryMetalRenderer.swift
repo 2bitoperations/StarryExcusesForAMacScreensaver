@@ -163,19 +163,20 @@ final class StarryMetalRenderer {
             blend?.alphaBlendOperation = .add
             spritePipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
-        // Decay pipeline: multiply destination by blendColor (src=0, dst=blendColor)
+        // Decay pipeline: robust multiply via src = keepColor, srcFactor = dest, dstFactor = 0
         do {
             let desc = MTLRenderPipelineDescriptor()
             desc.label = "Decay"
-            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex") // any fullscreen quad
+            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex") // fullscreen quad
             desc.fragmentFunction = library.makeFunction(name: "DecayFragment")
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
             let blend = desc.colorAttachments[0]
             blend?.isBlendingEnabled = true
-            blend?.sourceRGBBlendFactor = .zero
-            blend?.sourceAlphaBlendFactor = .zero
-            blend?.destinationRGBBlendFactor = .blendColor
-            blend?.destinationAlphaBlendFactor = .blendColor
+            // out = src * dst + dst * 0 = keep * dst
+            blend?.sourceRGBBlendFactor = .destinationColor
+            blend?.sourceAlphaBlendFactor = .destinationAlpha
+            blend?.destinationRGBBlendFactor = .zero
+            blend?.destinationAlphaBlendFactor = .zero
             blend?.rgbBlendOperation = .add
             blend?.alphaBlendOperation = .add
             decayPipeline = try device.makeRenderPipelineState(descriptor: desc)
@@ -859,8 +860,7 @@ final class StarryMetalRenderer {
             if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
                 // Set viewport to texture size
                 let vp = MTLViewport(originX: 0, originY: 0,
-                                     width: Double(target.width),
-                                     height: Double(target.height),
+                                     width: Double(target.width), height: Double(target.height),
                                      znear: 0, zfar: 1)
                 enc.setViewport(vp)
                 enc.endEncoding()
@@ -886,8 +886,9 @@ final class StarryMetalRenderer {
         } else {
             os_log("WARN: quadVertexBuffer is nil during decay", log: log, type: .error)
         }
-        // Multiply destination by keepFactor via blend constant
-        encoder.setBlendColor(red: keepFactor, green: keepFactor, blue: keepFactor, alpha: keepFactor)
+        // Pass keep color to fragment; blending uses srcFactor = dest, so out = keep * dest.
+        var keepColor = SIMD4<Float>(repeating: keepFactor)
+        encoder.setFragmentBytes(&keepColor, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.endEncoding()
     }
