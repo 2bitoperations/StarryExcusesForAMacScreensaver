@@ -93,6 +93,9 @@ final class StarryMetalRenderer {
     private var rbBufferSat: MTLBuffer?
     private var rbBufferShoot: MTLBuffer?
     private var rbLogCounter: UInt64 = 0
+    // Added readbacks: base layer and final onscreen drawable (center pixel)
+    private var rbBufferBase: MTLBuffer?
+    private var rbBufferDrawable: MTLBuffer?
     
     // MARK: - Init (onscreen)
     
@@ -108,7 +111,8 @@ final class StarryMetalRenderer {
         
         layer.device = device
         layer.pixelFormat = .bgra8Unorm
-        layer.framebufferOnly = true
+        // For diagnostics, allow blit readback from the drawable.
+        layer.framebufferOnly = false
         layer.isOpaque = true
         
         do {
@@ -525,6 +529,9 @@ final class StarryMetalRenderer {
             ensureReadbackBuffers()
             if let blit = commandBuffer.makeBlitCommandEncoder() {
                 blit.label = "TrailCenterReadback"
+                if let base = layerTex.base, let buf = rbBufferBase {
+                    enqueueCenterReadback(blit: blit, texture: base, buffer: buf)
+                }
                 if let sat = layerTex.satellites, let buf = rbBufferSat {
                     enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
                 }
@@ -533,6 +540,7 @@ final class StarryMetalRenderer {
                 }
                 blit.endEncoding()
             }
+            // We'll enqueue the drawable readback after composite encoding, below.
             commandBuffer.addCompletedHandler { [weak self] _ in
                 self?.logReadbackValues()
             }
@@ -601,6 +609,19 @@ final class StarryMetalRenderer {
         }
         
         encoder.endEncoding()
+        
+        // 4.5) Read back the center pixel of the onscreen drawable after composite (for comparison)
+        if shouldReadbackThisFrame() {
+            ensureReadbackBuffers()
+            if let blit = commandBuffer.makeBlitCommandEncoder() {
+                blit.label = "DrawableCenterReadback"
+                if let buf = rbBufferDrawable {
+                    enqueueCenterReadback(blit: blit, texture: drawable.texture, buffer: buf)
+                }
+                blit.endEncoding()
+            }
+        }
+        
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }
@@ -1010,8 +1031,12 @@ final class StarryMetalRenderer {
         let len = 256 // bytesPerRow alignment requirement for texture->buffer blits
         if rbBufferSat == nil { rbBufferSat = device.makeBuffer(length: len, options: .storageModeShared) }
         if rbBufferShoot == nil { rbBufferShoot = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbBufferBase == nil { rbBufferBase = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbBufferDrawable == nil { rbBufferDrawable = device.makeBuffer(length: len, options: .storageModeShared) }
         rbBufferSat?.label = "RB_Sat_Center"
         rbBufferShoot?.label = "RB_Shoot_Center"
+        rbBufferBase?.label = "RB_Base_Center"
+        rbBufferDrawable?.label = "RB_Drawable_Center"
     }
     
     private func enqueueCenterReadback(blit: MTLBlitCommandEncoder, texture: MTLTexture, buffer: MTLBuffer) {
@@ -1041,14 +1066,68 @@ final class StarryMetalRenderer {
             let a = p[3]
             return (b,g,r,a)
         }
-        if let v = read(rbBufferSat) {
-            if rbLogCounter <= 10 || (rbLogCounter % 60 == 0) {
+        let sat = read(rbBufferSat)
+        let shoot = read(rbBufferShoot)
+        let base = read(rbBufferBase)
+        let draw = read(rbBufferDrawable)
+        
+        // Rate limit logs (same policy as before)
+        let shouldLog = (rbLogCounter <= 10) || ((rbLogCounter % 60) == 0)
+        if shouldLog {
+            if let v = base {
+                os_log("RB Base center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
+            } else {
+                os_log("RB Base center: nil", log: log, type: .info)
+            }
+            if let v = sat {
                 os_log("RB Sat center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
             }
-        }
-        if let v = read(rbBufferShoot) {
-            if rbLogCounter <= 10 || (rbLogCounter % 60 == 0) {
+            if let v = shoot {
                 os_log("RB Shoot center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
+            }
+            if let d = draw {
+                os_log("RB Drawable(center) BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, d.b, d.g, d.r, d.a)
+            } else {
+                os_log("RB Drawable(center): nil (no onscreen readback this frame)", log: log, type: .info)
+            }
+        }
+        
+        // Compute and compare expected composite from layers vs actual drawable (premultiplied alpha)
+        if let b = base, let s = sat, let sh = shoot, let d = draw, shouldLog {
+            func norm(_ u: UInt8) -> Float { return Float(u) / 255.0 }
+            func denorm(_ f: Float) -> UInt8 {
+                let clamped = max(0.0, min(1.0, f))
+                return UInt8(roundf(clamped * 255.0))
+            }
+            struct RGBAf { var r: Float; var g: Float; var b: Float; var a: Float }
+            func toRGBAf(_ v: (b: UInt8, g: UInt8, r: UInt8, a: UInt8)) -> RGBAf {
+                return RGBAf(r: norm(v.r), g: norm(v.g), b: norm(v.b), a: norm(v.a))
+            }
+            func blend(dst: RGBAf, src: RGBAf) -> RGBAf {
+                // Premultiplied alpha blending: out = src + dst * (1 - src.a)
+                let oneMinusA = (1.0 - src.a)
+                return RGBAf(r: src.r + dst.r * oneMinusA,
+                             g: src.g + dst.g * oneMinusA,
+                             b: src.b + dst.b * oneMinusA,
+                             a: src.a + dst.a * oneMinusA)
+            }
+            let cb = toRGBAf(b)
+            let cs = toRGBAf(s)
+            let csh = toRGBAf(sh)
+            let out1 = cb
+            let out2 = blend(dst: out1, src: cs)     // base then satellites
+            let out3 = blend(dst: out2, src: csh)    // then shooting
+            let pred = (b: denorm(out3.b), g: denorm(out3.g), r: denorm(out3.r), a: denorm(out3.a))
+            let actual = d
+            os_log("Composite check: predicted BGRA=(%{public}u,%{public}u,%{public}u,%{public}u) vs drawable BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
+                   log: log, type: .info,
+                   pred.b, pred.g, pred.r, pred.a, actual.b, actual.g, actual.r, actual.a)
+            let db = Int32(actual.b) - Int32(pred.b)
+            let dg = Int32(actual.g) - Int32(pred.g)
+            let dr = Int32(actual.r) - Int32(pred.r)
+            let da = Int32(actual.a) - Int32(pred.a)
+            if abs(db) > 3 || abs(dg) > 3 || abs(dr) > 3 || abs(da) > 3 {
+                os_log("Composite deviation: ΔBGRA=(%{public}d,%{public}d,%{public}d,%{public}d)", log: log, type: .error, db, dg, dr, da)
             }
         }
     }
