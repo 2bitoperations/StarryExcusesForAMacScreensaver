@@ -87,6 +87,12 @@ final class StarryMetalRenderer {
     private let debugDrawDecayProbe: Bool = true
     private var decayProbeInitializedSat: Bool = false
     private var decayProbeInitializedShoot: Bool = false
+
+    // 3) Readback diagnostics: sample center pixel periodically from each trail texture after decay+emission.
+    private let debugReadbackEveryNFrames: UInt64 = 10
+    private var rbBufferSat: MTLBuffer?
+    private var rbBufferShoot: MTLBuffer?
+    private var rbLogCounter: UInt64 = 0
     
     // MARK: - Init (onscreen)
     
@@ -511,6 +517,24 @@ final class StarryMetalRenderer {
                               sprites: drawData.shootingSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
+            }
+        }
+
+        // 3.5) Readback diagnostics: sample center pixel from trail textures post-decay+emission
+        if shouldReadbackThisFrame() {
+            ensureReadbackBuffers()
+            if let blit = commandBuffer.makeBlitCommandEncoder() {
+                blit.label = "TrailCenterReadback"
+                if let sat = layerTex.satellites, let buf = rbBufferSat {
+                    enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
+                }
+                if let shoot = layerTex.shooting, let buf = rbBufferShoot {
+                    enqueueCenterReadback(blit: blit, texture: shoot, buffer: buf)
+                }
+                blit.endEncoding()
+            }
+            commandBuffer.addCompletedHandler { [weak self] _ in
+                self?.logReadbackValues()
             }
         }
         
@@ -974,6 +998,59 @@ final class StarryMetalRenderer {
                                       shape: .rect))
         renderSprites(into: target, sprites: sprites, viewport: viewport, commandBuffer: commandBuffer)
         os_log("DecayProbe: drew one-time probe dot into %{public}@ at (%{public}.0f,%{public}.0f)", log: log, type: .info, label, Double(cx), Double(cy))
+    }
+    
+    // MARK: - Readback diagnostics
+    
+    private func shouldReadbackThisFrame() -> Bool {
+        return debugReadbackEveryNFrames > 0 && (frameCounter % debugReadbackEveryNFrames == 0)
+    }
+    
+    private func ensureReadbackBuffers() {
+        let len = 256 // bytesPerRow alignment requirement for texture->buffer blits
+        if rbBufferSat == nil { rbBufferSat = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbBufferShoot == nil { rbBufferShoot = device.makeBuffer(length: len, options: .storageModeShared) }
+        rbBufferSat?.label = "RB_Sat_Center"
+        rbBufferShoot?.label = "RB_Shoot_Center"
+    }
+    
+    private func enqueueCenterReadback(blit: MTLBlitCommandEncoder, texture: MTLTexture, buffer: MTLBuffer) {
+        let x = texture.width / 2
+        let y = texture.height / 2
+        let region = MTLRegionMake2D(x, y, 1, 1)
+        blit.copy(from: texture,
+                  sourceSlice: 0,
+                  sourceLevel: 0,
+                  sourceOrigin: region.origin,
+                  sourceSize: region.size,
+                  to: buffer,
+                  destinationOffset: 0,
+                  destinationBytesPerRow: 256,
+                  destinationBytesPerImage: 256)
+    }
+    
+    private func logReadbackValues() {
+        rbLogCounter &+= 1
+        func read(_ buf: MTLBuffer?) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8)? {
+            guard let buf = buf else { return nil }
+            let p = buf.contents().assumingMemoryBound(to: UInt8.self)
+            // BGRA8 in little-endian
+            let b = p[0]
+            let g = p[1]
+            let r = p[2]
+            let a = p[3]
+            return (b,g,r,a)
+        }
+        if let v = read(rbBufferSat) {
+            if rbLogCounter <= 10 || (rbLogCounter % 60 == 0) {
+                os_log("RB Sat center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
+            }
+        }
+        if let v = read(rbBufferShoot) {
+            if rbLogCounter <= 10 || (rbLogCounter % 60 == 0) {
+                os_log("RB Shoot center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
+            }
+        }
     }
     
     // MARK: - Debug logging
