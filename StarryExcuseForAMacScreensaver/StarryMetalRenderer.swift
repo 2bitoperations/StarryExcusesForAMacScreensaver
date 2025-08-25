@@ -75,10 +75,18 @@ final class StarryMetalRenderer {
     private var decayLogCount: UInt64 = 0
     private let decayLogFirstN: UInt64 = 8
     private let decayLogEveryNFrames: UInt64 = 180
-    // Optional: force a visible decay pulse periodically to verify the pass is effective.
-    // Set >0 (e.g., 240) to clamp keepFactor to pulse value every N frames for each layer.
-    private let debugForceDecayPulseEveryNFrames: UInt64 = 0   // disabled by default
-    private let debugDecayPulseKeep: Float = 0.80               // multiply trails by 0.8 on pulse frames
+    
+    // Strong visual diagnostics for decay (temporary)
+    // 1) Force a visible decay pulse periodically to verify the pass is effective.
+    // Set to >0 (e.g., 10) to clamp keepFactor to pulse value every N frames for each layer.
+    private let debugForceDecayPulseEveryNFrames: UInt64 = 10    // was 0 (disabled). Use 10 to make decay unmistakable.
+    private let debugDecayPulseKeep: Float = 0.85                // multiply trails by 0.85 on pulse frames
+    
+    // 2) Draw a one-time bright probe dot into each trail layer after a clear/resize.
+    // If decay works, this dot will fade away even with no sprites drawn over it.
+    private let debugDrawDecayProbe: Bool = true
+    private var decayProbeInitializedSat: Bool = false
+    private var decayProbeInitializedShoot: Bool = false
     
     // MARK: - Init (onscreen)
     
@@ -450,7 +458,7 @@ final class StarryMetalRenderer {
                           commandBuffer: commandBuffer)
         }
         
-        // 2) Satellites trail: decay then draw
+        // 2) Satellites trail: decay then draw (with optional diagnostics)
         if let satTex = layerTex.satellites {
             var keep = drawData.satellitesKeepFactor
             let willApplyDecay = keep < 1.0
@@ -465,6 +473,11 @@ final class StarryMetalRenderer {
             if keep < 1.0 {
                 applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
             }
+            // Draw a one-time probe dot to test decay (center of screen)
+            if debugDrawDecayProbe && !decayProbeInitializedSat, let dst = layerTex.satellites {
+                drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "SatProbe")
+                decayProbeInitializedSat = true
+            }
             if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
@@ -473,7 +486,7 @@ final class StarryMetalRenderer {
             }
         }
         
-        // 3) Shooting stars trail: decay then draw
+        // 3) Shooting stars trail: decay then draw (with optional diagnostics)
         if let shootTex = layerTex.shooting {
             var keep = drawData.shootingKeepFactor
             let willApplyDecay = keep < 1.0
@@ -487,6 +500,11 @@ final class StarryMetalRenderer {
             }
             if keep < 1.0 {
                 applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
+            }
+            // One-time probe dot
+            if debugDrawDecayProbe && !decayProbeInitializedShoot, let dst = layerTex.shooting {
+                drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "ShootProbe")
+                decayProbeInitializedShoot = true
             }
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
                 renderSprites(into: dst,
@@ -627,7 +645,7 @@ final class StarryMetalRenderer {
                           commandBuffer: commandBuffer)
         }
         
-        // 2) Satellites trail: decay then draw
+        // 2) Satellites trail: decay then draw (with optional diagnostics)
         if let _ = layerTex.satellites {
             var keep = drawData.satellitesKeepFactor
             if debugForceDecayPulseEveryNFrames > 0 && (headlessFrameCounter % debugForceDecayPulseEveryNFrames == 0) {
@@ -639,6 +657,10 @@ final class StarryMetalRenderer {
             if keep < 1.0 {
                 applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
             }
+            if debugDrawDecayProbe && !decayProbeInitializedSat, let dst = layerTex.satellites {
+                drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "SatProbe(headless)")
+                decayProbeInitializedSat = true
+            }
             if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
@@ -647,7 +669,7 @@ final class StarryMetalRenderer {
             }
         }
         
-        // 3) Shooting stars trail: decay then draw
+        // 3) Shooting stars trail: decay then draw (with optional diagnostics)
         if let _ = layerTex.shooting {
             var keep = drawData.shootingKeepFactor
             if debugForceDecayPulseEveryNFrames > 0 && (headlessFrameCounter % debugForceDecayPulseEveryNFrames == 0) {
@@ -658,6 +680,10 @@ final class StarryMetalRenderer {
             }
             if keep < 1.0 {
                 applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
+            }
+            if debugDrawDecayProbe && !decayProbeInitializedShoot, let dst = layerTex.shooting {
+                drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "ShootProbe(headless)")
+                decayProbeInitializedShoot = true
             }
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
                 renderSprites(into: dst,
@@ -816,6 +842,10 @@ final class StarryMetalRenderer {
         clear(texture: layerTex.shootingScratch)
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
+        
+        // Reset probe flags after full clear
+        decayProbeInitializedSat = false
+        decayProbeInitializedShoot = false
     }
     
     private func renderSprites(into target: MTLTexture,
@@ -926,6 +956,24 @@ final class StarryMetalRenderer {
             layerTex.shooting = layerTex.shootingScratch
             layerTex.shootingScratch = tmp
         }
+    }
+    
+    // Draw a small bright probe dot once; if decay works, this dot will fade over time.
+    private func drawDecayProbe(into target: MTLTexture,
+                                viewport: CGSize,
+                                commandBuffer: MTLCommandBuffer,
+                                label: String) {
+        let cx = Float(viewport.width * 0.5)
+        let cy = Float(viewport.height * 0.5)
+        let half: Float = 2.0 // 4x4 px
+        let colorPremul = SIMD4<Float>(1.0, 1.0, 1.0, 1.0) // opaque white
+        var sprites: [SpriteInstance] = []
+        sprites.append(SpriteInstance(centerPx: SIMD2<Float>(cx, cy),
+                                      halfSizePx: SIMD2<Float>(half, half),
+                                      colorPremul: colorPremul,
+                                      shape: .rect))
+        renderSprites(into: target, sprites: sprites, viewport: viewport, commandBuffer: commandBuffer)
+        os_log("DecayProbe: drew one-time probe dot into %{public}@ at (%{public}.0f,%{public}.0f)", log: log, type: .info, label, Double(cx), Double(cy))
     }
     
     // MARK: - Debug logging
