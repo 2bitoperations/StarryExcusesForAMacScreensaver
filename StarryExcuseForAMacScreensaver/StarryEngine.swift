@@ -269,7 +269,7 @@ final class StarryEngine {
         let overlayChanged = (config.debugOverlayEnabled != newConfig.debugOverlayEnabled)
         if overlayChanged {
             os_log("Debug overlay toggled: %{public}@", log: log, type: .info, newConfig.debugOverlayEnabled ? "ENABLED" : "disabled")
-            // Recreate preview moon renderer so its debug mask flag reflects overlay state.
+            // Recreate preview moon renderer
             moonRenderer = nil
         }
         
@@ -326,7 +326,7 @@ final class StarryEngine {
                                                  log: log,
                                                  brightBrightness: CGFloat(config.moonBrightBrightness),
                                                  darkBrightness: CGFloat(config.moonDarkBrightness),
-                                                 showLightAreaTextureFillMask: (config.debugOverlayEnabled && config.showLightAreaTextureFillMask))
+                                                 showLightAreaTextureFillMask: config.showLightAreaTextureFillMask)
                 os_log("MoonLayerRenderer (preview/CG) created", log: log, type: .info)
                 // fetch moon albedo once for GPU
                 if let tex = skyline.getMoon()?.textureImage {
@@ -507,7 +507,7 @@ final class StarryEngine {
             shootingKeepFactor: shootingKeep,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
-            showLightAreaTextureFillMask: (config.debugOverlayEnabled && config.showLightAreaTextureFillMask)
+            showLightAreaTextureFillMask: config.showLightAreaTextureFillMask
         )
         // Only send albedo once until skyline/moon changes
         if moonAlbedoDirty && logThisFrame {
@@ -637,7 +637,7 @@ final class StarryEngine {
             shootingKeepFactor: shootingKeep,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
-            showLightAreaTextureFillMask: (config.debugOverlayEnabled && config.showLightAreaTextureFillMask)
+            showLightAreaTextureFillMask: config.showLightAreaTextureFillMask
         )
         if moonAlbedoDirty && logThisFrame {
             os_log("advanceFrame(headless): moon albedo image attached for upload", log: log, type: .info)
