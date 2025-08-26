@@ -47,6 +47,18 @@ struct StarryRuntimeConfig {
     
     // Debug overlay (FPS / CPU / Time)
     var debugOverlayEnabled: Bool = false
+
+    // --- Engine-side diagnostics to prove/disprove base contamination ---
+    // If > 0, every Nth frame we will intentionally drop all baseSprites for that frame.
+    // If the renderer then logs "ALERT: Base changed in frame with zero baseSprites",
+    // it proves that something else (e.g., trails) touched the base layer.
+    var debugDropBaseEveryNFrames: Int = 0
+    // If > 0, schedule a full clear (clearAll) every Nth frame. This should
+    // reset all accumulation textures and, combined with renderer-side clear readbacks,
+    // verifies that clears are actually executed.
+    var debugForceClearEveryNFrames: Int = 0
+    // If true, log per frame (not just first few/every 60) to correlate events tightly.
+    var debugLogEveryFrame: Bool = false
 }
 
 // Human-readable dumping for logging/debugging
@@ -82,7 +94,10 @@ StarryRuntimeConfig(
   satellitesBrightness: \(satellitesBrightness),
   satellitesTrailing: \(satellitesTrailing),
   satellitesTrailDecay: \(satellitesTrailDecay),
-  debugOverlayEnabled: \(debugOverlayEnabled)
+  debugOverlayEnabled: \(debugOverlayEnabled),
+  debugDropBaseEveryNFrames: \(debugDropBaseEveryNFrames),
+  debugForceClearEveryNFrames: \(debugForceClearEveryNFrames),
+  debugLogEveryFrame: \(debugLogEveryFrame)
 )
 """
     }
@@ -232,6 +247,19 @@ final class StarryEngine {
             satellitesRenderer = nil
         }
         
+        // Diagnostics toggles change doesn't require rebuilds, just update config.
+        let diagnosticsChanged =
+            config.debugDropBaseEveryNFrames != newConfig.debugDropBaseEveryNFrames ||
+            config.debugForceClearEveryNFrames != newConfig.debugForceClearEveryNFrames ||
+            config.debugLogEveryFrame != newConfig.debugLogEveryFrame
+        if diagnosticsChanged {
+            os_log("Diagnostics config changed: dropBaseEveryN=%{public}d, forceClearEveryN=%{public}d, logEveryFrame=%{public}@",
+                   log: log, type: .info,
+                   newConfig.debugDropBaseEveryNFrames,
+                   newConfig.debugForceClearEveryNFrames,
+                   newConfig.debugLogEveryFrame ? "true" : "false")
+        }
+        
         config = newConfig
         os_log("New config applied", log: log, type: .info)
 
@@ -345,7 +373,14 @@ final class StarryEngine {
     
     func advanceFrameGPU() -> StarryDrawData {
         engineFrameIndex &+= 1
-        let logThisFrame = verboseLogging && (engineFrameIndex <= 5 || engineFrameIndex % 60 == 0)
+
+        // Optional periodic forced clears for diagnostics
+        if config.debugForceClearEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugForceClearEveryNFrames) == 0) {
+            forceClearOnNextFrame = true
+            os_log("advanceFrameGPU: DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
+        }
+
+        let logThisFrame = (verboseLogging && (engineFrameIndex <= 5 || engineFrameIndex % 60 == 0)) || config.debugLogEveryFrame
         if logThisFrame {
             os_log("advanceFrameGPU: begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
@@ -405,13 +440,21 @@ final class StarryEngine {
             clearAll = true
         }
 
-        // Honor a forced clear (e.g., config change or resize)
+        // Honor a forced clear (e.g., config change or resize or diagnostics)
         if forceClearOnNextFrame {
             os_log("advanceFrameGPU: forceClearOnNextFrame active — will clear accumulation textures", log: log, type: .info)
             clearAll = true
             satellitesKeep = 0.0
             shootingKeep = 0.0
             forceClearOnNextFrame = false
+        }
+
+        // DIAGNOSTIC: Intentionally drop base sprites every N frames
+        if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
+            let dropped = baseSprites.count
+            baseSprites.removeAll()
+            os_log("advanceFrameGPU: DIAG dropped all base sprites this frame (every N=%{public}d) — dropped=%{public}d",
+                   log: log, type: .info, config.debugDropBaseEveryNFrames, dropped)
         }
         
         // Moon params
@@ -463,7 +506,14 @@ final class StarryEngine {
     @discardableResult
     func advanceFrame() -> CGImage? {
         engineFrameIndex &+= 1
-        let logThisFrame = verboseLogging && (engineFrameIndex <= 5 || engineFrameIndex % 60 == 0)
+
+        // Optional periodic forced clears for diagnostics
+        if config.debugForceClearEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugForceClearEveryNFrames) == 0) {
+            forceClearOnNextFrame = true
+            os_log("advanceFrame(headless): DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
+        }
+
+        let logThisFrame = (verboseLogging && (engineFrameIndex <= 5 || engineFrameIndex % 60 == 0)) || config.debugLogEveryFrame
         if logThisFrame {
             os_log("advanceFrame (headless): begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
@@ -516,13 +566,21 @@ final class StarryEngine {
             clearAll = true
         }
 
-        // Honor a forced clear (e.g., config change or resize)
+        // Honor a forced clear (e.g., config change or resize or diagnostics)
         if forceClearOnNextFrame {
             os_log("advanceFrame(headless): forceClearOnNextFrame active — will clear accumulation textures", log: log, type: .info)
             clearAll = true
             satellitesKeep = 0.0
             shootingKeep = 0.0
             forceClearOnNextFrame = false
+        }
+
+        // DIAGNOSTIC: Intentionally drop base sprites every N frames
+        if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
+            let dropped = baseSprites.count
+            baseSprites.removeAll()
+            os_log("advanceFrame(headless): DIAG dropped all base sprites this frame (every N=%{public}d) — dropped=%{public}d",
+                   log: log, type: .info, config.debugDropBaseEveryNFrames, dropped)
         }
         
         // Moon params
