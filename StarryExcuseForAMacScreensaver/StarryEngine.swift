@@ -165,6 +165,11 @@ final class StarryEngine {
         os_log("StarryEngine initialized with config:\n%{public}@",
                log: log, type: .info, config.description)
         os_log("Initial size: %{public}.0fx%{public}.0f", log: log, type: .info, Double(size.width), Double(size.height))
+        
+        // Important: always clear persistent GPU layers on the first frame of a new engine instance
+        // so manual "Clear Preview" actually clears the Metal accumulation textures.
+        forceClearOnNextFrame = true
+        os_log("Engine init: will force clear on next frame to reset accumulation textures", log: log, type: .info)
     }
     
     // MARK: - Resizing

@@ -147,6 +147,9 @@ final class StarryMetalRenderer {
     private var rbBasePreCenter: MTLBuffer?
     private var rbBasePostCenter: MTLBuffer?
     
+    // NEW: remember if we presented trails-only in the last onscreen composite
+    private var lastPresentedTrailsOnly: Bool = false
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -793,6 +796,8 @@ final class StarryMetalRenderer {
         if presentTrailsOnlyThisFrame {
             os_log("Debug: presenting trails-only this frame", log: log, type: .info)
         }
+        // Remember for prediction check logs
+        lastPresentedTrailsOnly = presentTrailsOnlyThisFrame
         
         // Log a concise summary each readback interval (and at first few frames)
         if (frameCounter < 5) || shouldReadbackThisFrame() {
@@ -1699,33 +1704,46 @@ final class StarryMetalRenderer {
                              b: src.b + dst.b * oneMinusA,
                              a: src.a + dst.a * oneMinusA)
             }
+            func applyTint(_ c: RGBAf, tint: RGBAf) -> RGBAf {
+                return RGBAf(r: c.r * tint.r, g: c.g * tint.g, b: c.b * tint.b, a: c.a * tint.a)
+            }
             let cb = toRGBAf(b)
             let cs = toRGBAf(s)
             let csh = toRGBAf(sh)
-            // Layers-only prediction (what we had before)
-            let out1 = cb
-            let out2 = blend(dst: out1, src: cs)     // base then satellites
-            let out3 = blend(dst: out2, src: csh)    // then shooting
-            let predLayers = (b: denorm(out3.b), g: denorm(out3.g), r: denorm(out3.r), a: denorm(out3.a))
+            
+            // Tints used in onscreen composite (when enabled)
+            let baseTint = debugTintLayers ? RGBAf(r: 0.7, g: 0.9, b: 1.0, a: 1.0) : RGBAf(r: 1, g: 1, b: 1, a: 1)
+            let satTint  = debugTintLayers ? RGBAf(r: 0.6, g: 1.0, b: 0.6, a: 1.0) : RGBAf(r: 1, g: 1, b: 1, a: 1)
+            let shTint   = debugTintLayers ? RGBAf(r: 1.0, g: 0.5, b: 0.5, a: 1.0) : RGBAf(r: 1, g: 1, b: 1, a: 1)
+            let cbT = applyTint(cb, tint: baseTint)
+            let csT = applyTint(cs, tint: satTint)
+            let cshT = applyTint(csh, tint: shTint)
+            
             // Prediction including drawable clear background (opaque black)
             let bg = RGBAf(r: 0, g: 0, b: 0, a: 1)   // clearColor = (0,0,0,1)
-            let outB1 = blend(dst: bg, src: cb)
-            let outB2 = blend(dst: outB1, src: cs)
-            let outB3 = blend(dst: outB2, src: csh)
-            let predWithBg = (b: denorm(outB3.b), g: denorm(outB3.g), r: denorm(outB3.r), a: denorm(outB3.a))
+            let predicted: RGBAf
+            if lastPresentedTrailsOnly {
+                // Trails-only: omit base
+                let out1 = blend(dst: bg, src: csT)
+                predicted = blend(dst: out1, src: cshT)
+            } else {
+                let out1 = blend(dst: bg, src: cbT)
+                let out2 = blend(dst: out1, src: csT)     // base then satellites
+                predicted = blend(dst: out2, src: cshT)    // then shooting
+            }
+            let predTinted = (b: denorm(predicted.b), g: denorm(predicted.g), r: denorm(predicted.r), a: denorm(predicted.a))
             let actual = d
-            os_log("Composite check (layers-only): predicted BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
-                   log: log, type: .info, predLayers.b, predLayers.g, predLayers.r, predLayers.a)
-            os_log("Composite check (incl bg, NOTE: onscreen uses tint=%{public}@): predicted BGRA=(%{public}u,%{public}u,%{public}u,%{public}u) vs drawable BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
+            os_log("Composite check (incl bg, tinted=%{public}@, trailsOnly=%{public}@): predicted BGRA=(%{public}u,%{public}u,%{public}u,%{public}u) vs drawable BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
                    log: log, type: .info,
                    debugTintLayers ? "YES" : "no",
-                   predWithBg.b, predWithBg.g, predWithBg.r, predWithBg.a, actual.b, actual.g, actual.r, actual.a)
-            let db = Int32(actual.b) - Int32(predWithBg.b)
-            let dg = Int32(actual.g) - Int32(predWithBg.g)
-            let dr = Int32(actual.r) - Int32(predWithBg.r)
-            let da = Int32(actual.a) - Int32(predWithBg.a)
+                   lastPresentedTrailsOnly ? "YES" : "no",
+                   predTinted.b, predTinted.g, predTinted.r, predTinted.a, actual.b, actual.g, actual.r, actual.a)
+            let db = Int32(actual.b) - Int32(predTinted.b)
+            let dg = Int32(actual.g) - Int32(predTinted.g)
+            let dr = Int32(actual.r) - Int32(predTinted.r)
+            let da = Int32(actual.a) - Int32(predTinted.a)
             if abs(db) > 3 || abs(dg) > 3 || abs(dr) > 3 || abs(da) > 3 {
-                os_log("Composite deviation (incl bg): ΔBGRA=(%{public}d,%{public}d,%{public}d,%{public}d)",
+                os_log("Composite deviation (tinted incl bg): ΔBGRA=(%{public}d,%{public}d,%{public}d,%{public}d)",
                        log: log, type: .error, db, dg, dr, da)
             }
         }
