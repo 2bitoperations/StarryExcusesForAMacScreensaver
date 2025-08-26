@@ -138,6 +138,15 @@ final class StarryMetalRenderer {
     // Track when we explicitly clear, to correlate with logs
     private var lastClearReason: String = "none"
     
+    // NEW: verify clears by sampling center pixel immediately after clear pass
+    private var rbClearBaseCenter: MTLBuffer?
+    private var rbClearSatCenter: MTLBuffer?
+    private var rbClearShootCenter: MTLBuffer?
+    
+    // NEW: per-frame base pre/post center readbacks to detect unexpected base writes
+    private var rbBasePreCenter: MTLBuffer?
+    private var rbBasePostCenter: MTLBuffer?
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -504,6 +513,16 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
+        // NEW: base pre-center readback before any draws in this frame
+        if let baseTex = layerTex.base {
+            ensureBasePrePostBuffers()
+            if let blit = commandBuffer.makeBlitCommandEncoder(), let buf = rbBasePreCenter {
+                blit.label = "Base-PreCenter"
+                enqueueCenterReadback(blit: blit, texture: baseTex, buffer: buf)
+                blit.endEncoding()
+            }
+        }
+        
         // Optional: pre-decay center readbacks (phase diagnostics)
         if shouldReadbackThisFrame() && debugPhaseReadbacks {
             ensurePhaseReadbackBuffers()
@@ -726,6 +745,21 @@ final class StarryMetalRenderer {
             }
         }
         
+        // NEW: base post-center readback after trail emissions, before composite to drawable
+        if let baseTex = layerTex.base {
+            ensureBasePrePostBuffers()
+            if let blit = commandBuffer.makeBlitCommandEncoder(), let buf = rbBasePostCenter {
+                blit.label = "Base-PostCenter"
+                enqueueCenterReadback(blit: blit, texture: baseTex, buffer: buf)
+                blit.endEncoding()
+            }
+        }
+        // Compare base pre/post for unexpected modifications when no base sprites were drawn
+        let baseSpritesCountThisFrame = drawData.baseSprites.count
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            self?.checkForUnexpectedBaseChanges(baseSpritesCount: baseSpritesCountThisFrame, phase: "onscreen")
+        }
+        
         // 4) Composite to drawable and draw moon on top
         guard let drawable = metalLayer?.nextDrawable() else {
             drawableNilLogCount &+= 1
@@ -894,6 +928,16 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
+        // NEW: base pre-center readback
+        if let baseTex = layerTex.base {
+            ensureBasePrePostBuffers()
+            if let blit = commandBuffer.makeBlitCommandEncoder(), let buf = rbBasePreCenter {
+                blit.label = "Base-PreCenter(headless)"
+                enqueueCenterReadback(blit: blit, texture: baseTex, buffer: buf)
+                blit.endEncoding()
+            }
+        }
+        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             os_log("renderSprites(headless): target=%{public}@ ptr=%{public}@ count=%{public}d",
@@ -959,6 +1003,20 @@ final class StarryMetalRenderer {
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
             }
+        }
+        
+        // NEW: base post-center readback
+        if let baseTex = layerTex.base {
+            ensureBasePrePostBuffers()
+            if let blit = commandBuffer.makeBlitCommandEncoder(), let buf = rbBasePostCenter {
+                blit.label = "Base-PostCenter(headless)"
+                enqueueCenterReadback(blit: blit, texture: baseTex, buffer: buf)
+                blit.endEncoding()
+            }
+        }
+        let baseSpritesCountThisFrame = drawData.baseSprites.count
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            self?.checkForUnexpectedBaseChanges(baseSpritesCount: baseSpritesCountThisFrame, phase: "headless")
         }
         
         // 4) Composite into offscreen target and draw moon
@@ -1144,8 +1202,27 @@ final class StarryMetalRenderer {
         clear(texture: layerTex.satellitesScratch)
         clear(texture: layerTex.shooting)
         clear(texture: layerTex.shootingScratch)
+        
+        // NEW: Verify clears by sampling center pixel of each cleared texture
+        ensureClearVerifyBuffers()
+        if let blit = commandBuffer.makeBlitCommandEncoder() {
+            blit.label = "ClearVerify-Readbacks"
+            if let base = layerTex.base, let buf = rbClearBaseCenter {
+                enqueueCenterReadback(blit: blit, texture: base, buffer: buf)
+            }
+            if let sat = layerTex.satellites, let buf = rbClearSatCenter {
+                enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
+            }
+            if let shoot = layerTex.shooting, let buf = rbClearShootCenter {
+                enqueueCenterReadback(blit: blit, texture: shoot, buffer: buf)
+            }
+            blit.endEncoding()
+        }
+        
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
+        logClearVerifyBuffers()
+        
         os_log("ClearOffscreenTextures: complete (reason=%{public}@)", log: log, type: .info, reason)
         
         // Reset probe flags after full clear
@@ -1360,6 +1437,24 @@ final class StarryMetalRenderer {
         rbShootPre?.label = "RB_Shoot_PreDecay"
         rbShootPostDecay?.label = "RB_Shoot_PostDecay"
         rbShootPostEmit?.label = "RB_Shoot_PostEmit"
+    }
+    
+    private func ensureClearVerifyBuffers() {
+        let len = 256
+        if rbClearBaseCenter == nil { rbClearBaseCenter = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbClearSatCenter == nil { rbClearSatCenter = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbClearShootCenter == nil { rbClearShootCenter = device.makeBuffer(length: len, options: .storageModeShared) }
+        rbClearBaseCenter?.label = "RB_Clear_Base_Center"
+        rbClearSatCenter?.label = "RB_Clear_Sat_Center"
+        rbClearShootCenter?.label = "RB_Clear_Shoot_Center"
+    }
+    
+    private func ensureBasePrePostBuffers() {
+        let len = 256
+        if rbBasePreCenter == nil { rbBasePreCenter = device.makeBuffer(length: len, options: .storageModeShared) }
+        if rbBasePostCenter == nil { rbBasePostCenter = device.makeBuffer(length: len, options: .storageModeShared) }
+        rbBasePreCenter?.label = "RB_Base_Pre_Center"
+        rbBasePostCenter?.label = "RB_Base_Post_Center"
     }
     
     private func enqueueCenterReadback(blit: MTLBlitCommandEncoder, texture: MTLTexture, buffer: MTLBuffer) {
@@ -1652,5 +1747,63 @@ final class StarryMetalRenderer {
     private func ptrString(_ t: MTLTexture) -> String {
         let p = Unmanaged.passUnretained(t as AnyObject).toOpaque()
         return String(describing: p)
+    }
+    
+    // MARK: - New verification/logging helpers
+    
+    private func readBGRA(_ buf: MTLBuffer?) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8)? {
+        guard let buf = buf else { return nil }
+        let p = buf.contents().assumingMemoryBound(to: UInt8.self)
+        return (p[0], p[1], p[2], p[3])
+    }
+    
+    private func logClearVerifyBuffers() {
+        let b = readBGRA(rbClearBaseCenter)
+        let s = readBGRA(rbClearSatCenter)
+        let sh = readBGRA(rbClearShootCenter)
+        if let v = b {
+            os_log("VERIFY CLEAR [%{public}@] Base center after clear BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
+                   log: log, type: .info, lastClearReason, v.b, v.g, v.r, v.a)
+            if v.a != 0 || v.r != 0 || v.g != 0 || v.b != 0 {
+                os_log("ALERT: Base layer not fully cleared (nonzero center pixel) — reason=%{public}@", log: log, type: .fault, lastClearReason)
+            }
+        } else {
+            os_log("VERIFY CLEAR [%{public}@] Base: no readback", log: log, type: .error, lastClearReason)
+        }
+        if let v = s {
+            os_log("VERIFY CLEAR [%{public}@] Satellites center after clear BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
+                   log: log, type: .info, lastClearReason, v.b, v.g, v.r, v.a)
+            if v.a != 0 || v.r != 0 || v.g != 0 || v.b != 0 {
+                os_log("ALERT: Satellites layer not fully cleared (nonzero center pixel) — reason=%{public}@", log: log, type: .fault, lastClearReason)
+            }
+        } else {
+            os_log("VERIFY CLEAR [%{public}@] Satellites: no readback", log: log, type: .error, lastClearReason)
+        }
+        if let v = sh {
+            os_log("VERIFY CLEAR [%{public}@] Shooting center after clear BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
+                   log: log, type: .info, lastClearReason, v.b, v.g, v.r, v.a)
+            if v.a != 0 || v.r != 0 || v.g != 0 || v.b != 0 {
+                os_log("ALERT: Shooting layer not fully cleared (nonzero center pixel) — reason=%{public}@", log: log, type: .fault, lastClearReason)
+            }
+        } else {
+            os_log("VERIFY CLEAR [%{public}@] Shooting: no readback", log: log, type: .error, lastClearReason)
+        }
+    }
+    
+    private func checkForUnexpectedBaseChanges(baseSpritesCount: Int, phase: String) {
+        let pre = readBGRA(rbBasePreCenter)
+        let post = readBGRA(rbBasePostCenter)
+        guard let vPre = pre, let vPost = post else {
+            os_log("Base pre/post center not available (%{public}@)", log: log, type: .error, phase)
+            return
+        }
+        let changed = (vPre.b != vPost.b) || (vPre.g != vPost.g) || (vPre.r != vPost.r) || (vPre.a != vPost.a)
+        if changed && baseSpritesCount == 0 {
+            os_log("ALERT: Base changed in frame with zero baseSprites (%{public}@). pre=(%{public}u,%{public}u,%{public}u,%{public}u) post=(%{public}u,%{public}u,%{public}u,%{public}u)",
+                   log: log, type: .fault, phase, vPre.b, vPre.g, vPre.r, vPre.a, vPost.b, vPost.g, vPost.r, vPost.a)
+        } else {
+            os_log("Base pre/post (%{public}@): pre=(%{public}u,%{public}u,%{public}u,%{public}u) post=(%{public}u,%{public}u,%{public}u,%{public}u) baseSprites=%{public}d changed=%{public}@",
+                   log: log, type: .debug, phase, vPre.b, vPre.g, vPre.r, vPre.a, vPost.b, vPost.g, vPost.r, vPost.a, baseSpritesCount, changed ? "YES" : "no")
+        }
     }
 }
