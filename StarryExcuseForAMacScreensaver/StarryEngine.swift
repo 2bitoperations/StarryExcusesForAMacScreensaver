@@ -265,6 +265,14 @@ final class StarryEngine {
                    newConfig.debugLogEveryFrame ? "true" : "false")
         }
         
+        // If debug overlay visibility toggled, we may need to rebuild preview moon renderer
+        let overlayChanged = (config.debugOverlayEnabled != newConfig.debugOverlayEnabled)
+        if overlayChanged {
+            os_log("Debug overlay toggled: %{public}@", log: log, type: .info, newConfig.debugOverlayEnabled ? "ENABLED" : "disabled")
+            // Recreate preview moon renderer so its debug mask flag reflects overlay state.
+            moonRenderer = nil
+        }
+        
         config = newConfig
         os_log("New config applied", log: log, type: .info)
 
@@ -318,7 +326,7 @@ final class StarryEngine {
                                                  log: log,
                                                  brightBrightness: CGFloat(config.moonBrightBrightness),
                                                  darkBrightness: CGFloat(config.moonDarkBrightness),
-                                                 showLightAreaTextureFillMask: config.showLightAreaTextureFillMask)
+                                                 showLightAreaTextureFillMask: (config.debugOverlayEnabled && config.showLightAreaTextureFillMask))
                 os_log("MoonLayerRenderer (preview/CG) created", log: log, type: .info)
                 // fetch moon albedo once for GPU
                 if let tex = skyline.getMoon()?.textureImage {
@@ -379,8 +387,10 @@ final class StarryEngine {
     func advanceFrameGPU() -> StarryDrawData {
         engineFrameIndex &+= 1
 
-        // Optional periodic forced clears for diagnostics
-        if config.debugForceClearEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugForceClearEveryNFrames) == 0) {
+        // Optional periodic forced clears for diagnostics (only when debug overlay is enabled)
+        if config.debugOverlayEnabled &&
+            config.debugForceClearEveryNFrames > 0 &&
+            (engineFrameIndex % UInt64(config.debugForceClearEveryNFrames) == 0) {
             forceClearOnNextFrame = true
             os_log("advanceFrameGPU: DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
         }
@@ -454,8 +464,10 @@ final class StarryEngine {
             forceClearOnNextFrame = false
         }
 
-        // DIAGNOSTIC: Intentionally drop base sprites every N frames
-        if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
+        // DIAGNOSTIC: Intentionally drop base sprites every N frames (only when debug overlay is enabled)
+        if config.debugOverlayEnabled &&
+            config.debugDropBaseEveryNFrames > 0 &&
+            (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
             let dropped = baseSprites.count
             baseSprites.removeAll()
             os_log("advanceFrameGPU: DIAG dropped all base sprites this frame (every N=%{public}d) — dropped=%{public}d",
@@ -495,7 +507,7 @@ final class StarryEngine {
             shootingKeepFactor: shootingKeep,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
-            showLightAreaTextureFillMask: config.showLightAreaTextureFillMask
+            showLightAreaTextureFillMask: (config.debugOverlayEnabled && config.showLightAreaTextureFillMask)
         )
         // Only send albedo once until skyline/moon changes
         if moonAlbedoDirty && logThisFrame {
@@ -512,8 +524,10 @@ final class StarryEngine {
     func advanceFrame() -> CGImage? {
         engineFrameIndex &+= 1
 
-        // Optional periodic forced clears for diagnostics
-        if config.debugForceClearEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugForceClearEveryNFrames) == 0) {
+        // Optional periodic forced clears for diagnostics (only when debug overlay is enabled)
+        if config.debugOverlayEnabled &&
+            config.debugForceClearEveryNFrames > 0 &&
+            (engineFrameIndex % UInt64(config.debugForceClearEveryNFrames) == 0) {
             forceClearOnNextFrame = true
             os_log("advanceFrame(headless): DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
         }
@@ -580,8 +594,10 @@ final class StarryEngine {
             forceClearOnNextFrame = false
         }
 
-        // DIAGNOSTIC: Intentionally drop base sprites every N frames
-        if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
+        // DIAGNOSTIC: Intentionally drop base sprites every N frames (only when debug overlay is enabled)
+        if config.debugOverlayEnabled &&
+            config.debugDropBaseEveryNFrames > 0 &&
+            (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
             let dropped = baseSprites.count
             baseSprites.removeAll()
             os_log("advanceFrame(headless): DIAG dropped all base sprites this frame (every N=%{public}d) — dropped=%{public}d",
@@ -621,7 +637,7 @@ final class StarryEngine {
             shootingKeepFactor: shootingKeep,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
-            showLightAreaTextureFillMask: config.showLightAreaTextureFillMask
+            showLightAreaTextureFillMask: (config.debugOverlayEnabled && config.showLightAreaTextureFillMask)
         )
         if moonAlbedoDirty && logThisFrame {
             os_log("advanceFrame(headless): moon albedo image attached for upload", log: log, type: .info)
