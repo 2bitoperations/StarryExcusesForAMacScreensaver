@@ -41,7 +41,8 @@ final class StarryMetalRenderer {
     
     // Pipelines
     private var compositePipeline: MTLRenderPipelineState!
-    private var spritePipeline: MTLRenderPipelineState!
+    private var spriteOverPipeline: MTLRenderPipelineState!      // standard premultiplied alpha ("over")
+    private var spriteAdditivePipeline: MTLRenderPipelineState!  // additive for trails
     private var decaySampledPipeline: MTLRenderPipelineState!
     private var moonPipeline: MTLRenderPipelineState!
     
@@ -152,10 +153,10 @@ final class StarryMetalRenderer {
             blend?.alphaBlendOperation = .add
             compositePipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
-        // Sprite instanced pipeline
+        // Sprite instanced pipeline: premultiplied alpha "over" for base sprites
         do {
             let desc = MTLRenderPipelineDescriptor()
-            desc.label = "Sprites"
+            desc.label = "SpritesOver"
             desc.vertexFunction = library.makeFunction(name: "SpriteVertex")
             desc.fragmentFunction = library.makeFunction(name: "SpriteFragment")
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
@@ -167,7 +168,24 @@ final class StarryMetalRenderer {
             blend?.destinationAlphaBlendFactor = .oneMinusSourceAlpha
             blend?.rgbBlendOperation = .add
             blend?.alphaBlendOperation = .add
-            spritePipeline = try device.makeRenderPipelineState(descriptor: desc)
+            spriteOverPipeline = try device.makeRenderPipelineState(descriptor: desc)
+        }
+        // Sprite instanced pipeline: additive for trails (works with decay pass)
+        do {
+            let desc = MTLRenderPipelineDescriptor()
+            desc.label = "SpritesAdditive"
+            desc.vertexFunction = library.makeFunction(name: "SpriteVertex")
+            desc.fragmentFunction = library.makeFunction(name: "SpriteFragment")
+            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+            let blend = desc.colorAttachments[0]
+            blend?.isBlendingEnabled = true
+            blend?.sourceRGBBlendFactor = .one
+            blend?.sourceAlphaBlendFactor = .one
+            blend?.destinationRGBBlendFactor = .one
+            blend?.destinationAlphaBlendFactor = .one
+            blend?.rgbBlendOperation = .add
+            blend?.alphaBlendOperation = .add
+            spriteAdditivePipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
         // Decay sampled pipeline: robust pass that samples source texture and multiplies by keep into scratch target.
         do {
@@ -461,11 +479,11 @@ final class StarryMetalRenderer {
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
-                          viewport: drawData.size,
+                          pipeline: spriteOverPipeline,
                           commandBuffer: commandBuffer)
         }
         
-        // 2) Satellites trail: decay then draw
+        // 2) Satellites trail: decay then draw (additive blending works with decay to create trails)
         if layerTex.satellites != nil {
             applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
             if !debugSkipSatellitesDraw,
@@ -473,18 +491,18 @@ final class StarryMetalRenderer {
                let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
-                              viewport: drawData.size,
+                              pipeline: spriteAdditivePipeline,
                               commandBuffer: commandBuffer)
             }
         }
         
-        // 3) Shooting stars trail: decay then draw
+        // 3) Shooting stars trail: decay then draw (additive)
         if layerTex.shooting != nil {
             applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
                 renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
-                              viewport: drawData.size,
+                              pipeline: spriteAdditivePipeline,
                               commandBuffer: commandBuffer)
             }
         }
@@ -628,11 +646,11 @@ final class StarryMetalRenderer {
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
-                          viewport: drawData.size,
+                          pipeline: spriteOverPipeline,
                           commandBuffer: commandBuffer)
         }
         
-        // 2) Satellites trail: decay then draw
+        // 2) Satellites trail: decay then draw (additive)
         if layerTex.satellites != nil {
             applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
             if !debugSkipSatellitesDraw,
@@ -640,18 +658,18 @@ final class StarryMetalRenderer {
                let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
-                              viewport: drawData.size,
+                              pipeline: spriteAdditivePipeline,
                               commandBuffer: commandBuffer)
             }
         }
         
-        // 3) Shooting stars trail: decay then draw
+        // 3) Shooting stars trail: decay then draw (additive)
         if layerTex.shooting != nil {
             applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
                 renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
-                              viewport: drawData.size,
+                              pipeline: spriteAdditivePipeline,
                               commandBuffer: commandBuffer)
             }
         }
@@ -825,7 +843,7 @@ final class StarryMetalRenderer {
     
     private func renderSprites(into target: MTLTexture,
                                sprites: [SpriteInstance],
-                               viewport: CGSize,
+                               pipeline: MTLRenderPipelineState,
                                commandBuffer: MTLCommandBuffer) {
         guard !sprites.isEmpty else { return }
         // Ensure buffer capacity
@@ -857,7 +875,7 @@ final class StarryMetalRenderer {
                              znear: 0, zfar: 1)
         encoder.setViewport(vp)
         
-        encoder.setRenderPipelineState(spritePipeline)
+        encoder.setRenderPipelineState(pipeline)
         encoder.setVertexBuffer(spriteBuffer, offset: 0, index: 1)
         // IMPORTANT: use the actual render target size in TEXELS so SpriteVertex maths
         // matches the units used by SpriteInstance.centerPx/halfSizePx (pixel-like).
