@@ -96,14 +96,14 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
         // Rect
         return rgba;
     } else {
-        // Circle with soft edge
-        float r2 = dot(in.local, in.local); // local is in [-1,1] so radius=1
-        if (r2 > 1.0) {
+        // Circle with a thin feather only at the rim
+        float r = length(in.local); // 0 at center, 1 at edge
+        if (r > 1.0) {
             discard_fragment();
         }
-        // Smooth edge for anti-alias; ensure edge0 < edge1
-        float edge = smoothstep(0.9, 1.0, 1.0 - r2);
-        return float4(rgba.rgb * edge, rgba.a * edge);
+        // Feather the last ~2% of the radius. Inside that, alpha ~1.
+        float a = 1.0 - smoothstep(0.98, 1.0, r);
+        return float4(rgba.rgb * a, rgba.a * a);
     }
 }
 
