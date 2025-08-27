@@ -914,18 +914,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         renderer.render(drawData: drawData)
     }
     
-    // Convert half-life to per-frame keep factor at a target FPS (for legacy engine config compatibility)
-    private func perFrameKeep(fromHalfLife halfLife: Double, fps: Double) -> Double {
-        guard halfLife > 0, fps > 0 else { return 1.0 }
-        return pow(0.5, 1.0 / (halfLife * fps))
-    }
-    
-    // Convert half-life to "seconds to 1% residual" (legacy satellites field) for engine compatibility
-    private func secondsToOnePercent(fromHalfLife halfLife: Double) -> Double {
-        guard halfLife > 0 else { return 0.1 }
-        return halfLife * Darwin.log(100.0) / Darwin.log(2.0) // ≈ halfLife / 0.1505
-    }
-    
     private func currentPreviewRuntimeConfig() -> StarryRuntimeConfig {
         // Derive satellitesAvgSpawnSeconds from slider (per minute) if slider exists.
         var satellitesAvg: Double = defaultsManager.satellitesAvgSpawnSeconds
@@ -933,13 +921,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             let perMinute = max(0.1, slider.doubleValue)
             satellitesAvg = 60.0 / perMinute
         }
-        // Use current UI values for trail half-lives
-        let shootingHL = shootingStarsTrailDecaySlider.doubleValue
-        let satellitesHL = satellitesTrailDecaySlider?.doubleValue ?? defaultsManager.satellitesTrailHalfLifeSeconds
-        // Convert half-life to legacy engine fields for now
-        let assumedFPS = 60.0
-        let shootingKeepFactor = perFrameKeep(fromHalfLife: shootingHL, fps: assumedFPS)
-        let satellitesFadeSecondsTo1Percent = secondsToOnePercent(fromHalfLife: satellitesHL)
         
         return StarryRuntimeConfig(
             starsPerUpdate: starsPerUpdate.integerValue,
@@ -961,7 +942,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             shootingStarsSpeed: shootingStarsSpeedSlider.doubleValue,
             shootingStarsThickness: shootingStarsThicknessSlider.doubleValue,
             shootingStarsBrightness: shootingStarsBrightnessSlider.doubleValue,
-            shootingStarsTrailDecay: shootingKeepFactor,
             shootingStarsDebugShowSpawnBounds: (shootingStarsDebugSpawnBoundsCheckbox.state == .on),
             // Use optional map to preserve defaults when control not present.
             satellitesEnabled: satellitesEnabledCheckbox.map { $0.state == .on } ?? defaultsManager.satellitesEnabled,
@@ -970,7 +950,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             satellitesSize: satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize,
             satellitesBrightness: satellitesBrightnessSlider?.doubleValue ?? defaultsManager.satellitesBrightness,
             satellitesTrailing: satellitesTrailingCheckbox.map { $0.state == .on } ?? defaultsManager.satellitesTrailing,
-            satellitesTrailDecay: satellitesFadeSecondsTo1Percent,
             debugOverlayEnabled: debugOverlayEnabledCheckbox.map { $0.state == .on } ?? defaultsManager.debugOverlayEnabled
         )
     }
