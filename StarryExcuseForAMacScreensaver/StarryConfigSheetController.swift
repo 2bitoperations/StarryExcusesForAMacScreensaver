@@ -77,6 +77,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var satellitesBrightnessSlider: NSSlider?
     @IBOutlet weak var satellitesBrightnessPreview: NSTextField?
     @IBOutlet weak var satellitesTrailingCheckbox: NSSwitch?
+    // INTERPRETATION CHANGE: satellitesTrailDecaySlider now represents fade seconds (0.1 ... 3.0)
     @IBOutlet weak var satellitesTrailDecaySlider: NSSlider?
     @IBOutlet weak var satellitesTrailDecayPreview: NSTextField?
     
@@ -134,6 +135,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastSatellitesSize: Double = 0
     private var lastSatellitesBrightness: Double = 0
     private var lastSatellitesTrailing: Bool = false
+    // Now stores fade seconds (0.1 .. 3.0)
     private var lastSatellitesTrailDecay: Double = 0
     
     // MARK: - UI Actions (sliders / controls)
@@ -397,11 +399,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             }
         }
         if let trailDecaySlider = satellitesTrailDecaySlider {
-            if trailDecaySlider.doubleValue != lastSatellitesTrailDecay {
-                logChange(changedKey: "satellitesTrailDecay",
+            // Now interpreted as fade seconds 0.1 .. 3.0
+            var secs = trailDecaySlider.doubleValue
+            if secs != lastSatellitesTrailDecay {
+                secs = min(max(secs, 0.1), 3.0)
+                logChange(changedKey: "satellitesTrailFadeSeconds",
                           oldValue: format(lastSatellitesTrailDecay),
-                          newValue: format(trailDecaySlider.doubleValue))
-                lastSatellitesTrailDecay = trailDecaySlider.doubleValue
+                          newValue: format(secs))
+                lastSatellitesTrailDecay = secs
             }
         }
         updatePreviewLabels()
@@ -527,8 +532,16 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satellitesBrightnessSlider?.doubleValue = defaultsManager.satellitesBrightness
         satellitesBrightnessPreview?.stringValue = String(format: "%.2f", satellitesBrightnessSlider?.doubleValue ?? 0)
         satellitesTrailingCheckbox?.state = defaultsManager.satellitesTrailing ? .on : .off
-        satellitesTrailDecaySlider?.doubleValue = defaultsManager.satellitesTrailDecay
-        satellitesTrailDecayPreview?.stringValue = String(format: "%.3f", satellitesTrailDecaySlider?.doubleValue ?? 0)
+        
+        // Trail fade seconds (0.1 .. 3.0)
+        if let trailSlider = satellitesTrailDecaySlider {
+            trailSlider.minValue = 0.1
+            trailSlider.maxValue = 3.0
+            trailSlider.allowsTickMarkValuesOnly = false
+            trailSlider.numberOfTickMarks = 0
+            trailSlider.doubleValue = defaultsManager.satellitesTrailDecay
+        }
+        satellitesTrailDecayPreview?.stringValue = String(format: "%.2f s", satellitesTrailDecaySlider?.doubleValue ?? defaultsManager.satellitesTrailDecay)
         updateSatellitesUIEnabled()
         
         // Editable fields
@@ -645,7 +658,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satellitesSizeSlider?.setAccessibilityLabel("Satellite size")
         satellitesBrightnessSlider?.setAccessibilityLabel("Satellite brightness")
         satellitesTrailingCheckbox?.setAccessibilityLabel("Satellite trailing effect")
-        satellitesTrailDecaySlider?.setAccessibilityLabel("Satellite trail decay (capped to ≤3s total fade)")
+        satellitesTrailDecaySlider?.setAccessibilityLabel("Satellite trail fade time (0.1–3.0 s)")
     }
     
     // MARK: - SF Symbols injection
@@ -947,7 +960,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsSpeedPreview?.stringValue = "\(Int(shootingStarsSpeedSlider.doubleValue))"
         shootingStarsThicknessPreview?.stringValue = String(format: "%.0f", shootingStarsThicknessSlider.doubleValue)
         shootingStarsBrightnessPreview?.stringValue = String(format: "%.2f", shootingStarsBrightnessSlider.doubleValue)
-        // Show that trails are capped to ≤ 3.0s fade
+        // Show that shooting star trails are capped to ≤ 3.0s fade
         shootingStarsTrailDecayPreview?.stringValue = String(format: "%.3f (≤ 3.0s fade)", shootingStarsTrailDecaySlider.doubleValue)
         
         if let satPerMinSlider = satellitesPerMinuteSlider {
@@ -963,7 +976,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             satellitesBrightnessPreview?.stringValue = String(format: "%.2f", brightSlider.doubleValue)
         }
         if let trailDecaySlider = satellitesTrailDecaySlider {
-            satellitesTrailDecayPreview?.stringValue = String(format: "%.3f (≤ 3.0s fade)", trailDecaySlider.doubleValue)
+            // Display in seconds
+            satellitesTrailDecayPreview?.stringValue = String(format: "%.2f s", trailDecaySlider.doubleValue)
         }
     }
     
@@ -1084,7 +1098,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             defaultsManager.satellitesTrailing = (trailingCheckbox.state == .on)
         }
         if let trailDecaySlider = satellitesTrailDecaySlider {
-            defaultsManager.satellitesTrailDecay = trailDecaySlider.doubleValue
+            // Store seconds (0.1 .. 3.0)
+            var secs = trailDecaySlider.doubleValue
+            secs = min(max(secs, 0.1), 3.0)
+            defaultsManager.satellitesTrailDecay = secs
         }
         
         view?.settingsChanged()
@@ -1157,7 +1174,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         parts.append("satellitesSize=\(format(lastSatellitesSize))")
         parts.append("satellitesBrightness=\(format(lastSatellitesBrightness))")
         parts.append("satellitesTrailing=\(lastSatellitesTrailing)")
-        parts.append("satellitesTrailDecay=\(format(lastSatellitesTrailDecay))")
+        parts.append("satellitesTrailFadeSeconds=\(format(lastSatellitesTrailDecay))")
         return parts.joined(separator: ", ")
     }
     

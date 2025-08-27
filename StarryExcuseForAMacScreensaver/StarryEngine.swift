@@ -42,7 +42,8 @@ struct StarryRuntimeConfig {
     var satellitesSize: Double = 2.0
     var satellitesBrightness: Double = 0.9
     var satellitesTrailing: Bool = true
-    var satellitesTrailDecay: Double = 0.80
+    // NOTE: Now interpreted as fade seconds (0.1 ... 3.0), not a raw decay factor.
+    var satellitesTrailDecay: Double = 1.5
     
     // Debug overlay (FPS / CPU / Time)
     var debugOverlayEnabled: Bool = false
@@ -141,9 +142,9 @@ final class StarryEngine {
     // Force-clear request (e.g., on config change or resize)
     private var forceClearOnNextFrame: Bool = false
     
-    // Enforced trail fade parameters (cap trails to ~0.01 intensity by 3 seconds)
+    // Enforced trail fade parameters (cap maximum fade time to ~3 seconds for 1% residual)
     private let trailMaxFadeSeconds: Double = 3.0
-    private let trailFadeTargetResidual: Double = 0.01  // 1% remains at 3s
+    private let trailFadeTargetResidual: Double = 0.01  // 1% remains at target seconds
     
     init(size: CGSize,
          log: OSLog,
@@ -362,13 +363,13 @@ final class StarryEngine {
         os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.satellitesEnabled ? "true" : "false", config.satellitesAvgSpawnSeconds)
     }
     
-    // MARK: - Trail decay enforcement (≤ 3s to ~1%)
+    // MARK: - Trail decay enforcement
     
-    private func enforcedKeepFor(dt: CFTimeInterval) -> Float {
-        // If no time passed, do not decay.
+    // Compute per-frame keep so that intensity reaches trailFadeTargetResidual at targetFadeSeconds.
+    private func enforcedKeepFor(dt: CFTimeInterval, targetFadeSeconds: Double) -> Float {
         guard dt > 0 else { return 1.0 }
-        // Compute per-second keep so that keep^T = residual (e.g., 0.01 at 3s).
-        let keepPerSecond = pow(trailFadeTargetResidual, 1.0 / trailMaxFadeSeconds)
+        let clampedSeconds = max(0.0001, targetFadeSeconds) // avoid div-by-zero
+        let keepPerSecond = pow(trailFadeTargetResidual, 1.0 / clampedSeconds)
         let keepForDt = pow(keepPerSecond, dt)
         return Float(keepForDt)
     }
@@ -465,19 +466,25 @@ final class StarryEngine {
                    log: log, type: .info, config.debugDropBaseEveryNFrames, dropped)
         }
         
-        // Enforce fast trail fade (≤ 3s to ~1%)
-        let enforcedKeep = enforcedKeepFor(dt: dt)
-        if satellitesKeep > enforcedKeep {
+        // Enforce trail fade times:
+        // - Satellites: user-configurable 0.1 ... 3.0 seconds to ~1% residual.
+        // - Shooting stars: cap at 3.0 seconds to ~1% residual.
+        let satelliteFadeSeconds = min(max(config.satellitesTrailDecay, 0.1), trailMaxFadeSeconds)
+        let enforcedSatKeep = enforcedKeepFor(dt: dt, targetFadeSeconds: satelliteFadeSeconds)
+        if satellitesKeep > enforcedSatKeep {
             if logThisFrame {
-                os_log("advanceFrameGPU: clamping satellitesKeep %{public}.3f -> %{public}.3f (≤3s fade)", log: log, type: .info, Double(satellitesKeep), Double(enforcedKeep))
+                os_log("advanceFrameGPU: clamping satellitesKeep %{public}.3f -> %{public}.3f (fade ~%.2fs to 1%%)",
+                       log: log, type: .info, Double(satellitesKeep), Double(enforcedSatKeep), satelliteFadeSeconds)
             }
-            satellitesKeep = enforcedKeep
+            satellitesKeep = enforcedSatKeep
         }
-        if shootingKeep > enforcedKeep {
+        let enforcedShootingKeep = enforcedKeepFor(dt: dt, targetFadeSeconds: trailMaxFadeSeconds)
+        if shootingKeep > enforcedShootingKeep {
             if logThisFrame {
-                os_log("advanceFrameGPU: clamping shootingKeep %{public}.3f -> %{public}.3f (≤3s fade)", log: log, type: .info, Double(shootingKeep), Double(enforcedKeep))
+                os_log("advanceFrameGPU: clamping shootingKeep %{public}.3f -> %{public}.3f (≤%.1fs fade)",
+                       log: log, type: .info, Double(shootingKeep), Double(enforcedShootingKeep), trailMaxFadeSeconds)
             }
-            shootingKeep = enforcedKeep
+            shootingKeep = enforcedShootingKeep
         }
         
         // Moon params
@@ -610,19 +617,23 @@ final class StarryEngine {
                    log: log, type: .info, config.debugDropBaseEveryNFrames, dropped)
         }
         
-        // Enforce fast trail fade (≤ 3s to ~1%)
-        let enforcedKeep = enforcedKeepFor(dt: dt)
-        if satellitesKeep > enforcedKeep {
+        // Enforce trail fade times.
+        let satelliteFadeSeconds = min(max(config.satellitesTrailDecay, 0.1), trailMaxFadeSeconds)
+        let enforcedSatKeep = enforcedKeepFor(dt: dt, targetFadeSeconds: satelliteFadeSeconds)
+        if satellitesKeep > enforcedSatKeep {
             if logThisFrame {
-                os_log("advanceFrame(headless): clamping satellitesKeep %{public}.3f -> %{public}.3f (≤3s fade)", log: log, type: .info, Double(satellitesKeep), Double(enforcedKeep))
+                os_log("advanceFrame(headless): clamping satellitesKeep %{public}.3f -> %{public}.3f (fade ~%.2fs to 1%%)",
+                       log: log, type: .info, Double(satellitesKeep), Double(enforcedSatKeep), satelliteFadeSeconds)
             }
-            satellitesKeep = enforcedKeep
+            satellitesKeep = enforcedSatKeep
         }
-        if shootingKeep > enforcedKeep {
+        let enforcedShootingKeep = enforcedKeepFor(dt: dt, targetFadeSeconds: trailMaxFadeSeconds)
+        if shootingKeep > enforcedShootingKeep {
             if logThisFrame {
-                os_log("advanceFrame(headless): clamping shootingKeep %{public}.3f -> %{public}.3f (≤3s fade)", log: log, type: .info, Double(shootingKeep), Double(enforcedKeep))
+                os_log("advanceFrame(headless): clamping shootingKeep %{public}.3f -> %{public}.3f (≤%.1fs fade)",
+                       log: log, type: .info, Double(shootingKeep), Double(enforcedShootingKeep), trailMaxFadeSeconds)
             }
-            shootingKeep = enforcedKeep
+            shootingKeep = enforcedShootingKeep
         }
         
         // Moon params

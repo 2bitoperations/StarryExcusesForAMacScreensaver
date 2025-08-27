@@ -49,7 +49,8 @@ class StarryDefaultsManager {
     private let defaultSatellitesSize = 2.0                 // px
     private let defaultSatellitesBrightness = 0.9           // 0..1
     private let defaultSatellitesTrailing = true
-    private let defaultSatellitesTrailDecay = 0.80          // 0..1 (decay factor)
+    // INTERPRETATION CHANGE: store trail fade time in seconds (0.1 .. 3.0). Default to mid-range.
+    private let defaultSatellitesTrailDecaySeconds = 1.5
     
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
@@ -81,6 +82,26 @@ class StarryDefaultsManager {
         }
         if defaults.object(forKey: "MoonMaxRadius") != nil {
             defaults.removeObject(forKey: "MoonMaxRadius")
+        }
+        
+        // Migrate legacy satellitesTrailDecay factor (0.5..0.99) to seconds (0.1..3.0) if needed.
+        if let obj = defaults.object(forKey: "SatellitesTrailDecay") {
+            let v = defaults.double(forKey: "SatellitesTrailDecay")
+            // Heuristic: legacy factor will be <= 1.0. New seconds will be >= 0.1 and typically > 1.0.
+            if v > 0.0 && v <= 1.0 {
+                // Convert factor-per-second to seconds for 1% residual: t = ln(0.01) / ln(factor)
+                let factor = max(0.0001, min(0.9999, v))
+                let tSeconds = max(0.1, min(3.0, log(0.01) / log(factor)))
+                defaults.set(tSeconds, forKey: "SatellitesTrailDecay")
+                defaults.synchronize()
+            } else {
+                // Already seconds; clamp into sane range.
+                let clamped = max(0.1, min(3.0, v))
+                if clamped != v {
+                    defaults.set(clamped, forKey: "SatellitesTrailDecay")
+                    defaults.synchronize()
+                }
+            }
         }
     }
     
@@ -426,16 +447,25 @@ class StarryDefaultsManager {
         }
     }
     
-    // Trail decay factor 0.5 .. 0.99
+    // Trail fade time in seconds (0.1 .. 3.0). Store seconds; migrate legacy factor values automatically.
     var satellitesTrailDecay: Double {
         set {
-            let clamped = max(0.5, min(0.99, newValue))
+            let clamped = max(0.1, min(3.0, newValue))
             defaults.set(clamped, forKey: "SatellitesTrailDecay")
             defaults.synchronize()
         }
         get {
+            if defaults.object(forKey: "SatellitesTrailDecay") == nil {
+                return defaultSatellitesTrailDecaySeconds
+            }
             let v = defaults.double(forKey: "SatellitesTrailDecay")
-            return (v >= 0.5 && v <= 0.99) ? v : defaultSatellitesTrailDecay
+            if v > 0.0 && v <= 1.0 {
+                // Legacy factor path (should have been migrated already, but just in case):
+                let factor = max(0.0001, min(0.9999, v))
+                let tSeconds = max(0.1, min(3.0, log(0.01) / log(factor)))
+                return tSeconds
+            }
+            return max(0.1, min(3.0, v))
         }
     }
     
