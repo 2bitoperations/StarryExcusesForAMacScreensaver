@@ -753,7 +753,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 rebuildPreviewEngineIfNeeded()
                 updatePreviewConfig()
             }
-        } else if field == shootingStarsAvgSeconds {
+        } else if field == shootingStarsAvgSecondsField {
             shootingStarsAvgSecondsChanged(field)
         }
         validateInputs()
