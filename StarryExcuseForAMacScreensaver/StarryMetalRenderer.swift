@@ -850,7 +850,7 @@ final class StarryMetalRenderer {
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
         encoder.pushDebugGroup("RenderSprites -> \(target.label ?? "tex")")
-        // Set viewport to target size
+        // Set viewport to target size (in texels)
         let vp = MTLViewport(originX: 0, originY: 0,
                              width: Double(target.width),
                              height: Double(target.height),
@@ -859,7 +859,9 @@ final class StarryMetalRenderer {
         
         encoder.setRenderPipelineState(spritePipeline)
         encoder.setVertexBuffer(spriteBuffer, offset: 0, index: 1)
-        var uni = SpriteUniforms(viewportSize: SIMD2<Float>(Float(viewport.width), Float(viewport.height)))
+        // IMPORTANT: use the actual render target size in TEXELS so SpriteVertex maths
+        // matches the units used by SpriteInstance.centerPx/halfSizePx (pixel-like).
+        var uni = SpriteUniforms(viewportSize: SIMD2<Float>(Float(target.width), Float(target.height)))
         encoder.setVertexBytes(&uni, length: MemoryLayout<SpriteUniforms>.stride, index: 2)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: sprites.count)
         encoder.popDebugGroup()
