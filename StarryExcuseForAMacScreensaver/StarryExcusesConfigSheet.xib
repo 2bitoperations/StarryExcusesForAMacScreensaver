@@ -863,22 +863,22 @@
                                                 <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="cloud" id="V5S-AD-cUL"/>
                                             </imageView>
                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL-TXT">
-                                                <rect key="frame" x="18" y="3" width="63" height="14"/>
-                                                <textFieldCell key="cell" title="Trail decay" id="SS-DEC-LBL-TXT-CELL"/>
+                                                <rect key="frame" x="18" y="3" width="114" height="14"/>
+                                                <textFieldCell key="cell" title="Trail half-life (s)" id="SS-DEC-LBL-TXT-CELL"/>
                                             </textField>
                                             <slider translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-SL">
-                                                <rect key="frame" x="81" y="-6" width="140" height="28"/>
-                                                <sliderCell key="cell" minValue="0.84999999999999998" maxValue="0.98999999999999999" doubleValue="0.92000000000000004" tickMarkPosition="below" sliderType="linear" id="SS-DEC-SL-CELL"/>
+                                                <rect key="frame" x="136" y="-6" width="140" height="28"/>
+                                                <sliderCell key="cell" minValue="0.01" maxValue="2" doubleValue="0.17999999999999999" tickMarkPosition="below" sliderType="linear" id="SS-DEC-SL-CELL"/>
                                                 <connections>
                                                     <action selector="shootingStarsSliderChanged:" target="-2" id="SS-DEC-SL-ACT"/>
                                                 </connections>
                                             </slider>
                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-LBL">
-                                                <rect key="frame" x="221" y="3" width="35" height="14"/>
-                                                <textFieldCell key="cell" title="0.920" id="SS-DEC-LBL-CELL"/>
+                                                <rect key="frame" x="278" y="3" width="80" height="14"/>
+                                                <textFieldCell key="cell" title="HL: 0.180 s" id="SS-DEC-LBL-CELL"/>
                                             </textField>
                                             <imageView identifier="cloud.rain" translatesAutoresizingMaskIntoConstraints="NO" id="SS-DEC-R-ICON">
-                                                <rect key="frame" x="258" y="2" width="16" height="16"/>
+                                                <rect key="frame" x="362" y="2" width="16" height="16"/>
                                                 <constraints>
                                                     <constraint firstAttribute="height" constant="16" id="SS-DEC-R-ICON-H"/>
                                                     <constraint firstAttribute="width" constant="16" id="SS-DEC-R-ICON-W"/>
@@ -1196,22 +1196,22 @@
                                         <imageCell key="cell" alignment="left" imageScaling="proportionallyDown" image="cloud" id="SAT-DEC-L-ICON-CELL"/>
                                     </imageView>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-TXT">
-                                        <rect key="frame" x="18" y="3" width="63" height="14"/>
-                                        <textFieldCell key="cell" title="Trail decay" id="SAT-DEC-TXT-CELL"/>
+                                        <rect key="frame" x="18" y="3" width="114" height="14"/>
+                                        <textFieldCell key="cell" title="Trail half-life (s)" id="SAT-DEC-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-SL">
-                                        <rect key="frame" x="81" y="-6" width="140" height="28"/>
-                                        <sliderCell key="cell" minValue="0.5" maxValue="0.94999999999999996" doubleValue="0.80000000000000004" tickMarkPosition="below" sliderType="linear" id="SAT-DEC-SL-CELL"/>
+                                        <rect key="frame" x="136" y="-6" width="140" height="28"/>
+                                        <sliderCell key="cell" minValue="0.01" maxValue="2" doubleValue="0.17999999999999999" tickMarkPosition="below" sliderType="linear" id="SAT-DEC-SL-CELL"/>
                                         <connections>
                                             <action selector="satellitesSliderChanged:" target="-2" id="SAT-DEC-SL-ACT"/>
                                         </connections>
                                     </slider>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-LBL">
-                                        <rect key="frame" x="221" y="3" width="35" height="14"/>
-                                        <textFieldCell key="cell" title="0.800" id="SAT-DEC-LBL-CELL"/>
+                                        <rect key="frame" x="278" y="3" width="80" height="14"/>
+                                        <textFieldCell key="cell" title="HL: 0.180 s" id="SAT-DEC-LBL-CELL"/>
                                     </textField>
                                     <imageView identifier="cloud.rain" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-DEC-R-ICON">
-                                        <rect key="frame" x="258" y="2" width="16" height="16"/>
+                                        <rect key="frame" x="362" y="2" width="16" height="16"/>
                                         <constraints>
                                             <constraint firstAttribute="height" constant="16" id="SAT-DEC-R-ICON-H"/>
                                             <constraint firstAttribute="width" constant="16" id="SAT-DEC-R-ICON-W"/>
@@ -1345,7 +1345,6 @@
                             <integer value="1000"/>
                         </visibilityPriorities>
                         <customSpacing>
-                            <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
