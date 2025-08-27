@@ -7,7 +7,8 @@ import simd
 
 // Simple satellite renderer: spawns small bright points that traverse the sky
 // horizontally (either direction) at a fixed speed, at random vertical positions
-// above the skyline (upper ~70% of screen). Layer emits sprites per frame.
+// above the skyline (upper ~70% of screen). Layer emits one "head" sprite per
+// active satellite per frame; persistent trail is produced by GPU decay.
 final class SatellitesLayerRenderer {
     
     private struct Satellite {
@@ -28,14 +29,17 @@ final class SatellitesLayerRenderer {
     
     /// Base horizontal speed (points / second).
     private var speed: CGFloat
-    /// Base size (pixels) of each satellite square.
+    /// Base size (pixels) of each satellite circle (diameter).
     private var sizePx: CGFloat
     /// Base brightness (0-1) prior to per-satellite random variation.
     private var brightness: CGFloat
-    /// Whether to leave trails (alpha-faded decay)
+    /// Whether to leave trails (decay handled by GPU; this controls CPU-side keep output only)
     private var trailing: Bool
-    /// Per-second decay factor (0 = instant disappear, 0.999 ~ slow fade)
+    /// Per-second decay factor (0 = instant disappear, 0.999 ~ slow fade). Used to compute keep return value.
     private var trailDecay: CGFloat
+    
+    /// Maximum number of concurrent satellites. Set to 1 to get a single bright dot with a decay-based trail.
+    private var maxConcurrent: Int = 1
     
     private var satellites: [Satellite] = []
     
@@ -70,8 +74,8 @@ final class SatellitesLayerRenderer {
         self.trailing = trailing
         self.trailDecay = min(max(0.0, trailDecay), 0.999)
         scheduleNextSpawn()
-        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f",
-               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay))
+        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f maxConcurrent=%{public}d",
+               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay), self.maxConcurrent)
     }
     
     // MARK: - Public reconfiguration
@@ -110,7 +114,8 @@ final class SatellitesLayerRenderer {
                           size: CGFloat? = nil,
                           brightness: CGFloat? = nil,
                           trailing: Bool? = nil,
-                          trailDecay: CGFloat? = nil) {
+                          trailDecay: CGFloat? = nil,
+                          maxConcurrent: Int? = nil) {
         var reschedule = false
         
         if let a = avgSpawnSeconds {
@@ -136,9 +141,19 @@ final class SatellitesLayerRenderer {
         if let td = trailDecay {
             self.trailDecay = min(max(0.0, td), 0.999)
         }
+        if let mc = maxConcurrent {
+            self.maxConcurrent = max(1, mc)
+            os_log("Satellites param changed: maxConcurrent=%{public}d", log: log, type: .info, self.maxConcurrent)
+        }
         if reschedule {
             scheduleNextSpawn()
         }
+    }
+    
+    /// Convenience specific setter for max concurrent satellites.
+    func setMaxConcurrent(_ count: Int) {
+        self.maxConcurrent = max(1, count)
+        os_log("Satellites setMaxConcurrent: %d", log: log, type: .info, self.maxConcurrent)
     }
     
     // MARK: - Private helpers
@@ -146,7 +161,6 @@ final class SatellitesLayerRenderer {
     private func scheduleNextSpawn() {
         guard isEnabled else { return }
         // Exponential distribution with mean avgSpawnSeconds.
-        // Use Darwin.log to avoid shadowing by the OSLog property named 'log'.
         let u = Double.random(in: 0.00001...0.99999, using: &rng)
         timeUntilNextSpawn = -Darwin.log(1 - u) * avgSpawnSeconds
         os_log("Satellites: next spawn in %{public}.2fs", log: log, type: .debug, timeUntilNextSpawn)
@@ -154,6 +168,12 @@ final class SatellitesLayerRenderer {
     
     private func spawn() {
         guard isEnabled else { return }
+        // Enforce concurrency cap: if at capacity, delay spawn.
+        if satellites.count >= maxConcurrent {
+            // Try again after another interval.
+            scheduleNextSpawn()
+            return
+        }
         let fromLeft = Bool.random(using: &rng)
         // Constrain y so satellites stay above likely building tops (upper 70% of screen)
         let yMin = CGFloat(height) * 0.30
@@ -213,15 +233,21 @@ final class SatellitesLayerRenderer {
         }
         
         var sprites: [SpriteInstance] = []
+        sprites.reserveCapacity(satellites.count)
+        
+        // Emit only the head for each active satellite. The fading tail is produced
+        // by the renderer's persistent satellites texture with per-frame decay.
         for sat in satellites {
             let half = Float(sat.size * 0.5)
             let b = Float(sat.brightness)
-            // Premultiplied RGBA gray (alpha=1)
+            // Premultiplied RGBA gray (alpha=1). Use circle shape for a point-like look.
             let colorPremul = SIMD4<Float>(b, b, b, 1.0)
-            sprites.append(SpriteInstance(centerPx: SIMD2<Float>(Float(sat.x), Float(sat.y)),
-                                          halfSizePx: SIMD2<Float>(half, half),
-                                          colorPremul: colorPremul,
-                                          shape: .rect))
+            sprites.append(
+                SpriteInstance(centerPx: SIMD2<Float>(Float(sat.x), Float(sat.y)),
+                               halfSizePx: SIMD2<Float>(half, half),
+                               colorPremul: colorPremul,
+                               shape: .circle)
+            )
         }
         
         let keep: Float = trailing ? Float(pow(Double(trailDecay), dt)) : 0.0
