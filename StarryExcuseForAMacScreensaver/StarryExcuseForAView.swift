@@ -116,10 +116,9 @@ class StarryExcuseForAView: ScreenSaverView {
             let t0 = CACurrentMediaTime()
             let drawData = engine.advanceFrameGPU()
             if verbose {
-                os_log("animateOneFrame: drawData base=%{public}d sat=%{public}d shoot=%{public}d keep(sat=%{public}.3f,shoot=%{public}.3f) moon=%{public}@ clearAll=%{public}@",
+                os_log("animateOneFrame: drawData base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@",
                        log: log!, type: .info,
                        drawData.baseSprites.count, drawData.satellitesSprites.count, drawData.shootingSprites.count,
-                       Double(drawData.satellitesKeepFactor), Double(drawData.shootingKeepFactor),
                        drawData.moon != nil ? "yes" : "no",
                        drawData.clearAll ? "yes" : "no")
             }
@@ -197,26 +196,7 @@ class StarryExcuseForAView: ScreenSaverView {
                Int(bounds.width), Int(bounds.height))
     }
     
-    // Convert half-life to per-frame keep factor at a target FPS (for legacy engine config compatibility)
-    private func perFrameKeep(fromHalfLife halfLife: Double, fps: Double) -> Double {
-        guard halfLife > 0, fps > 0 else { return 1.0 }
-        return pow(0.5, 1.0 / (halfLife * fps))
-    }
-    
-    // Convert half-life to "seconds to 1% residual" (legacy satellites field) for engine compatibility
-    private func secondsToOnePercent(fromHalfLife halfLife: Double) -> Double {
-        guard halfLife > 0 else { return 0.1 }
-        return halfLife * Darwin.log(100.0) / Darwin.log(2.0) // ≈ halfLife / 0.1505
-    }
-    
     private func currentRuntimeConfig() -> StarryRuntimeConfig {
-        // Convert new half-life defaults to legacy engine fields
-        let shootingHL = defaultsManager.shootingStarsTrailHalfLifeSeconds
-        let satellitesHL = defaultsManager.satellitesTrailHalfLifeSeconds
-        let assumedFPS = 60.0
-        let shootingKeepFactor = perFrameKeep(fromHalfLife: shootingHL, fps: assumedFPS)
-        let satellitesFadeSecondsTo1Percent = secondsToOnePercent(fromHalfLife: satellitesHL)
-        
         return StarryRuntimeConfig(
             starsPerUpdate: defaultsManager.starsPerUpdate,
             buildingHeight: defaultsManager.buildingHeight,
@@ -237,7 +217,6 @@ class StarryExcuseForAView: ScreenSaverView {
             shootingStarsSpeed: defaultsManager.shootingStarsSpeed,
             shootingStarsThickness: defaultsManager.shootingStarsThickness,
             shootingStarsBrightness: defaultsManager.shootingStarsBrightness,
-            shootingStarsTrailDecay: shootingKeepFactor,
             shootingStarsDebugShowSpawnBounds: defaultsManager.shootingStarsDebugShowSpawnBounds,
             satellitesEnabled: defaultsManager.satellitesEnabled,
             satellitesAvgSpawnSeconds: defaultsManager.satellitesAvgSpawnSeconds,
@@ -245,7 +224,6 @@ class StarryExcuseForAView: ScreenSaverView {
             satellitesSize: defaultsManager.satellitesSize,
             satellitesBrightness: defaultsManager.satellitesBrightness,
             satellitesTrailing: defaultsManager.satellitesTrailing,
-            satellitesTrailDecay: satellitesFadeSecondsTo1Percent,
             debugOverlayEnabled: defaultsManager.debugOverlayEnabled
         )
     }

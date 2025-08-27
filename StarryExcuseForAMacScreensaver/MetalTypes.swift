@@ -84,10 +84,8 @@ public struct StarryDrawData {
     public var baseSprites: [SpriteInstance]          // Stars, building lights, flasher circles (persistent base)
     
     public var satellitesSprites: [SpriteInstance]    // rendered into satellites trail texture
-    public var satellitesKeepFactor: Float            // 0..1: multiply existing trail by this (0 clears)
     
     public var shootingSprites: [SpriteInstance]      // rendered into shooting-star trail texture
-    public var shootingKeepFactor: Float              // 0..1: multiply existing trail by this (0 clears)
     
     public var moon: MoonParams?                      // draw on top (directly to final drawable)
     public var moonAlbedoImage: CGImage?              // provide when available/changed (optional)
@@ -99,9 +97,7 @@ public struct StarryDrawData {
                 clearAll: Bool,
                 baseSprites: [SpriteInstance],
                 satellitesSprites: [SpriteInstance],
-                satellitesKeepFactor: Float,
                 shootingSprites: [SpriteInstance],
-                shootingKeepFactor: Float,
                 moon: MoonParams?,
                 moonAlbedoImage: CGImage?,
                 showLightAreaTextureFillMask: Bool) {
@@ -109,9 +105,7 @@ public struct StarryDrawData {
         self.clearAll = clearAll
         self.baseSprites = baseSprites
         self.satellitesSprites = satellitesSprites
-        self.satellitesKeepFactor = satellitesKeepFactor
         self.shootingSprites = shootingSprites
-        self.shootingKeepFactor = shootingKeepFactor
         self.moon = moon
         self.moonAlbedoImage = moonAlbedoImage
         self.showLightAreaTextureFillMask = showLightAreaTextureFillMask

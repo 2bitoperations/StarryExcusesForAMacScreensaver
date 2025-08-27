@@ -32,7 +32,6 @@ struct StarryRuntimeConfig {
     var shootingStarsSpeed: Double
     var shootingStarsThickness: Double
     var shootingStarsBrightness: Double
-    var shootingStarsTrailDecay: Double
     var shootingStarsDebugShowSpawnBounds: Bool
     
     // Satellites (new layer)
@@ -42,8 +41,6 @@ struct StarryRuntimeConfig {
     var satellitesSize: Double = 2.0
     var satellitesBrightness: Double = 0.9
     var satellitesTrailing: Bool = true
-    // NOTE: Now interpreted as fade seconds (0.1 ... 3.0), not a raw decay factor.
-    var satellitesTrailDecay: Double = 1.5
     
     // Debug overlay (FPS / CPU / Time)
     var debugOverlayEnabled: Bool = false
@@ -85,7 +82,6 @@ StarryRuntimeConfig(
   shootingStarsSpeed: \(shootingStarsSpeed),
   shootingStarsThickness: \(shootingStarsThickness),
   shootingStarsBrightness: \(shootingStarsBrightness),
-  shootingStarsTrailDecay: \(shootingStarsTrailDecay),
   shootingStarsDebugShowSpawnBounds: \(shootingStarsDebugShowSpawnBounds),
   satellitesEnabled: \(satellitesEnabled),
   satellitesAvgSpawnSeconds: \(satellitesAvgSpawnSeconds),
@@ -93,7 +89,6 @@ StarryRuntimeConfig(
   satellitesSize: \(satellitesSize),
   satellitesBrightness: \(satellitesBrightness),
   satellitesTrailing: \(satellitesTrailing),
-  satellitesTrailDecay: \(satellitesTrailDecay),
   debugOverlayEnabled: \(debugOverlayEnabled),
   debugDropBaseEveryNFrames: \(debugDropBaseEveryNFrames),
   debugForceClearEveryNFrames: \(debugForceClearEveryNFrames),
@@ -141,10 +136,6 @@ final class StarryEngine {
 
     // Force-clear request (e.g., on config change or resize)
     private var forceClearOnNextFrame: Bool = false
-    
-    // Enforced trail fade parameters (cap maximum fade time to ~3 seconds for 1% residual)
-    private let trailMaxFadeSeconds: Double = 3.0
-    private let trailFadeTargetResidual: Double = 0.01  // 1% remains at target seconds
     
     init(size: CGSize,
          log: OSLog,
@@ -220,7 +211,6 @@ final class StarryEngine {
             config.shootingStarsSpeed != newConfig.shootingStarsSpeed ||
             config.shootingStarsThickness != newConfig.shootingStarsThickness ||
             config.shootingStarsBrightness != newConfig.shootingStarsBrightness ||
-            config.shootingStarsTrailDecay != newConfig.shootingStarsTrailDecay ||
             config.shootingStarsDebugShowSpawnBounds != newConfig.shootingStarsDebugShowSpawnBounds
         
         if shootingStarsAffecting {
@@ -234,8 +224,7 @@ final class StarryEngine {
             config.satellitesSpeed != newConfig.satellitesSpeed ||
             config.satellitesSize != newConfig.satellitesSize ||
             config.satellitesBrightness != newConfig.satellitesBrightness ||
-            config.satellitesTrailing != newConfig.satellitesTrailing ||
-            config.satellitesTrailDecay != newConfig.satellitesTrailDecay
+            config.satellitesTrailing != newConfig.satellitesTrailing
         
         if satellitesAffecting {
             os_log("Config changed (satellites affecting) — resetting satellitesRenderer", log: log, type: .info)
@@ -342,7 +331,7 @@ final class StarryEngine {
             speed: CGFloat(config.shootingStarsSpeed),
             thickness: CGFloat(config.shootingStarsThickness),
             brightness: CGFloat(config.shootingStarsBrightness),
-            trailDecay: CGFloat(config.shootingStarsTrailDecay),
+            trailDecay: 1.0, // legacy parameter ignored by GPU renderer
             debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
         os_log("ShootingStarsLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.shootingStarsEnabled ? "true" : "false", config.shootingStarsAvgSeconds)
     }
@@ -359,19 +348,8 @@ final class StarryEngine {
                                                      size: CGFloat(config.satellitesSize),
                                                      brightness: CGFloat(config.satellitesBrightness),
                                                      trailing: config.satellitesTrailing,
-                                                     trailDecay: CGFloat(config.satellitesTrailDecay))
+                                                     trailDecay: 1.0) // legacy parameter ignored by GPU renderer
         os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.satellitesEnabled ? "true" : "false", config.satellitesAvgSpawnSeconds)
-    }
-    
-    // MARK: - Trail decay enforcement
-    
-    // Compute per-frame keep so that intensity reaches trailFadeTargetResidual at targetFadeSeconds.
-    private func enforcedKeepFor(dt: CFTimeInterval, targetFadeSeconds: Double) -> Float {
-        guard dt > 0 else { return 1.0 }
-        let clampedSeconds = max(0.0001, targetFadeSeconds) // avoid div-by-zero
-        let keepPerSecond = pow(trailFadeTargetResidual, 1.0 / clampedSeconds)
-        let keepForDt = pow(keepPerSecond, dt)
-        return Float(keepForDt)
     }
     
     // MARK: - Frame Advancement (GPU path)
@@ -405,8 +383,6 @@ final class StarryEngine {
         var baseSprites: [SpriteInstance] = []
         var satellitesSprites: [SpriteInstance] = []
         var shootingSprites: [SpriteInstance] = []
-        var satellitesKeep: Float = 0.0
-        var shootingKeep: Float = 0.0
         
         if let skyline = skyline,
            let skylineRenderer = skylineRenderer {
@@ -427,21 +403,17 @@ final class StarryEngine {
             baseSprites = skylineRenderer.generateSprites()
             
             if config.satellitesEnabled, let sat = satellitesRenderer {
-                let (sprites, keep) = sat.update(dt: dt)
+                let (sprites, _) = sat.update(dt: dt)
                 satellitesSprites = sprites
-                satellitesKeep = keep
             } else {
                 satellitesSprites.removeAll()
-                satellitesKeep = 0.0
             }
             
             if config.shootingStarsEnabled, let ss = shootingStarsRenderer {
-                let (sprites, keep) = ss.update(dt: dt)
+                let (sprites, _) = ss.update(dt: dt)
                 shootingSprites = sprites
-                shootingKeep = keep
             } else {
                 shootingSprites.removeAll()
-                shootingKeep = 0.0
             }
         } else {
             clearAll = true
@@ -451,40 +423,7 @@ final class StarryEngine {
         if forceClearOnNextFrame {
             os_log("advanceFrameGPU: forceClearOnNextFrame active — will clear accumulation textures", log: log, type: .info)
             clearAll = true
-            satellitesKeep = 0.0
-            shootingKeep = 0.0
             forceClearOnNextFrame = false
-        }
-
-        // DIAGNOSTIC: Intentionally drop base sprites every N frames (only when debug overlay is enabled)
-        if config.debugOverlayEnabled &&
-            config.debugDropBaseEveryNFrames > 0 &&
-            (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
-            let dropped = baseSprites.count
-            baseSprites.removeAll()
-            os_log("advanceFrameGPU: DIAG dropped all base sprites this frame (every N=%{public}d) — dropped=%{public}d",
-                   log: log, type: .info, config.debugDropBaseEveryNFrames, dropped)
-        }
-        
-        // Enforce trail fade times:
-        // - Satellites: user-configurable 0.1 ... 3.0 seconds to ~1% residual.
-        // - Shooting stars: cap at 3.0 seconds to ~1% residual.
-        let satelliteFadeSeconds = min(max(config.satellitesTrailDecay, 0.1), trailMaxFadeSeconds)
-        let enforcedSatKeep = enforcedKeepFor(dt: dt, targetFadeSeconds: satelliteFadeSeconds)
-        if satellitesKeep > enforcedSatKeep {
-            if logThisFrame {
-                os_log("advanceFrameGPU: clamping satellitesKeep %{public}.3f -> %{public}.3f (fade ~%.2fs to 1%%)",
-                       log: log, type: .info, Double(satellitesKeep), Double(enforcedSatKeep), satelliteFadeSeconds)
-            }
-            satellitesKeep = enforcedSatKeep
-        }
-        let enforcedShootingKeep = enforcedKeepFor(dt: dt, targetFadeSeconds: trailMaxFadeSeconds)
-        if shootingKeep > enforcedShootingKeep {
-            if logThisFrame {
-                os_log("advanceFrameGPU: clamping shootingKeep %{public}.3f -> %{public}.3f (≤%.1fs fade)",
-                       log: log, type: .info, Double(shootingKeep), Double(enforcedShootingKeep), trailMaxFadeSeconds)
-            }
-            shootingKeep = enforcedShootingKeep
         }
         
         // Moon params
@@ -502,10 +441,9 @@ final class StarryEngine {
         }
         
         if logThisFrame {
-            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d keep sat=%{public}.3f shoot=%{public}.3f moon=%{public}@ clearAll=%{public}@",
+            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
-                   Double(satellitesKeep), Double(shootingKeep),
                    moonParams != nil ? "yes" : "no",
                    clearAll ? "yes" : "no")
         }
@@ -515,9 +453,7 @@ final class StarryEngine {
             clearAll: clearAll,
             baseSprites: baseSprites,
             satellitesSprites: satellitesSprites,
-            satellitesKeepFactor: satellitesKeep,
             shootingSprites: shootingSprites,
-            shootingKeepFactor: shootingKeep,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
             showLightAreaTextureFillMask: config.showLightAreaTextureFillMask
@@ -564,8 +500,6 @@ final class StarryEngine {
         var baseSprites: [SpriteInstance] = []
         var satellitesSprites: [SpriteInstance] = []
         var shootingSprites: [SpriteInstance] = []
-        var satellitesKeep: Float = 0.0
-        var shootingKeep: Float = 0.0
         
         if let skyline = skyline,
            let skylineRenderer = skylineRenderer {
@@ -585,14 +519,12 @@ final class StarryEngine {
             baseSprites = skylineRenderer.generateSprites()
             
             if config.satellitesEnabled, let sat = satellitesRenderer {
-                let (spr, keep) = sat.update(dt: dt)
+                let (spr, _) = sat.update(dt: dt)
                 satellitesSprites = spr
-                satellitesKeep = keep
             }
             if config.shootingStarsEnabled, let ss = shootingStarsRenderer {
-                let (spr, keep) = ss.update(dt: dt)
+                let (spr, _) = ss.update(dt: dt)
                 shootingSprites = spr
-                shootingKeep = keep
             }
         } else {
             clearAll = true
@@ -602,38 +534,7 @@ final class StarryEngine {
         if forceClearOnNextFrame {
             os_log("advanceFrame(headless): forceClearOnNextFrame active — will clear accumulation textures", log: log, type: .info)
             clearAll = true
-            satellitesKeep = 0.0
-            shootingKeep = 0.0
             forceClearOnNextFrame = false
-        }
-
-        // DIAGNOSTIC: Intentionally drop base sprites every N frames (only when debug overlay is enabled)
-        if config.debugOverlayEnabled &&
-            config.debugDropBaseEveryNFrames > 0 &&
-            (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
-            let dropped = baseSprites.count
-            baseSprites.removeAll()
-            os_log("advanceFrame(headless): DIAG dropped all base sprites this frame (every N=%{public}d) — dropped=%{public}d",
-                   log: log, type: .info, config.debugDropBaseEveryNFrames, dropped)
-        }
-        
-        // Enforce trail fade times.
-        let satelliteFadeSeconds = min(max(config.satellitesTrailDecay, 0.1), trailMaxFadeSeconds)
-        let enforcedSatKeep = enforcedKeepFor(dt: dt, targetFadeSeconds: satelliteFadeSeconds)
-        if satellitesKeep > enforcedSatKeep {
-            if logThisFrame {
-                os_log("advanceFrame(headless): clamping satellitesKeep %{public}.3f -> %{public}.3f (fade ~%.2fs to 1%%)",
-                       log: log, type: .info, Double(satellitesKeep), Double(enforcedSatKeep), satelliteFadeSeconds)
-            }
-            satellitesKeep = enforcedSatKeep
-        }
-        let enforcedShootingKeep = enforcedKeepFor(dt: dt, targetFadeSeconds: trailMaxFadeSeconds)
-        if shootingKeep > enforcedShootingKeep {
-            if logThisFrame {
-                os_log("advanceFrame(headless): clamping shootingKeep %{public}.3f -> %{public}.3f (≤%.1fs fade)",
-                       log: log, type: .info, Double(shootingKeep), Double(enforcedShootingKeep), trailMaxFadeSeconds)
-            }
-            shootingKeep = enforcedShootingKeep
         }
         
         // Moon params
@@ -651,10 +552,9 @@ final class StarryEngine {
         }
         
         if logThisFrame {
-            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d keep sat=%{public}.3f shoot=%{public}.3f moon=%{public}@ clearAll=%{public}@",
+            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
-                   Double(satellitesKeep), Double(shootingKeep),
                    moonParams != nil ? "yes" : "no",
                    clearAll ? "yes" : "no")
         }
@@ -664,9 +564,7 @@ final class StarryEngine {
             clearAll: clearAll,
             baseSprites: baseSprites,
             satellitesSprites: satellitesSprites,
-            satellitesKeepFactor: satellitesKeep,
             shootingSprites: shootingSprites,
-            shootingKeepFactor: shootingKeep,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
             showLightAreaTextureFillMask: config.showLightAreaTextureFillMask
