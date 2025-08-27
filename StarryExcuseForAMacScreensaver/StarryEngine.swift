@@ -141,6 +141,10 @@ final class StarryEngine {
     // Force-clear request (e.g., on config change or resize)
     private var forceClearOnNextFrame: Bool = false
     
+    // Enforced trail fade parameters (cap trails to ~0.01 intensity by 3 seconds)
+    private let trailMaxFadeSeconds: Double = 3.0
+    private let trailFadeTargetResidual: Double = 0.01  // 1% remains at 3s
+    
     init(size: CGSize,
          log: OSLog,
          config: StarryRuntimeConfig) {
@@ -358,6 +362,17 @@ final class StarryEngine {
         os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.satellitesEnabled ? "true" : "false", config.satellitesAvgSpawnSeconds)
     }
     
+    // MARK: - Trail decay enforcement (≤ 3s to ~1%)
+    
+    private func enforcedKeepFor(dt: CFTimeInterval) -> Float {
+        // If no time passed, do not decay.
+        guard dt > 0 else { return 1.0 }
+        // Compute per-second keep so that keep^T = residual (e.g., 0.01 at 3s).
+        let keepPerSecond = pow(trailFadeTargetResidual, 1.0 / trailMaxFadeSeconds)
+        let keepForDt = pow(keepPerSecond, dt)
+        return Float(keepForDt)
+    }
+    
     // MARK: - Frame Advancement (GPU path)
     
     func advanceFrameGPU() -> StarryDrawData {
@@ -448,6 +463,21 @@ final class StarryEngine {
             baseSprites.removeAll()
             os_log("advanceFrameGPU: DIAG dropped all base sprites this frame (every N=%{public}d) — dropped=%{public}d",
                    log: log, type: .info, config.debugDropBaseEveryNFrames, dropped)
+        }
+        
+        // Enforce fast trail fade (≤ 3s to ~1%)
+        let enforcedKeep = enforcedKeepFor(dt: dt)
+        if satellitesKeep > enforcedKeep {
+            if logThisFrame {
+                os_log("advanceFrameGPU: clamping satellitesKeep %{public}.3f -> %{public}.3f (≤3s fade)", log: log, type: .info, Double(satellitesKeep), Double(enforcedKeep))
+            }
+            satellitesKeep = enforcedKeep
+        }
+        if shootingKeep > enforcedKeep {
+            if logThisFrame {
+                os_log("advanceFrameGPU: clamping shootingKeep %{public}.3f -> %{public}.3f (≤3s fade)", log: log, type: .info, Double(shootingKeep), Double(enforcedKeep))
+            }
+            shootingKeep = enforcedKeep
         }
         
         // Moon params
@@ -578,6 +608,21 @@ final class StarryEngine {
             baseSprites.removeAll()
             os_log("advanceFrame(headless): DIAG dropped all base sprites this frame (every N=%{public}d) — dropped=%{public}d",
                    log: log, type: .info, config.debugDropBaseEveryNFrames, dropped)
+        }
+        
+        // Enforce fast trail fade (≤ 3s to ~1%)
+        let enforcedKeep = enforcedKeepFor(dt: dt)
+        if satellitesKeep > enforcedKeep {
+            if logThisFrame {
+                os_log("advanceFrame(headless): clamping satellitesKeep %{public}.3f -> %{public}.3f (≤3s fade)", log: log, type: .info, Double(satellitesKeep), Double(enforcedKeep))
+            }
+            satellitesKeep = enforcedKeep
+        }
+        if shootingKeep > enforcedKeep {
+            if logThisFrame {
+                os_log("advanceFrame(headless): clamping shootingKeep %{public}.3f -> %{public}.3f (≤3s fade)", log: log, type: .info, Double(shootingKeep), Double(enforcedKeep))
+            }
+            shootingKeep = enforcedKeep
         }
         
         // Moon params

@@ -636,7 +636,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsSpeedSlider.setAccessibilityLabel("Shooting star speed")
         shootingStarsThicknessSlider.setAccessibilityLabel("Shooting star thickness")
         shootingStarsBrightnessSlider.setAccessibilityLabel("Shooting star brightness")
-        shootingStarsTrailDecaySlider.setAccessibilityLabel("Shooting star trail decay")
+        shootingStarsTrailDecaySlider.setAccessibilityLabel("Shooting star trail decay (capped to ≤3s total fade)")
         shootingStarsDebugSpawnBoundsCheckbox.setAccessibilityLabel("Debug: show spawn bounds")
         pauseToggleButton.setAccessibilityLabel("Pause or resume preview")
         satellitesEnabledCheckbox?.setAccessibilityLabel("Enable satellites layer")
@@ -645,7 +645,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satellitesSizeSlider?.setAccessibilityLabel("Satellite size")
         satellitesBrightnessSlider?.setAccessibilityLabel("Satellite brightness")
         satellitesTrailingCheckbox?.setAccessibilityLabel("Satellite trailing effect")
-        satellitesTrailDecaySlider?.setAccessibilityLabel("Satellite trail decay")
+        satellitesTrailDecaySlider?.setAccessibilityLabel("Satellite trail decay (capped to ≤3s total fade)")
     }
     
     // MARK: - SF Symbols injection
@@ -753,7 +753,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 rebuildPreviewEngineIfNeeded()
                 updatePreviewConfig()
             }
-        } else if field == shootingStarsAvgSecondsField {
+        } else if field == shootingStarsAvgSeconds {
             shootingStarsAvgSecondsChanged(field)
         }
         validateInputs()
@@ -947,7 +947,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsSpeedPreview?.stringValue = "\(Int(shootingStarsSpeedSlider.doubleValue))"
         shootingStarsThicknessPreview?.stringValue = String(format: "%.0f", shootingStarsThicknessSlider.doubleValue)
         shootingStarsBrightnessPreview?.stringValue = String(format: "%.2f", shootingStarsBrightnessSlider.doubleValue)
-        shootingStarsTrailDecayPreview?.stringValue = String(format: "%.3f", shootingStarsTrailDecaySlider.doubleValue)
+        // Show that trails are capped to ≤ 3.0s fade
+        shootingStarsTrailDecayPreview?.stringValue = String(format: "%.3f (≤ 3.0s fade)", shootingStarsTrailDecaySlider.doubleValue)
         
         if let satPerMinSlider = satellitesPerMinuteSlider {
             satellitesPerMinutePreview?.stringValue = String(format: "%.2f", satPerMinSlider.doubleValue)
@@ -962,7 +963,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             satellitesBrightnessPreview?.stringValue = String(format: "%.2f", brightSlider.doubleValue)
         }
         if let trailDecaySlider = satellitesTrailDecaySlider {
-            satellitesTrailDecayPreview?.stringValue = String(format: "%.3f", trailDecaySlider.doubleValue)
+            satellitesTrailDecayPreview?.stringValue = String(format: "%.3f (≤ 3.0s fade)", trailDecaySlider.doubleValue)
         }
     }
     
