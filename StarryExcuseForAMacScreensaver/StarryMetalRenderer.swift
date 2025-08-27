@@ -75,6 +75,13 @@ final class StarryMetalRenderer {
     private var lastRenderTime: CFTimeInterval?
     private var lastHeadlessRenderTime: CFTimeInterval?
     
+    // Diagnostics
+    private var diagnosticsEnabled: Bool = false
+    private var diagnosticsEveryNFrames: Int = 60
+    private var frameIndex: UInt64 = 0
+    // Debug switch: skip drawing satellites sprites (to verify decay is working)
+    private var debugSkipSatellitesDraw: Bool = false
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -282,6 +289,18 @@ final class StarryMetalRenderer {
         debugOverlayEnabled = enabled
     }
     
+    // Diagnostics controls
+    func setDiagnostics(enabled: Bool, everyNFrames: Int = 60) {
+        diagnosticsEnabled = enabled
+        diagnosticsEveryNFrames = max(1, everyNFrames)
+        os_log("Diagnostics %{public}@", log: log, type: .info, enabled ? "ENABLED" : "disabled")
+    }
+    // For testing: skip drawing satellites (decay-only) to verify trails actually fade
+    func setSkipSatellitesDrawingForDebug(_ skip: Bool) {
+        debugSkipSatellitesDraw = skip
+        os_log("Debug: skip satellites draw is %{public}@", log: log, type: .info, skip ? "ON" : "off")
+    }
+    
     // Expose trail half-life controls. Pass nil to reset to default 0.5s.
     func setTrailHalfLives(satellites: Double?, shooting: Double?) {
         satellitesHalfLifeSeconds = satellites ?? 0.5
@@ -396,6 +415,22 @@ final class StarryMetalRenderer {
             return
         }
         
+        if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
+            let satCount = drawData.satellitesSprites.count
+            let shootCount = drawData.shootingSprites.count
+            let dtSec = (dt ?? 0)
+            let keepSat = decayKeep(forHalfLife: satellitesHalfLifeSeconds, dt: dt)
+            let keepShoot = decayKeep(forHalfLife: shootingHalfLifeSeconds, dt: dt)
+            // Sample up to 3 alpha values from satellites to see if they are 1.0 (suspicious)
+            var alphaSamples: [Float] = []
+            for i in 0..<min(3, satCount) {
+                alphaSamples.append(drawData.satellitesSprites[i].colorPremul.w)
+            }
+            os_log("Frame #%{public}llu dt=%{public}.4f s | satSprites=%{public}d (alpha samples=%{public}@) keep(sat)=%{public}.4f keep(shoot)=%{public}.4f",
+                   log: log, type: .debug,
+                   frameIndex, dtSec, satCount, alphaSamples.description, keepSat, keepShoot)
+        }
+        
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
         commandBuffer.label = "Starry Frame CommandBuffer"
         
@@ -433,7 +468,9 @@ final class StarryMetalRenderer {
         // 2) Satellites trail: decay then draw
         if layerTex.satellites != nil {
             applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
-            if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
+            if !debugSkipSatellitesDraw,
+               !drawData.satellitesSprites.isEmpty,
+               let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
@@ -456,6 +493,7 @@ final class StarryMetalRenderer {
         guard let drawable = metalLayer?.nextDrawable() else {
             os_log("No CAMetalLayer drawable available this frame", log: log, type: .error)
             commandBuffer.commit()
+            frameIndex &+= 1
             return
         }
         let rpd = MTLRenderPassDescriptor()
@@ -466,6 +504,7 @@ final class StarryMetalRenderer {
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else {
             commandBuffer.commit()
+            frameIndex &+= 1
             return
         }
         encoder.pushDebugGroup("Composite+Moon")
@@ -516,6 +555,7 @@ final class StarryMetalRenderer {
         
         commandBuffer.present(drawable)
         commandBuffer.commit()
+        frameIndex &+= 1
     }
     
     // Headless preview: render same content into an offscreen texture and return CGImage.
@@ -569,6 +609,21 @@ final class StarryMetalRenderer {
         let dt: CFTimeInterval? = lastHeadlessRenderTime.map { now - $0 }
         lastHeadlessRenderTime = now
         
+        if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
+            let satCount = drawData.satellitesSprites.count
+            let shootCount = drawData.shootingSprites.count
+            let dtSec = (dt ?? 0)
+            let keepSat = decayKeep(forHalfLife: satellitesHalfLifeSeconds, dt: dt)
+            let keepShoot = decayKeep(forHalfLife: shootingHalfLifeSeconds, dt: dt)
+            var alphaSamples: [Float] = []
+            for i in 0..<min(3, satCount) {
+                alphaSamples.append(drawData.satellitesSprites[i].colorPremul.w)
+            }
+            os_log("[Headless] Frame #%{public}llu dt=%{public}.4f s | satSprites=%{public}d (alpha samples=%{public}@) keep(sat)=%{public}.4f keep(shoot)=%{public}.4f",
+                   log: log, type: .debug,
+                   frameIndex, dtSec, satCount, alphaSamples.description, keepSat, keepShoot)
+        }
+        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             renderSprites(into: baseTex,
@@ -580,7 +635,9 @@ final class StarryMetalRenderer {
         // 2) Satellites trail: decay then draw
         if layerTex.satellites != nil {
             applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
-            if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
+            if !debugSkipSatellitesDraw,
+               !drawData.satellitesSprites.isEmpty,
+               let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
@@ -814,22 +871,27 @@ final class StarryMetalRenderer {
         case shooting
     }
     
-    private func applyDecay(into which: TrailLayer,
-                            dt: CFTimeInterval?,
-                            commandBuffer: MTLCommandBuffer) {
-        // Use a robust dt: fall back to a nominal frame time if dt is nil or non-positive.
-        // Screensaver render timing can be irregular (or identical timestamps), resulting in dt=0.
-        // Without this fallback, the decay pass can be skipped indefinitely and trails never fade.
+    private func decayKeep(forHalfLife halfLife: Double, dt: CFTimeInterval?) -> Float {
         let dtSec: Double = {
             if let d = dt, d > 0 { return d }
             return 1.0 / 60.0 // conservative nominal frame time
         }()
-        
-        // Choose half-life based on layer
-        let halfLife: Double = (which == .satellites) ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
-        
+        return Float(pow(0.5, dtSec / max(halfLife, 1e-6)))
+    }
+    
+    private func applyDecay(into which: TrailLayer,
+                            dt: CFTimeInterval?,
+                            commandBuffer: MTLCommandBuffer) {
         // Compute per-frame keep based on dt and half-life: keep = 0.5^(dt/halfLife)
-        let keep = Float(pow(0.5, dtSec / max(halfLife, 1e-6)))
+        let halfLife: Double = (which == .satellites) ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
+        let keep = decayKeep(forHalfLife: halfLife, dt: dt)
+        
+        if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
+            os_log("Decay pass for %{public}@ keep=%{public}.4f (halfLife=%{public}.3f s, dt=%{public}.4f s)",
+                   log: log, type: .debug,
+                   (which == .satellites ? "satellites" : "shooting"),
+                   keep, halfLife, (dt ?? 0))
+        }
         
         // If keep is effectively zero, clear the target texture for efficiency.
         if keep <= 1e-6 {
