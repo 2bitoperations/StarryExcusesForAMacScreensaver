@@ -817,14 +817,19 @@ final class StarryMetalRenderer {
     private func applyDecay(into which: TrailLayer,
                             dt: CFTimeInterval?,
                             commandBuffer: MTLCommandBuffer) {
-        // Require a valid dt to perform exponential decay; skip on first frame.
-        guard let dt = dt, dt > 0 else { return }
+        // Use a robust dt: fall back to a nominal frame time if dt is nil or non-positive.
+        // Screensaver render timing can be irregular (or identical timestamps), resulting in dt=0.
+        // Without this fallback, the decay pass can be skipped indefinitely and trails never fade.
+        let dtSec: Double = {
+            if let d = dt, d > 0 { return d }
+            return 1.0 / 60.0 // conservative nominal frame time
+        }()
         
         // Choose half-life based on layer
         let halfLife: Double = (which == .satellites) ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
         
         // Compute per-frame keep based on dt and half-life: keep = 0.5^(dt/halfLife)
-        let keep = Float(pow(0.5, dt / max(halfLife, 1e-6)))
+        let keep = Float(pow(0.5, dtSec / max(halfLife, 1e-6)))
         
         // If keep is effectively zero, clear the target texture for efficiency.
         if keep <= 1e-6 {
