@@ -76,8 +76,8 @@ final class StarryMetalRenderer {
     private var lastHeadlessRenderTime: CFTimeInterval?
     
     // Diagnostics
-    private var diagnosticsEnabled: Bool = false
-    private var diagnosticsEveryNFrames: Int = 60
+    private var diagnosticsEnabled: Bool = true
+    private var diagnosticsEveryNFrames: Int = 30
     private var frameIndex: UInt64 = 0
     // Debug switch: skip drawing satellites sprites (to verify decay is working)
     private var debugSkipSatellitesDraw: Bool = false
