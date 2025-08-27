@@ -395,7 +395,8 @@ final class StarryEngine {
             os_log("advanceFrameGPU: DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
         }
 
-        let logThisFrame = (verboseLogging && (engineFrameIndex <= 5 || engineFrameIndex % 60 == 0)) || config.debugLogEveryFrame
+        let logEveryFrame = config.debugOverlayEnabled || config.debugLogEveryFrame
+        let logThisFrame = logEveryFrame || (verboseLogging && (engineFrameIndex % 50 == 0))
         if logThisFrame {
             os_log("advanceFrameGPU: begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
@@ -532,7 +533,8 @@ final class StarryEngine {
             os_log("advanceFrame(headless): DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
         }
 
-        let logThisFrame = (verboseLogging && (engineFrameIndex <= 5 || engineFrameIndex % 60 == 0)) || config.debugLogEveryFrame
+        let logEveryFrame = config.debugOverlayEnabled || config.debugLogEveryFrame
+        let logThisFrame = logEveryFrame || (verboseLogging && (engineFrameIndex % 50 == 0))
         if logThisFrame {
             os_log("advanceFrame (headless): begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
