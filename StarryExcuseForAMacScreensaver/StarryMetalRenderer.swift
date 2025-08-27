@@ -37,8 +37,7 @@ final class StarryMetalRenderer {
     // Pipelines
     private var compositePipeline: MTLRenderPipelineState!
     private var spritePipeline: MTLRenderPipelineState!
-    private var decayPipeline: MTLRenderPipelineState!          // legacy blend-based (kept for reference; unused)
-    private var decaySampledPipeline: MTLRenderPipelineState!   // robust sampled copy: dst = keep * src
+    private var decaySampledPipeline: MTLRenderPipelineState!
     private var moonPipeline: MTLRenderPipelineState!
     
     private var layerTex = LayerTextures()
@@ -60,99 +59,8 @@ final class StarryMetalRenderer {
     // Track last valid drawable size we applied (to avoid spamming invalid sizes)
     private var lastAppliedDrawableSize: CGSize = .zero
     
-    // Test toggle: skip moon albedo uploads to isolate stalls caused by replaceRegion/driver compression.
-    // Re-enable uploads now that we only send albedo when dirty and use staging + GPU blit to private.
-    private let testSkipMoonAlbedoUploads: Bool = false
-    private var skippedMoonUploadCount: UInt64 = 0
-    private var drawableNilLogCount: UInt64 = 0
-    
-    // Track last debug mask state for rate-limited logging
-    private var lastDebugShowMask: Bool = false
-    
-    // Instrumentation for decay
-    private var frameCounter: UInt64 = 0
-    private var headlessFrameCounter: UInt64 = 0
-    private var decayLogCount: UInt64 = 0
-    private let decayLogFirstN: UInt64 = 8
-    private let decayLogEveryNFrames: UInt64 = 180
-    
-    // Strong visual diagnostics for decay (temporary)
-    // 1) Force a visible decay pulse periodically to verify the pass is effective.
-    // Set to >0 (e.g., 10) to clamp keepFactor to pulse value every N frames for each layer.
-    private let debugForceDecayPulseEveryNFrames: UInt64 = 10
-    private let debugDecayPulseKeep: Float = 0.85
-    
-    // 2) Draw a one-time bright probe dot into each trail layer after a clear/resize.
-    // If decay works, this dot will fade away even with no sprites drawn over it.
-    private let debugDrawDecayProbe: Bool = true
-    private var decayProbeInitializedSat: Bool = false
-    private var decayProbeInitializedShoot: Bool = false
-
-    // 3) Readback diagnostics: sample center pixel periodically from each trail texture after decay+emission.
-    private let debugReadbackEveryNFrames: UInt64 = 1
-    private var rbBufferSat: MTLBuffer?
-    private var rbBufferShoot: MTLBuffer?
-    private var rbLogCounter: UInt64 = 0
-    // Added readbacks: base layer and final onscreen drawable (center pixel)
-    private var rbBufferBase: MTLBuffer?
-    private var rbBufferDrawable: MTLBuffer?
-    
-    // Additional debug: offscreen trails-only composite and readbacks
-    private var debugTrailsComposite: MTLTexture?
-    private var rbBufferTrailsCenter: MTLBuffer?
-    private var rbBufferTrailsROI: MTLBuffer?
-    // Use a 64x64 ROI centered; bytesPerRow must be multiple of 256 for texture->buffer blit, so 64*4 = 256 is perfect.
-    private let debugROIHSize: Int = 32 // half-size -> ROI width/height = 64
-
-    // Visual diagnostic: present trails-only onscreen once every N frames (0 disables)
-    private let debugPresentTrailsOnlyEveryNFrames: UInt64 = 50
-    
-    // per-layer tint diagnostic (visual)
-    private let debugTintLayers: Bool = true
-    
-    // ROI buffers for each layer and the onscreen drawable
-    private var rbBufferBaseROI: MTLBuffer?
-    private var rbBufferSatROI: MTLBuffer?
-    private var rbBufferShootROI: MTLBuffer?
-    private var rbBufferDrawableROI: MTLBuffer?
-    
-    // one-shot probe verification buffers (compare base vs trail layer at center pixel)
-    private var probeCheckScheduled: Bool = false
-    private var rbProbeBase: MTLBuffer?
-    private var rbProbeSat: MTLBuffer?
-    private var rbProbeShoot: MTLBuffer?
-    
-    // phase readbacks around decay for deeper debugging
-    private let debugPhaseReadbacks: Bool = true
-    private var rbSatPre: MTLBuffer?
-    private var rbSatPostDecay: MTLBuffer?
-    private var rbSatPostEmit: MTLBuffer?
-    private var rbShootPre: MTLBuffer?
-    private var rbShootPostDecay: MTLBuffer?
-    private var rbShootPostEmit: MTLBuffer?
-    private var lastKeepSatUsed: Float = 1.0
-    private var lastKeepShootUsed: Float = 1.0
-    
-    // Track when we explicitly clear, to correlate with logs
-    private var lastClearReason: String = "none"
-    
-    // verify clears by sampling center pixel immediately after clear pass
-    private var rbClearBaseCenter: MTLBuffer?
-    private var rbClearSatCenter: MTLBuffer?
-    private var rbClearShootCenter: MTLBuffer?
-    
-    // per-frame base pre/post center readbacks to detect unexpected base writes
-    private var rbBasePreCenter: MTLBuffer?
-    private var rbBasePostCenter: MTLBuffer?
-    
-    // remember if we presented trails-only in the last onscreen composite
-    private var lastPresentedTrailsOnly: Bool = false
-    
-    // Controls visual debug output (tints, probe dot, trails-only frames, decay pulses)
+    // Controls visual debug output (no-op now; retained API)
     private var debugOverlayEnabled: Bool = false
-
-    // Detailed logging cadence: when overlay is off, log every N frames; when on, log every frame.
-    private let detailedLogEveryNFrames: UInt64 = 50
     
     // MARK: - Init (onscreen)
     
@@ -168,7 +76,7 @@ final class StarryMetalRenderer {
         
         layer.device = device
         layer.pixelFormat = .bgra8Unorm
-        // For diagnostics, allow blit readback from the drawable.
+        // Allow blit readback if ever needed.
         layer.framebufferOnly = false
         layer.isOpaque = true
         
@@ -207,10 +115,10 @@ final class StarryMetalRenderer {
     
     private func buildPipelines() throws {
         let library = try makeShaderLibrary()
-        // Composite textured quad (tinted for diagnostics)
+        // Composite textured quad (with tint uniform)
         do {
             let desc = MTLRenderPipelineDescriptor()
-            desc.label = "CompositeTinted"
+            desc.label = "Composite"
             desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex")
             desc.fragmentFunction = library.makeFunction(name: "TexturedQuadFragmentTinted")
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
@@ -240,24 +148,6 @@ final class StarryMetalRenderer {
             blend?.rgbBlendOperation = .add
             blend?.alphaBlendOperation = .add
             spritePipeline = try device.makeRenderPipelineState(descriptor: desc)
-        }
-        // Decay pipeline (legacy blend-constant approach) — kept for reference; not used now.
-        do {
-            let desc = MTLRenderPipelineDescriptor()
-            desc.label = "Decay (blend-constant legacy)"
-            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex")
-            desc.fragmentFunction = library.makeFunction(name: "DecayFragment")
-            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
-            let blend = desc.colorAttachments[0]
-            blend?.isBlendingEnabled = true
-            // out = src * dst + dst * 0 = keep * dst (src=keepColor, srcFactor=dst, dstFactor=0)
-            blend?.sourceRGBBlendFactor = .destinationColor
-            blend?.sourceAlphaBlendFactor = .destinationAlpha
-            blend?.destinationRGBBlendFactor = .zero
-            blend?.destinationAlphaBlendFactor = .zero
-            blend?.rgbBlendOperation = .add
-            blend?.alphaBlendOperation = .add
-            decayPipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
         // Decay sampled pipeline: robust pass that samples source texture and multiplies by keep into scratch target.
         do {
@@ -371,12 +261,10 @@ final class StarryMetalRenderer {
                 offscreenComposite = nil
                 offscreenSize = .zero
             }
-            // Invalidate debug trails composite to force reallocation at new size
-            debugTrailsComposite = nil
         }
     }
     
-    // Allow external toggle of debug overlay visuals
+    // Allow external toggle of debug overlay visuals (no-op for now)
     func setDebugOverlayEnabled(_ enabled: Bool) {
         debugOverlayEnabled = enabled
     }
@@ -454,20 +342,9 @@ final class StarryMetalRenderer {
     }
     
     func render(drawData: StarryDrawData) {
-        frameCounter &+= 1
-        
         // Prepare moon albedo textures if an upload is requested
         if let img = drawData.moonAlbedoImage {
-            if testSkipMoonAlbedoUploads {
-                skippedMoonUploadCount &+= 1
-                if skippedMoonUploadCount <= 5 || (skippedMoonUploadCount % 60 == 0) {
-                    os_log("TEST: Skipping moon albedo upload this frame (count=%{public}llu, img=%{public}dx%{public}d)",
-                           log: log, type: .info,
-                           skippedMoonUploadCount, img.width, img.height)
-                }
-            } else {
-                setMoonAlbedo(image: img)
-            }
+            setMoonAlbedo(image: img)
         }
         // Ensure textures (only when logical size valid)
         if drawData.size.width >= 1, drawData.size.height >= 1, drawData.size != layerTex.size {
@@ -476,11 +353,11 @@ final class StarryMetalRenderer {
             clearOffscreenTextures(reason: "Allocate on render()")
         }
         if drawData.clearAll {
-            os_log("Render: Clear requested via drawData.clearAll (reason=UserClearAll)", log: log, type: .info)
+            os_log("Render: Clear requested via drawData.clearAll", log: log, type: .info)
             clearOffscreenTextures(reason: "UserClearAll")
         }
         
-        // Skip expensive work if there's nothing to draw and no decay/clear needed
+        // Skip work if there's nothing to draw and no decay/clear needed
         let nothingToDraw =
             drawData.baseSprites.isEmpty &&
             drawData.satellitesSprites.isEmpty &&
@@ -491,12 +368,6 @@ final class StarryMetalRenderer {
             drawData.clearAll == false
         if nothingToDraw {
             return
-        }
-        
-        // Log mask toggle changes
-        if drawData.showLightAreaTextureFillMask != lastDebugShowMask {
-            lastDebugShowMask = drawData.showLightAreaTextureFillMask
-            os_log("Moon debug mask is now %{public}@", log: log, type: .info, lastDebugShowMask ? "ENABLED" : "disabled")
         }
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
@@ -525,263 +396,45 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
-        // base pre-center readback before any draws in this frame
-        if let baseTex = layerTex.base {
-            ensureBasePrePostBuffers()
-            if let blit = commandBuffer.makeBlitCommandEncoder(), let buf = rbBasePreCenter {
-                blit.label = "Base-PreCenter"
-                enqueueCenterReadback(blit: blit, texture: baseTex, buffer: buf)
-                blit.endEncoding()
-            }
-        }
-        
-        // Optional: pre-decay center readbacks (phase diagnostics)
-        if shouldReadbackThisFrame() && debugPhaseReadbacks {
-            ensurePhaseReadbackBuffers()
-            if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "PhaseReadback-PreDecay"
-                if let sat = layerTex.satellites, let buf = rbSatPre {
-                    enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
-                }
-                if let shoot = layerTex.shooting, let buf = rbShootPre {
-                    enqueueCenterReadback(blit: blit, texture: shoot, buffer: buf)
-                }
-                blit.endEncoding()
-            }
-        }
-        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
-            os_log("renderSprites: target=%{public}@ ptr=%{public}@ count=%{public}d",
-                   log: log, type: .debug,
-                   baseTex.label ?? "Base?", ptrString(baseTex), drawData.baseSprites.count)
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
                           viewport: drawData.size,
                           commandBuffer: commandBuffer)
         }
         
-        // 2) Satellites trail: decay then draw (with optional diagnostics)
-        if let satTexCurrent = layerTex.satellites {
-            var keep = drawData.satellitesKeepFactor
-            let willApplyDecay = keep < 1.0
-            if debugOverlayEnabled && debugForceDecayPulseEveryNFrames > 0 && (frameCounter % debugForceDecayPulseEveryNFrames == 0) {
-                keep = min(keep, debugDecayPulseKeep)
-                logDecayDecision(layer: "Satellites", texture: satTexCurrent, keep: keep, action: "PULSE")
-            } else if willApplyDecay {
-                logDecayDecision(layer: "Satellites", texture: satTexCurrent, keep: keep, action: keep <= 0 ? "CLEAR" : "DECAY_SAMPLE")
-            } else {
-                logDecayDecision(layer: "Satellites", texture: satTexCurrent, keep: keep, action: "SKIP(keep=1)")
-            }
-            lastKeepSatUsed = keep
+        // 2) Satellites trail: decay then draw
+        if layerTex.satellites != nil {
+            let keep = drawData.satellitesKeepFactor
             if keep < 1.0 {
-                os_log("Decay(Sat): src=%{public}@ dst(scratch)=%{public}@ keep=%{public}.3f",
-                       log: log, type: .debug,
-                       ptrString(layerTex.satellites!), ptrString(layerTex.satellitesScratch!), Double(keep))
                 applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
-                if shouldReadbackThisFrame() && debugPhaseReadbacks {
-                    if let blit = commandBuffer.makeBlitCommandEncoder() {
-                        blit.label = "PhaseReadback-Sat-PostDecay"
-                        if let satPost = layerTex.satellites, let buf = rbSatPostDecay {
-                            enqueueCenterReadback(blit: blit, texture: satPost, buffer: buf)
-                        }
-                        blit.endEncoding()
-                    }
-                }
-            } else {
-                if shouldReadbackThisFrame() && debugPhaseReadbacks {
-                    if let blit = commandBuffer.makeBlitCommandEncoder() {
-                        blit.label = "PhaseReadback-Sat-NoDecay"
-                        if let satNo = layerTex.satellites, let buf = rbSatPostDecay {
-                            enqueueCenterReadback(blit: blit, texture: satNo, buffer: buf)
-                        }
-                        blit.endEncoding()
-                    }
-                }
-            }
-            // Draw a one-time probe dot to test decay — only when debug overlay is enabled
-            if debugOverlayEnabled && debugDrawDecayProbe && !decayProbeInitializedSat, let dst = layerTex.satellites {
-                drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "SatProbe")
-                decayProbeInitializedSat = true
-                // Immediately schedule a one-shot base vs satellite center readback to confirm no write into base.
-                scheduleProbeCenterReadbacks(commandBuffer: commandBuffer)
             }
             if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
-                os_log("renderSprites: target=%{public}@ ptr=%{public}@ count=%{public}d",
-                       log: log, type: .debug,
-                       dst.label ?? "Satellites?", ptrString(dst), drawData.satellitesSprites.count)
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
-                if shouldReadbackThisFrame() && debugPhaseReadbacks {
-                    if let blit = commandBuffer.makeBlitCommandEncoder() {
-                        blit.label = "PhaseReadback-Sat-PostEmit"
-                        if let satPostEmit = layerTex.satellites, let buf = rbSatPostEmit {
-                            enqueueCenterReadback(blit: blit, texture: satPostEmit, buffer: buf)
-                        }
-                        blit.endEncoding()
-                    }
-                }
-            } else {
-                if shouldReadbackThisFrame() && debugPhaseReadbacks {
-                    // Still capture postEmit (same as postDecay when no emission)
-                    if let blit = commandBuffer.makeBlitCommandEncoder() {
-                        blit.label = "PhaseReadback-Sat-PostEmit(NoSprites)"
-                        if let satPostEmit = layerTex.satellites, let buf = rbSatPostEmit {
-                            enqueueCenterReadback(blit: blit, texture: satPostEmit, buffer: buf)
-                        }
-                        blit.endEncoding()
-                    }
-                }
             }
         }
         
-        // 3) Shooting stars trail: decay then draw (with optional diagnostics)
-        if let shootTexCurrent = layerTex.shooting {
-            var keep = drawData.shootingKeepFactor
-            let willApplyDecay = keep < 1.0
-            if debugOverlayEnabled && debugForceDecayPulseEveryNFrames > 0 && (frameCounter % debugForceDecayPulseEveryNFrames == 0) {
-                keep = min(keep, debugDecayPulseKeep)
-                logDecayDecision(layer: "Shooting", texture: shootTexCurrent, keep: keep, action: "PULSE")
-            } else if willApplyDecay {
-                logDecayDecision(layer: "Shooting", texture: shootTexCurrent, keep: keep, action: keep <= 0 ? "CLEAR" : "DECAY_SAMPLE")
-            } else {
-                logDecayDecision(layer: "Shooting", texture: shootTexCurrent, keep: keep, action: "SKIP(keep=1)")
-            }
-            lastKeepShootUsed = keep
+        // 3) Shooting stars trail: decay then draw
+        if layerTex.shooting != nil {
+            let keep = drawData.shootingKeepFactor
             if keep < 1.0 {
-                os_log("Decay(Shoot): src=%{public}@ dst(scratch)=%{public}@ keep=%{public}.3f",
-                       log: log, type: .debug,
-                       ptrString(layerTex.shooting!), ptrString(layerTex.shootingScratch!), Double(keep))
                 applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
-                if shouldReadbackThisFrame() && debugPhaseReadbacks {
-                    if let blit = commandBuffer.makeBlitCommandEncoder() {
-                        blit.label = "PhaseReadback-Shoot-PostDecay"
-                        if let shPost = layerTex.shooting, let buf = rbShootPostDecay {
-                            enqueueCenterReadback(blit: blit, texture: shPost, buffer: buf)
-                        }
-                        blit.endEncoding()
-                    }
-                }
-            } else {
-                if shouldReadbackThisFrame() && debugPhaseReadbacks {
-                    if let blit = commandBuffer.makeBlitCommandEncoder() {
-                        blit.label = "PhaseReadback-Shoot-NoDecay"
-                        if let shNo = layerTex.shooting, let buf = rbShootPostDecay {
-                            enqueueCenterReadback(blit: blit, texture: shNo, buffer: buf)
-                        }
-                        blit.endEncoding()
-                    }
-                }
-            }
-            // One-time probe dot — only when debug overlay is enabled
-            if debugOverlayEnabled && debugDrawDecayProbe && !decayProbeInitializedShoot, let dst = layerTex.shooting {
-                drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "ShootProbe")
-                decayProbeInitializedShoot = true
-                scheduleProbeCenterReadbacks(commandBuffer: commandBuffer)
             }
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
-                os_log("renderSprites: target=%{public}@ ptr=%{public}@ count=%{public}d",
-                       log: log, type: .debug,
-                       dst.label ?? "Shooting?", ptrString(dst), drawData.shootingSprites.count)
                 renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
-                if shouldReadbackThisFrame() && debugPhaseReadbacks {
-                    if let blit = commandBuffer.makeBlitCommandEncoder() {
-                        blit.label = "PhaseReadback-Shoot-PostEmit"
-                        if let shPostEmit = layerTex.shooting, let buf = rbShootPostEmit {
-                            enqueueCenterReadback(blit: blit, texture: shPostEmit, buffer: buf)
-                        }
-                        blit.endEncoding()
-                    }
-                }
-            } else {
-                if shouldReadbackThisFrame() && debugPhaseReadbacks {
-                    if let blit = commandBuffer.makeBlitCommandEncoder() {
-                        blit.label = "PhaseReadback-Shoot-PostEmit(NoSprites)"
-                        if let shPostEmit = layerTex.shooting, let buf = rbShootPostEmit {
-                            enqueueCenterReadback(blit: blit, texture: shPostEmit, buffer: buf)
-                        }
-                        blit.endEncoding()
-                    }
-                }
             }
         }
 
-        // 3.5) Readback diagnostics: sample center pixel and 64x64 ROI from each layer post-decay+emission
-        if shouldReadbackThisFrame() {
-            ensureReadbackBuffers()
-            ensureDebugTrailsComposite(size: drawData.size)
-            if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "LayerCentersAndROIsReadback"
-                if let base = layerTex.base, let bufC = rbBufferBase, let bufROI = rbBufferBaseROI {
-                    enqueueCenterReadback(blit: blit, texture: base, buffer: bufC)
-                    enqueueROIReadback(blit: blit, texture: base, halfSize: debugROIHSize, buffer: bufROI)
-                }
-                if let sat = layerTex.satellites, let bufC = rbBufferSat, let bufROI = rbBufferSatROI {
-                    enqueueCenterReadback(blit: blit, texture: sat, buffer: bufC)
-                    enqueueROIReadback(blit: blit, texture: sat, halfSize: debugROIHSize, buffer: bufROI)
-                }
-                if let shoot = layerTex.shooting, let bufC = rbBufferShoot, let bufROI = rbBufferShootROI {
-                    enqueueCenterReadback(blit: blit, texture: shoot, buffer: bufC)
-                    enqueueROIReadback(blit: blit, texture: shoot, halfSize: debugROIHSize, buffer: bufROI)
-                }
-                blit.endEncoding()
-            }
-            // Trails-only composite into debug texture
-            if let debugTex = debugTrailsComposite {
-                compositeTrailsOnly(into: debugTex, viewport: drawData.size, commandBuffer: commandBuffer)
-                // Readback center pixel and a 64x64 ROI around center from the trails-only debug composite.
-                if let blit2 = commandBuffer.makeBlitCommandEncoder() {
-                    blit2.label = "TrailsOnlyReadbacks"
-                    if let cbuf = rbBufferTrailsCenter {
-                        enqueueCenterReadback(blit: blit2, texture: debugTex, buffer: cbuf)
-                    }
-                    if let robuf = rbBufferTrailsROI {
-                        enqueueROIReadback(blit: blit2, texture: debugTex, halfSize: debugROIHSize, buffer: robuf)
-                    }
-                    blit2.endEncoding()
-                    if shouldLogDetailedThisFrame() {
-                        os_log("Debug: enqueued trails-only composite and readbacks", log: log, type: .info)
-                    }
-                } else {
-                    os_log("Debug: failed to create blit encoder for trails-only readbacks", log: log, type: .error)
-                }
-            } else {
-                if shouldLogDetailedThisFrame() {
-                    os_log("Debug: debugTrailsComposite is nil — trails-only readback skipped", log: log, type: .error)
-                }
-            }
-            // We'll enqueue the drawable readback after composite encoding, below.
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                self?.logReadbackValues()
-            }
-        }
-        
-        // base post-center readback after trail emissions, before composite to drawable
-        if let baseTex = layerTex.base {
-            ensureBasePrePostBuffers()
-            if let blit = commandBuffer.makeBlitCommandEncoder(), let buf = rbBasePostCenter {
-                blit.label = "Base-PostCenter"
-                enqueueCenterReadback(blit: blit, texture: baseTex, buffer: buf)
-                blit.endEncoding()
-            }
-        }
-        // Compare base pre/post for unexpected modifications when no base sprites were drawn
-        let baseSpritesCountThisFrame = drawData.baseSprites.count
-        commandBuffer.addCompletedHandler { [weak self] _ in
-            self?.checkForUnexpectedBaseChanges(baseSpritesCount: baseSpritesCountThisFrame, phase: "onscreen")
-        }
-        
         // 4) Composite to drawable and draw moon on top
         guard let drawable = metalLayer?.nextDrawable() else {
-            drawableNilLogCount &+= 1
-            if drawableNilLogCount <= 5 || (drawableNilLogCount % 60 == 0) {
-                os_log("No CAMetalLayer drawable available this frame (count=%{public}llu)", log: log, type: .error, drawableNilLogCount)
-            }
+            os_log("No CAMetalLayer drawable available this frame", log: log, type: .error)
             commandBuffer.commit()
             return
         }
@@ -804,51 +457,21 @@ final class StarryMetalRenderer {
                               znear: 0, zfar: 1)
         encoder.setViewport(dvp)
         
-        // Decide if this frame should present trails-only onscreen (visual diagnostic)
-        let presentTrailsOnlyThisFrame = debugOverlayEnabled && (debugPresentTrailsOnlyEveryNFrames > 0) && ((frameCounter % (debugPresentTrailsOnlyEveryNFrames * 2)) <= debugReadbackEveryNFrames)
-        if presentTrailsOnlyThisFrame {
-            os_log("Debug: presenting trails-only this frame", log: log, type: .info)
-        }
-        // Remember for prediction check logs
-        lastPresentedTrailsOnly = presentTrailsOnlyThisFrame
-        
-        // Log a concise summary using the new cadence (and always for the first few frames)
-        if (frameCounter < 5) || shouldLogDetailedThisFrame() {
-            os_log("Frame #%{public}llu summary: baseSprites=%{public}d satSprites=%{public}d shootSprites=%{public}d keep(sat)=%.3f keep(shoot)=%.3f presentTrailsOnly=%{public}@ clearReason=%{public}@",
-                   log: log, type: .info,
-                   frameCounter, drawData.baseSprites.count, drawData.satellitesSprites.count, drawData.shootingSprites.count,
-                   Double(drawData.satellitesKeepFactor), Double(drawData.shootingKeepFactor),
-                   presentTrailsOnlyThisFrame ? "YES" : "no", lastClearReason)
-        }
-        
-        // Composite with per-layer tint (visual only when overlay enabled)
+        // Composite base + satellites + shooting (white tint)
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
-        } else {
-            os_log("WARN: quadVertexBuffer is nil during composite", log: log, type: .error)
         }
-        let tintEnabled = debugOverlayEnabled && debugTintLayers
-        func tint(_ r: Float, _ g: Float, _ b: Float) -> SIMD4<Float> {
-            return tintEnabled ? SIMD4<Float>(r, g, b, 1.0) : SIMD4<Float>(1, 1, 1, 1)
-        }
-        func drawTex(_ tex: MTLTexture?, tintColor: SIMD4<Float>) {
+        var whiteTint = SIMD4<Float>(1, 1, 1, 1)
+        func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
-            var color = tintColor
             encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        if presentTrailsOnlyThisFrame {
-            // Trails-only: omit base; draw satellites + shooting
-            drawTex(layerTex.satellites, tintColor: tint(0.6, 1.0, 0.6)) // greenish
-            drawTex(layerTex.shooting, tintColor: tint(1.0, 0.5, 0.5))   // reddish
-        } else {
-            // Normal: base + satellites + shooting
-            drawTex(layerTex.base, tintColor: tint(0.7, 0.9, 1.0))       // bluish
-            drawTex(layerTex.satellites, tintColor: tint(0.6, 1.0, 0.6)) // greenish
-            drawTex(layerTex.shooting, tintColor: tint(1.0, 0.5, 0.5))   // reddish
-        }
+        drawTex(layerTex.base)
+        drawTex(layerTex.satellites)
+        drawTex(layerTex.shooting)
         
         // Moon
         if let moon = drawData.moon {
@@ -871,41 +494,15 @@ final class StarryMetalRenderer {
         encoder.popDebugGroup()
         encoder.endEncoding()
         
-        // 4.5) Read back the center pixel and ROI of the onscreen drawable after composite (for comparison)
-        if shouldReadbackThisFrame() {
-            ensureReadbackBuffers()
-            if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "DrawableCenterAndROIReadback"
-                if let buf = rbBufferDrawable {
-                    enqueueCenterReadback(blit: blit, texture: drawable.texture, buffer: buf)
-                }
-                if let bufROI = rbBufferDrawableROI {
-                    enqueueROIReadback(blit: blit, texture: drawable.texture, halfSize: debugROIHSize, buffer: bufROI)
-                }
-                blit.endEncoding()
-            }
-        }
-        
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }
     
     // Headless preview: render same content into an offscreen texture and return CGImage.
     func renderToImage(drawData: StarryDrawData) -> CGImage? {
-        headlessFrameCounter &+= 1
-        
         // Prepare moon albedo if provided
         if let img = drawData.moonAlbedoImage {
-            if testSkipMoonAlbedoUploads {
-                skippedMoonUploadCount &+= 1
-                if skippedMoonUploadCount <= 5 || (skippedMoonUploadCount % 60 == 0) {
-                    os_log("TEST(headless): Skipping moon albedo upload this frame (count=%{public}llu, img=%{public}dx%{public}d)",
-                           log: log, type: .info,
-                           skippedMoonUploadCount, img.width, img.height)
-                }
-            } else {
-                setMoonAlbedo(image: img)
-            }
+            setMoonAlbedo(image: img)
         }
         
         // Ensure persistent textures only when valid size
@@ -914,7 +511,7 @@ final class StarryMetalRenderer {
             clearOffscreenTextures(reason: "Allocate on renderToImage()")
         }
         if drawData.clearAll {
-            os_log("RenderToImage: Clear requested via drawData.clearAll (reason=UserClearAll)", log: log, type: .info)
+            os_log("RenderToImage: Clear requested via drawData.clearAll", log: log, type: .info)
             clearOffscreenTextures(reason: "UserClearAll(headless)")
         }
         // Ensure offscreen composite target (shared so CPU can read)
@@ -947,21 +544,8 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
-        // base pre-center readback
-        if let baseTex = layerTex.base {
-            ensureBasePrePostBuffers()
-            if let blit = commandBuffer.makeBlitCommandEncoder(), let buf = rbBasePreCenter {
-                blit.label = "Base-PreCenter(headless)"
-                enqueueCenterReadback(blit: blit, texture: baseTex, buffer: buf)
-                blit.endEncoding()
-            }
-        }
-        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
-            os_log("renderSprites(headless): target=%{public}@ ptr=%{public}@ count=%{public}d",
-                   log: log, type: .debug,
-                   baseTex.label ?? "Base?", ptrString(baseTex), drawData.baseSprites.count)
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
                           viewport: drawData.size,
@@ -969,26 +553,12 @@ final class StarryMetalRenderer {
         }
         
         // 2) Satellites trail: decay then draw
-        if let _ = layerTex.satellites {
-            var keep = drawData.satellitesKeepFactor
-            if debugOverlayEnabled && debugForceDecayPulseEveryNFrames > 0 && (headlessFrameCounter % debugForceDecayPulseEveryNFrames == 0) {
-                keep = min(keep, debugDecayPulseKeep)
-                logDecayDecision(layer: "Satellites(headless)", texture: layerTex.satellites!, keep: keep, action: "PULSE")
-            } else {
-                logDecayDecision(layer: "Satellites(headless)", texture: layerTex.satellites!, keep: keep, action: keep < 1.0 ? (keep <= 0 ? "CLEAR" : "DECAY_SAMPLE") : "SKIP(keep=1)")
-            }
+        if layerTex.satellites != nil {
+            let keep = drawData.satellitesKeepFactor
             if keep < 1.0 {
                 applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
             }
-            if debugOverlayEnabled && debugDrawDecayProbe && !decayProbeInitializedSat, let dst = layerTex.satellites {
-                drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "SatProbe(headless)")
-                decayProbeInitializedSat = true
-                scheduleProbeCenterReadbacks(commandBuffer: commandBuffer)
-            }
             if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
-                os_log("renderSprites(headless): target=%{public}@ ptr=%{public}@ count=%{public}d",
-                       log: log, type: .debug,
-                       dst.label ?? "Satellites?", ptrString(dst), drawData.satellitesSprites.count)
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               viewport: drawData.size,
@@ -997,45 +567,17 @@ final class StarryMetalRenderer {
         }
         
         // 3) Shooting stars trail: decay then draw
-        if let _ = layerTex.shooting {
-            var keep = drawData.shootingKeepFactor
-            if debugOverlayEnabled && debugForceDecayPulseEveryNFrames > 0 && (headlessFrameCounter % debugForceDecayPulseEveryNFrames == 0) {
-                keep = min(keep, debugDecayPulseKeep)
-                logDecayDecision(layer: "Shooting(headless)", texture: layerTex.shooting!, keep: keep, action: "PULSE")
-            } else {
-                logDecayDecision(layer: "Shooting(headless)", texture: layerTex.shooting!, keep: keep, action: keep < 1.0 ? (keep <= 0 ? "CLEAR" : "DECAY_SAMPLE") : "SKIP(keep=1)")
-            }
+        if layerTex.shooting != nil {
+            let keep = drawData.shootingKeepFactor
             if keep < 1.0 {
                 applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
             }
-            if debugOverlayEnabled && debugDrawDecayProbe && !decayProbeInitializedShoot, let dst = layerTex.shooting {
-                drawDecayProbe(into: dst, viewport: drawData.size, commandBuffer: commandBuffer, label: "ShootProbe(headless)")
-                decayProbeInitializedShoot = true
-                scheduleProbeCenterReadbacks(commandBuffer: commandBuffer)
-            }
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
-                os_log("renderSprites(headless): target=%{public}@ ptr=%{public}@ count=%{public}d",
-                       log: log, type: .debug,
-                       dst.label ?? "Shooting?", ptrString(dst), drawData.shootingSprites.count)
                 renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
                               viewport: drawData.size,
                               commandBuffer: commandBuffer)
             }
-        }
-        
-        // base post-center readback
-        if let baseTex = layerTex.base {
-            ensureBasePrePostBuffers()
-            if let blit = commandBuffer.makeBlitCommandEncoder(), let buf = rbBasePostCenter {
-                blit.label = "Base-PostCenter(headless)"
-                enqueueCenterReadback(blit: blit, texture: baseTex, buffer: buf)
-                blit.endEncoding()
-            }
-        }
-        let baseSpritesCountThisFrame = drawData.baseSprites.count
-        commandBuffer.addCompletedHandler { [weak self] _ in
-            self?.checkForUnexpectedBaseChanges(baseSpritesCount: baseSpritesCountThisFrame, phase: "headless")
         }
         
         // 4) Composite into offscreen target and draw moon
@@ -1058,27 +600,20 @@ final class StarryMetalRenderer {
                              znear: 0, zfar: 1)
         encoder.setViewport(vp)
         
-        // Composite base, satellites, shooting with per-layer tint (visual only when overlay enabled)
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
-        } else {
-            os_log("WARN(headless): quadVertexBuffer is nil during composite", log: log, type: .error)
         }
-        let tintEnabled = debugOverlayEnabled && debugTintLayers
-        func tint(_ r: Float, _ g: Float, _ b: Float) -> SIMD4<Float> {
-            return tintEnabled ? SIMD4<Float>(r, g, b, 1.0) : SIMD4<Float>(1, 1, 1, 1)
-        }
-        func drawTex(_ tex: MTLTexture?, tintColor: SIMD4<Float>) {
+        var whiteTint = SIMD4<Float>(1, 1, 1, 1)
+        func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
-            var color = tintColor
             encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        drawTex(layerTex.base, tintColor: tint(0.7, 0.9, 1.0))       // bluish
-        drawTex(layerTex.satellites, tintColor: tint(0.6, 1.0, 0.6)) // greenish
-        drawTex(layerTex.shooting, tintColor: tint(1.0, 0.5, 0.5))   // reddish
+        drawTex(layerTex.base)
+        drawTex(layerTex.satellites)
+        drawTex(layerTex.shooting)
         
         // Moon (on top)
         if let moon = drawData.moon {
@@ -1152,7 +687,6 @@ final class StarryMetalRenderer {
         layerTex.shootingScratch = device.makeTexture(descriptor: desc)
         layerTex.shootingScratch?.label = "ShootingStarsLayerScratch"
         
-        // Log texture identity (addresses) to confirm distinct allocations
         os_log("Allocated textures: base=%{public}@ sat=%{public}@ satScratch=%{public}@ shoot=%{public}@ shootScratch=%{public}@",
                log: log, type: .info,
                ptrString(layerTex.base!),
@@ -1178,22 +712,7 @@ final class StarryMetalRenderer {
         offscreenSize = size
     }
     
-    private func ensureDebugTrailsComposite(size: CGSize) {
-        if debugTrailsComposite != nil { return }
-        let w = max(1, Int(max(1, size.width)))
-        let h = max(1, Int(max(1, size.height)))
-        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-                                                            width: w,
-                                                            height: h,
-                                                            mipmapped: false)
-        desc.usage = [.renderTarget, .shaderRead]
-        desc.storageMode = .shared
-        debugTrailsComposite = device.makeTexture(descriptor: desc)
-        debugTrailsComposite?.label = "DebugTrailsComposite"
-    }
-    
     private func clearOffscreenTextures(reason: String = "unspecified") {
-        lastClearReason = reason
         os_log("ClearOffscreenTextures: begin (reason=%{public}@)", log: log, type: .info, reason)
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             os_log("ClearOffscreenTextures: failed to make command buffer", log: log, type: .error)
@@ -1223,32 +742,9 @@ final class StarryMetalRenderer {
         clear(texture: layerTex.shooting)
         clear(texture: layerTex.shootingScratch)
         
-        // Verify clears by sampling center pixel of each cleared texture
-        ensureClearVerifyBuffers()
-        if let blit = commandBuffer.makeBlitCommandEncoder() {
-            blit.label = "ClearVerify-Readbacks"
-            if let base = layerTex.base, let buf = rbClearBaseCenter {
-                enqueueCenterReadback(blit: blit, texture: base, buffer: buf)
-            }
-            if let sat = layerTex.satellites, let buf = rbClearSatCenter {
-                enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
-            }
-            if let shoot = layerTex.shooting, let buf = rbClearShootCenter {
-                enqueueCenterReadback(blit: blit, texture: shoot, buffer: buf)
-            }
-            blit.endEncoding()
-        }
-        
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
-        logClearVerifyBuffers()
-        
         os_log("ClearOffscreenTextures: complete (reason=%{public}@)", log: log, type: .info, reason)
-        
-        // Reset probe flags after full clear
-        decayProbeInitializedSat = false
-        decayProbeInitializedShoot = false
-        probeCheckScheduled = false
     }
     
     private func renderSprites(into target: MTLTexture,
@@ -1345,8 +841,6 @@ final class StarryMetalRenderer {
         encoder.setRenderPipelineState(decaySampledPipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
-        } else {
-            os_log("WARN: quadVertexBuffer is nil during decay-sampled", log: log, type: .error)
         }
         var keepColor = SIMD4<Float>(repeating: keepFactor)
         encoder.setFragmentTexture(src, index: 0)
@@ -1365,492 +859,10 @@ final class StarryMetalRenderer {
             layerTex.shooting = layerTex.shootingScratch
             layerTex.shootingScratch = tmp
         }
-        os_log("Decay swap(%{public}@): now current=%{public}@ scratch=%{public}@",
-               log: log, type: .debug,
-               which == .satellites ? "Sat" : "Shoot",
-               ptrString((which == .satellites) ? layerTex.satellites! : layerTex.shooting!),
-               ptrString((which == .satellites) ? layerTex.satellitesScratch! : layerTex.shootingScratch!))
-    }
-    
-    // Draw a small bright probe dot once; if decay works, this dot will fade over time.
-    private func drawDecayProbe(into target: MTLTexture,
-                                viewport: CGSize,
-                                commandBuffer: MTLCommandBuffer,
-                                label: String) {
-        let cx = Float(viewport.width * 0.5)
-        let cy = Float(viewport.height * 0.5)
-        let half: Float = 2.0 // 4x4 px
-        let colorPremul = SIMD4<Float>(1.0, 1.0, 1.0, 1.0) // opaque white
-        var sprites: [SpriteInstance] = []
-        sprites.append(SpriteInstance(centerPx: SIMD2<Float>(cx, cy),
-                                      halfSizePx: SIMD2<Float>(half, half),
-                                      colorPremul: colorPremul,
-                                      shape: .rect))
-        renderSprites(into: target, sprites: sprites, viewport: viewport, commandBuffer: commandBuffer)
-        os_log("DecayProbe: drew one-time probe dot into %{public}@ at (%{public}.0f,%{public}.0f) on tex=%{public}@ ptr=%{public}@",
-               log: log, type: .info, label, Double(cx), Double(cy), target.label ?? "unnamed", ptrString(target))
-    }
-    
-    // MARK: - Readback diagnostics
-    
-    private func shouldReadbackThisFrame() -> Bool {
-        return debugReadbackEveryNFrames > 0 && (frameCounter % debugReadbackEveryNFrames == 0)
-    }
-    
-    private func ensureReadbackBuffers() {
-        let len = 256 // bytesPerRow alignment requirement for texture->buffer blits
-        if rbBufferSat == nil { rbBufferSat = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbBufferShoot == nil { rbBufferShoot = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbBufferBase == nil { rbBufferBase = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbBufferDrawable == nil { rbBufferDrawable = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbBufferTrailsCenter == nil { rbBufferTrailsCenter = device.makeBuffer(length: len, options: .storageModeShared) }
-        // ROI buffer for 64x64 pixels with bytesPerRow=256
-        let roiBytesPerRow = 256
-        let roiHeight = 64
-        let roiLen = roiBytesPerRow * roiHeight
-        if rbBufferTrailsROI == nil || rbBufferTrailsROI!.length < roiLen {
-            rbBufferTrailsROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
-        }
-        if rbBufferBaseROI == nil || rbBufferBaseROI!.length < roiLen {
-            rbBufferBaseROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
-        }
-        if rbBufferSatROI == nil || rbBufferSatROI!.length < roiLen {
-            rbBufferSatROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
-        }
-        if rbBufferShootROI == nil || rbBufferShootROI!.length < roiLen {
-            rbBufferShootROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
-        }
-        if rbBufferDrawableROI == nil || rbBufferDrawableROI!.length < roiLen {
-            rbBufferDrawableROI = device.makeBuffer(length: roiLen, options: .storageModeShared)
-        }
-        rbBufferSat?.label = "RB_Sat_Center"
-        rbBufferShoot?.label = "RB_Shoot_Center"
-        rbBufferBase?.label = "RB_Base_Center"
-        rbBufferDrawable?.label = "RB_Drawable_Center"
-        rbBufferTrailsCenter?.label = "RB_TrailsOnly_Center"
-        rbBufferTrailsROI?.label = "RB_TrailsOnly_ROI64"
-        rbBufferBaseROI?.label = "RB_Base_ROI64"
-        rbBufferSatROI?.label = "RB_Sat_ROI64"
-        rbBufferShootROI?.label = "RB_Shoot_ROI64"
-        rbBufferDrawableROI?.label = "RB_Drawable_ROI64"
-        
-        // Probe buffers (single pixels)
-        if rbProbeBase == nil { rbProbeBase = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbProbeSat == nil { rbProbeSat = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbProbeShoot == nil { rbProbeShoot = device.makeBuffer(length: len, options: .storageModeShared) }
-        rbProbeBase?.label = "RB_Probe_Base_Center"
-        rbProbeSat?.label = "RB_Probe_Sat_Center"
-        rbProbeShoot?.label = "RB_Probe_Shoot_Center"
-    }
-    
-    private func ensurePhaseReadbackBuffers() {
-        let len = 256
-        if rbSatPre == nil { rbSatPre = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbSatPostDecay == nil { rbSatPostDecay = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbSatPostEmit == nil { rbSatPostEmit = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbShootPre == nil { rbShootPre = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbShootPostDecay == nil { rbShootPostDecay = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbShootPostEmit == nil { rbShootPostEmit = device.makeBuffer(length: len, options: .storageModeShared) }
-        rbSatPre?.label = "RB_Sat_PreDecay"
-        rbSatPostDecay?.label = "RB_Sat_PostDecay"
-        rbSatPostEmit?.label = "RB_Sat_PostEmit"
-        rbShootPre?.label = "RB_Shoot_PreDecay"
-        rbShootPostDecay?.label = "RB_Shoot_PostDecay"
-        rbShootPostEmit?.label = "RB_Shoot_PostEmit"
-    }
-    
-    private func ensureClearVerifyBuffers() {
-        let len = 256
-        if rbClearBaseCenter == nil { rbClearBaseCenter = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbClearSatCenter == nil { rbClearSatCenter = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbClearShootCenter == nil { rbClearShootCenter = device.makeBuffer(length: len, options: .storageModeShared) }
-        rbClearBaseCenter?.label = "RB_Clear_Base_Center"
-        rbClearSatCenter?.label = "RB_Clear_Sat_Center"
-        rbClearShootCenter?.label = "RB_Clear_Shoot_Center"
-    }
-    
-    private func ensureBasePrePostBuffers() {
-        let len = 256
-        if rbBasePreCenter == nil { rbBasePreCenter = device.makeBuffer(length: len, options: .storageModeShared) }
-        if rbBasePostCenter == nil { rbBasePostCenter = device.makeBuffer(length: len, options: .storageModeShared) }
-        rbBasePreCenter?.label = "RB_Base_Pre_Center"
-        rbBasePostCenter?.label = "RB_Base_Post_Center"
-    }
-    
-    private func enqueueCenterReadback(blit: MTLBlitCommandEncoder, texture: MTLTexture, buffer: MTLBuffer) {
-        let x = texture.width / 2
-        let y = texture.height / 2
-        let region = MTLRegionMake2D(x, y, 1, 1)
-        blit.copy(from: texture,
-                  sourceSlice: 0,
-                  sourceLevel: 0,
-                  sourceOrigin: region.origin,
-                  sourceSize: region.size,
-                  to: buffer,
-                  destinationOffset: 0,
-                  destinationBytesPerRow: 256,
-                  destinationBytesPerImage: 256)
-    }
-    
-    private func enqueueROIReadback(blit: MTLBlitCommandEncoder, texture: MTLTexture, halfSize: Int, buffer: MTLBuffer) {
-        let cx = texture.width / 2
-        let cy = texture.height / 2
-        let width = min(halfSize * 2, texture.width)
-        let height = min(halfSize * 2, texture.height)
-        let originX = max(0, cx - halfSize)
-        let originY = max(0, cy - halfSize)
-        let region = MTLRegionMake2D(originX, originY, width, height)
-        // bytesPerRow must be >= width*4 and multiple of 256; we chose width=64 so width*4=256.
-        blit.copy(from: texture,
-                  sourceSlice: 0,
-                  sourceLevel: 0,
-                  sourceOrigin: region.origin,
-                  sourceSize: region.size,
-                  to: buffer,
-                  destinationOffset: 0,
-                  destinationBytesPerRow: 256,
-                  destinationBytesPerImage: 256 * height)
-    }
-    
-    private func compositeTrailsOnly(into target: MTLTexture, viewport: CGSize, commandBuffer: MTLCommandBuffer) {
-        let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = target
-        rpd.colorAttachments[0].loadAction = .clear
-        rpd.colorAttachments[0].storeAction = .store
-        rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
-        encoder.pushDebugGroup("CompositeTrailsOnly")
-        let vp = MTLViewport(originX: 0, originY: 0,
-                             width: Double(target.width),
-                             height: Double(target.height),
-                             znear: 0, zfar: 1)
-        encoder.setViewport(vp)
-        encoder.setRenderPipelineState(compositePipeline)
-        if let quad = quadVertexBuffer {
-            encoder.setVertexBuffer(quad, offset: 0, index: 0)
-        }
-        // Draw satellites + shooting only (omit base)
-        func setTintAndDraw(_ tex: MTLTexture?, r: Float, g: Float, b: Float) {
-            guard let t = tex else { return }
-            let tintEnabled = debugOverlayEnabled && debugTintLayers
-            var color: SIMD4<Float> = tintEnabled ? SIMD4<Float>(r, g, b, 1.0) : SIMD4<Float>(1, 1, 1, 1)
-            encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
-        }
-        setTintAndDraw(layerTex.satellites, r: 0.6, g: 1.0, b: 0.6)
-        setTintAndDraw(layerTex.shooting,   r: 1.0, g: 0.5, b: 0.5)
-        encoder.popDebugGroup()
-        encoder.endEncoding()
-    }
-    
-    private func scheduleProbeCenterReadbacks(commandBuffer: MTLCommandBuffer) {
-        guard !probeCheckScheduled else { return }
-        ensureReadbackBuffers()
-        guard let blit = commandBuffer.makeBlitCommandEncoder() else { return }
-        blit.label = "ProbeCenterReadbacks"
-        if let base = layerTex.base, let buf = rbProbeBase {
-            enqueueCenterReadback(blit: blit, texture: base, buffer: buf)
-        }
-        if let sat = layerTex.satellites, let buf = rbProbeSat {
-            enqueueCenterReadback(blit: blit, texture: sat, buffer: buf)
-        }
-        if let shoot = layerTex.shooting, let buf = rbProbeShoot {
-            enqueueCenterReadback(blit: blit, texture: shoot, buffer: buf)
-        }
-        blit.endEncoding()
-        probeCheckScheduled = true
-        commandBuffer.addCompletedHandler { [weak self] _ in
-            self?.logProbeCenters()
-        }
-    }
-    
-    private func logProbeCenters() {
-        probeCheckScheduled = false
-        func read(_ buf: MTLBuffer?) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8)? {
-            guard let buf = buf else { return nil }
-            let p = buf.contents().assumingMemoryBound(to: UInt8.self)
-            return (p[0], p[1], p[2], p[3])
-        }
-        if let v = read(rbProbeBase) {
-            os_log("PROBE Base center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .error, v.0, v.1, v.2, v.3)
-        } else {
-            os_log("PROBE Base center: nil", log: log, type: .error)
-        }
-        if let v = read(rbProbeSat) {
-            os_log("PROBE Satellites center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .error, v.0, v.1, v.2, v.3)
-        } else {
-            os_log("PROBE Satellites center: nil", log: log, type: .error)
-        }
-        if let v = read(rbProbeShoot) {
-            os_log("PROBE Shooting center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .error, v.0, v.1, v.2, v.3)
-        } else {
-            os_log("PROBE Shooting center: nil", log: log, type: .error)
-        }
-    }
-    
-    // MARK: - Detailed logging cadence helper
-    
-    private func shouldLogDetailedThisFrame() -> Bool {
-        // When overlay is enabled, we log every frame; otherwise every N frames.
-        return debugOverlayEnabled || (detailedLogEveryNFrames > 0 && (frameCounter % detailedLogEveryNFrames == 0))
-    }
-    
-    private func logReadbackValues() {
-        // Throttle detailed logs to every N frames unless overlay is enabled.
-        guard shouldLogDetailedThisFrame() else { return }
-        
-        rbLogCounter &+= 1
-        func read(_ buf: MTLBuffer?) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8)? {
-            guard let buf = buf else { return nil }
-            let p = buf.contents().assumingMemoryBound(to: UInt8.self)
-            // BGRA8 in little-endian
-            let b = p[0]
-            let g = p[1]
-            let r = p[2]
-            let a = p[3]
-            return (b,g,r,a)
-        }
-        func roiStats(_ buf: MTLBuffer?) -> (avgA: Double, maxA: UInt8)? {
-            guard let buf = buf else { return nil }
-            let ptr = buf.contents().assumingMemoryBound(to: UInt8.self)
-            var sumA: UInt64 = 0
-            var maxA: UInt8 = 0
-            let width = 64
-            let height = 64
-            let rowBytes = 256
-            for y in 0..<height {
-                let row = ptr + y * rowBytes
-                var x = 0
-                while x < width {
-                    let a = row[x*4 + 3] // BGRA
-                    sumA &+= UInt64(a)
-                    if a > maxA { maxA = a }
-                    x &+= 1
-                }
-            }
-            let avgA: Double = Double(sumA) / Double(width * height)
-            return (avgA, maxA)
-        }
-        
-        let sat = read(rbBufferSat)
-        let shoot = read(rbBufferShoot)
-        let base = read(rbBufferBase)
-        let draw = read(rbBufferDrawable)
-        let trailsC = read(rbBufferTrailsCenter)
-        
-        let baseROI = roiStats(rbBufferBaseROI)
-        let satROI = roiStats(rbBufferSatROI)
-        let shootROI = roiStats(rbBufferShootROI)
-        let trailsROI = roiStats(rbBufferTrailsROI)
-        let drawableROI = roiStats(rbBufferDrawableROI)
-        
-        // Log periodically (or every frame when overlay is enabled)
-        if let v = base {
-            os_log("RB Base center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
-        } else {
-            os_log("RB Base center: nil", log: log, type: .info)
-        }
-        if let v = sat {
-            os_log("RB Sat center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
-        }
-        if let v = shoot {
-            os_log("RB Shoot center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
-        }
-        if let d = draw {
-            os_log("RB Drawable(center) BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, d.b, d.g, d.r, d.a)
-        } else {
-            os_log("RB Drawable(center): nil (no onscreen readback this frame)", log: log, type: .info)
-        }
-        if let t = trailsC {
-            os_log("RB TrailsOnly center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, t.b, t.g, t.r, t.a)
-        } else {
-            os_log("RB TrailsOnly center: nil (readback not enqueued?)", log: log, type: .error)
-        }
-        if let s = baseROI {
-            os_log("RB Base ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-        }
-        if let s = satROI {
-            os_log("RB Sat ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-        }
-        if let s = shootROI {
-            os_log("RB Shoot ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-        }
-        if let s = trailsROI {
-            os_log("RB TrailsOnly ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-        }
-        if let s = drawableROI {
-            os_log("RB Drawable ROI64 alpha avg=%{public}.1f max=%{public}u", log: log, type: .info, s.avgA, s.maxA)
-        }
-        
-        // Phase diagnostics: compare measured decay to keep factor
-        if debugPhaseReadbacks {
-            let satPre = read(rbSatPre)
-            let satPost = read(rbSatPostDecay)
-            let satEmit = read(rbSatPostEmit)
-            let shPre = read(rbShootPre)
-            let shPost = read(rbShootPostDecay)
-            let shEmit = read(rbShootPostEmit)
-            func frac(_ num: UInt8, _ den: UInt8) -> Double {
-                if den == 0 { return Double.nan }
-                return Double(num) / Double(den)
-            }
-            if let pre = satPre, let post = satPost {
-                let k = Double(lastKeepSatUsed)
-                let ratioA = frac(post.a, pre.a)
-                os_log("PHASE Sat: keep=%.3f preA=%{public}u postDecayA=%{public}u ratio=%.3f postEmitA=%{public}@",
-                       log: log, type: .info, k, pre.a, post.a, ratioA,
-                       satEmit != nil ? "\(satEmit!.a)" : "nil")
-            }
-            if let pre = shPre, let post = shPost {
-                let k = Double(lastKeepShootUsed)
-                let ratioA = frac(post.a, pre.a)
-                os_log("PHASE Shoot: keep=%.3f preA=%{public}u postDecayA=%{public}u ratio=%.3f postEmitA=%{public}@",
-                       log: log, type: .info, k, pre.a, post.a, ratioA,
-                       shEmit != nil ? "\(shEmit!.a)" : "nil")
-            }
-        }
-        
-        // Compute and compare expected composite from layers vs actual drawable (premultiplied alpha)
-        if let b = base, let s = sat, let sh = shoot, let d = draw {
-            func norm(_ u: UInt8) -> Float { return Float(u) / 255.0 }
-            func denorm(_ f: Float) -> UInt8 {
-                let clamped = max(0.0, min(1.0, f))
-                return UInt8(roundf(clamped * 255.0))
-            }
-            struct RGBAf { var r: Float; var g: Float; var b: Float; var a: Float }
-            func toRGBAf(_ v: (b: UInt8, g: UInt8, r: UInt8, a: UInt8)) -> RGBAf {
-                return RGBAf(r: norm(v.r), g: norm(v.g), b: norm(v.b), a: norm(v.a))
-            }
-            func blend(dst: RGBAf, src: RGBAf) -> RGBAf {
-                // Premultiplied alpha blending: out = src + dst * (1 - src.a)
-                let oneMinusA = (1.0 - src.a)
-                return RGBAf(r: src.r + dst.r * oneMinusA,
-                             g: src.g + dst.g * oneMinusA,
-                             b: src.b + dst.b * oneMinusA,
-                             a: src.a + dst.a * oneMinusA)
-            }
-            func applyTint(_ c: RGBAf, tint: RGBAf) -> RGBAf {
-                return RGBAf(r: c.r * tint.r, g: c.g * tint.g, b: c.b * tint.b, a: c.a * tint.a)
-            }
-            let cb = toRGBAf(b)
-            let cs = toRGBAf(s)
-            let csh = toRGBAf(sh)
-            
-            // Tints used in onscreen composite (when enabled)
-            let tintEnabled = debugOverlayEnabled && debugTintLayers
-            let baseTint = tintEnabled ? RGBAf(r: 0.7, g: 0.9, b: 1.0, a: 1.0) : RGBAf(r: 1, g: 1, b: 1, a: 1)
-            let satTint  = tintEnabled ? RGBAf(r: 0.6, g: 1.0, b: 0.6, a: 1.0) : RGBAf(r: 1, g: 1, b: 1, a: 1)
-            let shTint   = tintEnabled ? RGBAf(r: 1.0, g: 0.5, b: 0.5, a: 1.0) : RGBAf(r: 1, g: 1, b: 1, a: 1)
-            let cbT = applyTint(cb, tint: baseTint)
-            let csT = applyTint(cs, tint: satTint)
-            let cshT = applyTint(csh, tint: shTint)
-            
-            // Prediction including drawable clear background (opaque black)
-            let bg = RGBAf(r: 0, g: 0, b: 0, a: 1)   // clearColor = (0,0,0,1)
-            let predicted: RGBAf
-            if lastPresentedTrailsOnly {
-                // Trails-only: omit base
-                let out1 = blend(dst: bg, src: csT)
-                predicted = blend(dst: out1, src: cshT)
-            } else {
-                let out1 = blend(dst: bg, src: cbT)
-                let out2 = blend(dst: out1, src: csT)     // base then satellites
-                predicted = blend(dst: out2, src: cshT)    // then shooting
-            }
-            let predTinted = (b: denorm(predicted.b), g: denorm(predicted.g), r: denorm(predicted.r), a: denorm(predicted.a))
-            let actual = d
-            os_log("Composite check (incl bg, tinted=%{public}@, trailsOnly=%{public}@): predicted BGRA=(%{public}u,%{public}u,%{public}u,%{public}u) vs drawable BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
-                   log: log, type: .info,
-                   tintEnabled ? "YES" : "no",
-                   lastPresentedTrailsOnly ? "YES" : "no",
-                   predTinted.b, predTinted.g, predTinted.r, predTinted.a, actual.b, actual.g, actual.r, actual.a)
-            let db = Int32(actual.b) - Int32(predTinted.b)
-            let dg = Int32(actual.g) - Int32(predTinted.g)
-            let dr = Int32(actual.r) - Int32(predTinted.r)
-            let da = Int32(actual.a) - Int32(predTinted.a)
-            if abs(db) > 3 || abs(dg) > 3 || abs(dr) > 3 || abs(da) > 3 {
-                os_log("Composite deviation (tinted incl bg): ΔBGRA=(%{public}d,%{public}d,%{public}d,%{public}d)",
-                       log: log, type: .error, db, dg, dr, da)
-            }
-        }
-    }
-    
-    // MARK: - Debug logging
-    
-    private func logDecayDecision(layer: String, texture: MTLTexture, keep: Float, action: String) {
-        // Rate-limit: log first N times and then every M frames thereafter
-        let shouldLogEarly = decayLogCount < decayLogFirstN
-        let shouldLogPeriodic = ((frameCounter % decayLogEveryNFrames) == 0)
-        if !(shouldLogEarly || shouldLogPeriodic) { return }
-        decayLogCount &+= 1
-        os_log("Decay[%{public}@] frame=%{public}llu tex=%{public}@ size=%{public}dx%{public}d keep=%{public}.3f action=%{public}@",
-               log: log, type: .info,
-               layer, frameCounter, texture.label ?? "unnamed", texture.width, texture.height, Double(keep), action)
     }
     
     private func ptrString(_ t: MTLTexture) -> String {
         let p = Unmanaged.passUnretained(t as AnyObject).toOpaque()
         return String(describing: p)
-    }
-    
-    // MARK: - New verification/logging helpers
-    
-    private func readBGRA(_ buf: MTLBuffer?) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8)? {
-        guard let buf = buf else { return nil }
-        let p = buf.contents().assumingMemoryBound(to: UInt8.self)
-        return (p[0], p[1], p[2], p[3])
-    }
-    
-    private func logClearVerifyBuffers() {
-        let b = readBGRA(rbClearBaseCenter)
-        let s = readBGRA(rbClearSatCenter)
-        let sh = readBGRA(rbClearShootCenter)
-        if let v = b {
-            os_log("VERIFY CLEAR [%{public}@] Base center after clear BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
-                   log: log, type: .info, lastClearReason, v.b, v.g, v.r, v.a)
-            if v.a != 0 || v.r != 0 || v.g != 0 || v.b != 0 {
-                os_log("ALERT: Base layer not fully cleared (nonzero center pixel) — reason=%{public}@", log: log, type: .fault, lastClearReason)
-            }
-        } else {
-            os_log("VERIFY CLEAR [%{public}@] Base: no readback", log: log, type: .error, lastClearReason)
-        }
-        if let v = s {
-            os_log("VERIFY CLEAR [%{public}@] Satellites center after clear BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
-                   log: log, type: .info, lastClearReason, v.b, v.g, v.r, v.a)
-            if v.a != 0 || v.r != 0 || v.g != 0 || v.b != 0 {
-                os_log("ALERT: Satellites layer not fully cleared (nonzero center pixel) — reason=%{public}@", log: log, type: .fault, lastClearReason)
-            }
-        } else {
-            os_log("VERIFY CLEAR [%{public}@] Satellites: no readback", log: log, type: .error, lastClearReason)
-        }
-        if let v = sh {
-            os_log("VERIFY CLEAR [%{public}@] Shooting center after clear BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)",
-                   log: log, type: .info, lastClearReason, v.b, v.g, v.r, v.a)
-            if v.a != 0 || v.r != 0 || v.g != 0 || v.b != 0 {
-                os_log("ALERT: Shooting layer not fully cleared (nonzero center pixel) — reason=%{public}@", log: log, type: .fault, lastClearReason)
-            }
-        } else {
-            os_log("VERIFY CLEAR [%{public}@] Shooting: no readback", log: log, type: .error, lastClearReason)
-        }
-    }
-    
-    private func checkForUnexpectedBaseChanges(baseSpritesCount: Int, phase: String) {
-        let pre = readBGRA(rbBasePreCenter)
-        let post = readBGRA(rbBasePostCenter)
-        guard let vPre = pre, let vPost = post else {
-            os_log("Base pre/post center not available (%{public}@)", log: log, type: .error, phase)
-            return
-        }
-        let changed = (vPre.b != vPost.b) || (vPre.g != vPost.g) || (vPre.r != vPost.r) || (vPre.a != vPost.a)
-        if changed && baseSpritesCount == 0 {
-            os_log("ALERT: Base changed in frame with zero baseSprites (%{public}@). pre=(%{public}u,%{public}u,%{public}u,%{public}u) post=(%{public}u,%{public}u,%{public}u,%{public}u)",
-                   log: log, type: .fault, phase, vPre.b, vPre.g, vPre.r, vPre.a, vPost.b, vPost.g, vPost.r, vPost.a)
-        } else {
-            if shouldLogDetailedThisFrame() {
-                os_log("Base pre/post (%{public}@): pre=(%{public}u,%{public}u,%{public}u,%{public}u) post=(%{public}u,%{public}u,%{public}u,%{public}u) baseSprites=%{public}d changed=%{public}@",
-                       log: log, type: .debug, phase, vPre.b, vPre.g, vPre.r, vPre.a, vPost.b, vPost.g, vPost.r, vPost.a, baseSpritesCount, changed ? "YES" : "no")
-            }
-        }
     }
 }

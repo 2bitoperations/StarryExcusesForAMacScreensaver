@@ -2,7 +2,6 @@ import Foundation
 import CoreGraphics
 import os
 import QuartzCore   // For CACurrentMediaTime()
-import CoreText     // retained for now; debug overlay not rendered in GPU path
 import Darwin       // For task_info CPU sampling
 import simd
 
@@ -111,8 +110,6 @@ final class StarryEngine {
     private var skylineRenderer: SkylineCoreRenderer?
     private var shootingStarsRenderer: ShootingStarsLayerRenderer?
     private var satellitesRenderer: SatellitesLayerRenderer?
-    // Moon renderer (for preview/CoreGraphics path only)
-    private var moonRenderer: MoonLayerRenderer?
     
     private var size: CGSize
     private var lastInitSize: CGSize
@@ -129,15 +126,6 @@ final class StarryEngine {
     private var lastProcessCPUTimesSeconds: Double = 0
     private var lastCPUSampleWallTime: CFTimeInterval = 0
     private var currentCPUPercent: Double = 0
-    
-    // Debug overlay state (not drawn in GPU path yet)
-    private let isoDateFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-    private let debugFont: CTFont = CTFontCreateWithName("Menlo" as CFString, 12, nil)
-    private var lastDebugOverlayString: String = ""
     
     // Moon albedo (for renderer upload)
     private var moonAlbedoImage: CGImage?
@@ -185,8 +173,6 @@ final class StarryEngine {
         skylineRenderer = nil
         shootingStarsRenderer = nil
         satellitesRenderer = nil
-        moonRenderer = nil
-        previewMetalRenderer = nil
         
         // Moon albedo might change size (radius), request refresh
         moonAlbedoImage = nil
@@ -215,7 +201,6 @@ final class StarryEngine {
             os_log("Config changed (skyline affecting) — resetting skyline, renderers, and moon albedo", log: log, type: .info)
             skyline = nil
             skylineRenderer = nil
-            moonRenderer = nil
             previewMetalRenderer = nil
             // Force moon albedo refresh
             moonAlbedoImage = nil
@@ -265,12 +250,10 @@ final class StarryEngine {
                    newConfig.debugLogEveryFrame ? "true" : "false")
         }
         
-        // If debug overlay visibility toggled, we may need to rebuild preview moon renderer
+        // If debug overlay visibility toggled, log it (no renderer rebuild needed anymore)
         let overlayChanged = (config.debugOverlayEnabled != newConfig.debugOverlayEnabled)
         if overlayChanged {
             os_log("Debug overlay toggled: %{public}@", log: log, type: .info, newConfig.debugOverlayEnabled ? "ENABLED" : "disabled")
-            // Recreate preview moon renderer
-            moonRenderer = nil
         }
         
         config = newConfig
@@ -321,13 +304,6 @@ final class StarryEngine {
                                                       log: log,
                                                       traceEnabled: config.traceEnabled)
                 os_log("SkylineCoreRenderer created", log: log, type: .info)
-                // Moon renderer for preview (CoreGraphics)
-                moonRenderer = MoonLayerRenderer(skyline: skyline,
-                                                 log: log,
-                                                 brightBrightness: CGFloat(config.moonBrightBrightness),
-                                                 darkBrightness: CGFloat(config.moonDarkBrightness),
-                                                 showLightAreaTextureFillMask: config.showLightAreaTextureFillMask)
-                os_log("MoonLayerRenderer (preview/CG) created", log: log, type: .info)
                 // fetch moon albedo once for GPU
                 if let tex = skyline.getMoon()?.textureImage {
                     moonAlbedoImage = tex
@@ -427,7 +403,6 @@ final class StarryEngine {
                 self.skylineRenderer = nil
                 self.shootingStarsRenderer = nil
                 self.satellitesRenderer = nil
-                self.moonRenderer = nil
                 clearAll = true
                 ensureSkyline()
             }
@@ -566,7 +541,6 @@ final class StarryEngine {
                 self.skylineRenderer = nil
                 self.shootingStarsRenderer = nil
                 self.satellitesRenderer = nil
-                self.moonRenderer = nil
                 clearAll = true
                 ensureSkyline()
             }
@@ -664,28 +638,6 @@ final class StarryEngine {
         return img
     }
     
-    private func rgbaFromPremulRGBA(_ v: SIMD4<Float>) -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
-        let a = CGFloat(max(0.0, min(1.0, v.w)))
-        if a <= 0 { return (0, 0, 0, 0) }
-        let r = CGFloat(v.x) / a
-        let g = CGFloat(v.y) / a
-        let b = CGFloat(v.z) / a
-        return (max(0, min(1, r)), max(0, min(1, g)), max(0, min(1, b)), a)
-    }
-    
-    private func makeBlackImage(size: CGSize) -> CGImage? {
-        guard let ctx = CGContext(data: nil,
-                                  width: Int(size.width),
-                                  height: Int(size.height),
-                                  bitsPerComponent: 8,
-                                  bytesPerRow: 0,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
-        ctx.setFillColor(CGColor(gray: 0.0, alpha: 1.0))
-        ctx.fill(CGRect(origin: .zero, size: size))
-        return ctx.makeImage()
-    }
-    
     // MARK: - CPU/FPS
     
     private func sampleCPU(dt: CFTimeInterval) {
@@ -727,7 +679,6 @@ final class StarryEngine {
             currentFPS = currentFPS * 0.6 + fps * 0.4
             fpsAccumulatedTime = 0
             fpsFrameCount = 0
-            lastDebugOverlayString = String(format: "FPS: %.1f  CPU: %.1f%%  Time: %@", currentFPS, currentCPUPercent, isoDateFormatter.string(from: Date()))
             os_log("Stats: FPS=%.1f CPU=%.1f%%", log: log, type: .debug, currentFPS, currentCPUPercent)
         }
     }

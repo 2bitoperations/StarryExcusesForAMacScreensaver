@@ -24,19 +24,7 @@ vertex VertexOut TexturedQuadVertex(uint vid [[vertex_id]],
     return out;
 }
 
-fragment float4 TexturedQuadFragment(VertexOut in [[stage_in]],
-                                     texture2d<float, access::sample> colorTex [[texture(0)]]) {
-    constexpr sampler s(address::clamp_to_edge,
-                        filter::linear,
-                        coord::normalized);
-    if (!colorTex.get_width()) {
-        return float4(0,0,0,0);
-    }
-    float4 c = colorTex.sample(s, in.texCoord);
-    return c; // premultiplied alpha content already
-}
-
-// Debug/diagnostic: same as above but applies a per-draw tint multiplier (premultiplied-friendly)
+// Debug/diagnostic: compositor with per-draw tint multiplier (premultiplied-friendly)
 fragment float4 TexturedQuadFragmentTinted(VertexOut in [[stage_in]],
                                            texture2d<float, access::sample> colorTex [[texture(0)]],
                                            constant float4 &tint [[buffer(3)]]) {
@@ -119,13 +107,7 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
     }
 }
 
-// MARK: - Decay (two implementations)
-
-// Legacy: uses destination color as blend factor (kept for reference; not used now).
-// Fragment returns the keep color; blending multiplies this by the current destination and writes it.
-fragment float4 DecayFragment(constant float4 &keepColor [[buffer(3)]]) {
-    return keepColor;
-}
+// MARK: - Decay (robust sampled implementation)
 
 // Robust: sample source texture and multiply by keep; render into scratch target (no blending).
 fragment float4 DecaySampledFragment(VertexOut in [[stage_in]],
@@ -214,7 +196,7 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
     float phi = PI * (1.0 - 2.0 * phase);
     float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
 
-    // CRISP lit hemisphere (no feather) to match legacy CG aesthetics.
+    // CRISP lit hemisphere (no feather).
     float ndotl = dot(n, l);
     float litMask = step(0.0, ndotl); // 0 on dark side, 1 on lit side
 
@@ -232,8 +214,7 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
         return float4(litMask * a, 0.0, 0.0, a);
     }
 
-    // Legacy look: draw full dark disk, then bright region once.
-    // Equivalent here as a per-pixel mix between dark and bright sides.
+    // Per-pixel mix between dark and bright sides.
     float brightness = mix(darkB, brightB, litMask);
     float3 rgb = float3(albedo * brightness);
 
