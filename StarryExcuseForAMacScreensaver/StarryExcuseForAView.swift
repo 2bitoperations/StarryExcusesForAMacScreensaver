@@ -206,7 +206,7 @@ class StarryExcuseForAView: ScreenSaverView {
     // Convert half-life to "seconds to 1% residual" (legacy satellites field) for engine compatibility
     private func secondsToOnePercent(fromHalfLife halfLife: Double) -> Double {
         guard halfLife > 0 else { return 0.1 }
-        return halfLife * log(100.0) / log(2.0) // ≈ halfLife / 0.1505
+        return halfLife * Darwin.log(100.0) / Darwin.log(2.0) // ≈ halfLife / 0.1505
     }
     
     private func currentRuntimeConfig() -> StarryRuntimeConfig {
