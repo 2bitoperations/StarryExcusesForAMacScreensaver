@@ -29,7 +29,7 @@ class StarryDefaultsManager {
     private let defaultShowLightAreaTextureFillMask = false
     private let defaultDebugOverlayEnabled = false
     
-    // Shooting Stars (Option Set C) defaults
+    // Shooting Stars defaults
     private let defaultShootingStarsEnabled = true
     private let defaultShootingStarsAvgSeconds = 7.0
     // Direction mode raw mapping:
@@ -39,18 +39,19 @@ class StarryDefaultsManager {
     private let defaultShootingStarsSpeed: Double = 600
     private let defaultShootingStarsThickness: Double = 2
     private let defaultShootingStarsBrightness: Double = 0.9
-    private let defaultShootingStarsTrailDecay: Double = 0.92
+    // NEW: shooting star trail half-life seconds (0.01 .. 2.0)
+    private let defaultShootingStarsTrailHalfLifeSeconds: Double = 0.18
     private let defaultShootingStarsDebugSpawnBounds = false
     
-    // Satellites defaults (NEW)
+    // Satellites defaults
     private let defaultSatellitesEnabled = true
     private let defaultSatellitesAvgSpawnSeconds = 0.75     // frequent
     private let defaultSatellitesSpeed = 90.0               // px/sec
     private let defaultSatellitesSize = 2.0                 // px
     private let defaultSatellitesBrightness = 0.9           // 0..1
     private let defaultSatellitesTrailing = true
-    // INTERPRETATION CHANGE: store trail fade time in seconds (0.1 .. 3.0). Default to mid-range.
-    private let defaultSatellitesTrailDecaySeconds = 1.5
+    // NEW: satellites trail half-life seconds (0.01 .. 2.0)
+    private let defaultSatellitesTrailHalfLifeSeconds = 0.18
     
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
@@ -84,24 +85,66 @@ class StarryDefaultsManager {
             defaults.removeObject(forKey: "MoonMaxRadius")
         }
         
-        // Migrate legacy satellitesTrailDecay factor (0.5..0.99) to seconds (0.1..3.0) if needed.
-        if let obj = defaults.object(forKey: "SatellitesTrailDecay") {
-            let v = defaults.double(forKey: "SatellitesTrailDecay")
-            // Heuristic: legacy factor will be <= 1.0. New seconds will be >= 0.1 and typically > 1.0.
-            if v > 0.0 && v <= 1.0 {
-                // Convert factor-per-second to seconds for 1% residual: t = ln(0.01) / ln(factor)
-                let factor = max(0.0001, min(0.9999, v))
-                let tSeconds = max(0.1, min(3.0, log(0.01) / log(factor)))
-                defaults.set(tSeconds, forKey: "SatellitesTrailDecay")
-                defaults.synchronize()
+        // MIGRATION: Shooting stars legacy factor (per-frame keep 0.85..0.99) -> half-life seconds.
+        // New key: "ShootingStarsTrailHalfLifeSeconds"
+        if defaults.object(forKey: "ShootingStarsTrailHalfLifeSeconds") == nil {
+            if let _ = defaults.object(forKey: "ShootingStarsTrailDecay") {
+                let factor = defaults.double(forKey: "ShootingStarsTrailDecay")
+                // Assume 60 FPS to estimate half-life from per-frame keep factor:
+                // f^(fps * h) = 0.5 => h = ln(0.5) / (fps * ln(f))
+                let fps = 60.0
+                let f = max(0.0001, min(0.9999, factor))
+                let hl = max(0.01, min(2.0, log(0.5) / (fps * log(f))))
+                defaults.set(hl, forKey: "ShootingStarsTrailHalfLifeSeconds")
             } else {
-                // Already seconds; clamp into sane range.
-                let clamped = max(0.1, min(3.0, v))
-                if clamped != v {
-                    defaults.set(clamped, forKey: "SatellitesTrailDecay")
-                    defaults.synchronize()
-                }
+                // No legacy value; use default
+                defaults.set(defaultShootingStarsTrailHalfLifeSeconds, forKey: "ShootingStarsTrailHalfLifeSeconds")
             }
+            defaults.synchronize()
+        } else {
+            // Clamp any out-of-range existing value
+            let hl = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
+            let clamped = max(0.01, min(2.0, hl))
+            if clamped != hl {
+                defaults.set(clamped, forKey: "ShootingStarsTrailHalfLifeSeconds")
+            }
+            defaults.synchronize()
+        }
+        
+        // MIGRATION: Satellites legacy "trail decay seconds to ~1% residual" -> half-life seconds.
+        // Old key: "SatellitesTrailDecay" (value could have been migrated already to seconds).
+        // New key: "SatellitesTrailHalfLifeSeconds"
+        if defaults.object(forKey: "SatellitesTrailHalfLifeSeconds") == nil {
+            if let _ = defaults.object(forKey: "SatellitesTrailDecay") {
+                let v = defaults.double(forKey: "SatellitesTrailDecay")
+                var hl: Double
+                if v > 0.0 && v <= 1.0 {
+                    // Extremely old factor value (should be rare). Convert to seconds @60fps to half-life.
+                    // First get half-life seconds from factor per frame as above.
+                    let fps = 60.0
+                    let f = max(0.0001, min(0.9999, v))
+                    hl = max(0.01, min(2.0, log(0.5) / (fps * log(f))))
+                } else {
+                    // Value is seconds for 1% residual (0.1 .. 3.0). Convert to half-life:
+                    // 0.5^(t / hl) = 0.01 => hl = t * ln(2) / ln(100)
+                    let t = max(0.01, min(120.0, v))
+                    hl = t * log(2.0) / log(100.0)
+                    hl = max(0.01, min(2.0, hl))
+                }
+                defaults.set(hl, forKey: "SatellitesTrailHalfLifeSeconds")
+            } else {
+                // No legacy value; use default
+                defaults.set(defaultSatellitesTrailHalfLifeSeconds, forKey: "SatellitesTrailHalfLifeSeconds")
+            }
+            defaults.synchronize()
+        } else {
+            // Clamp any out-of-range existing value
+            let hl = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
+            let clamped = max(0.01, min(2.0, hl))
+            if clamped != hl {
+                defaults.set(clamped, forKey: "SatellitesTrailHalfLifeSeconds")
+            }
+            defaults.synchronize()
         }
     }
     
@@ -344,15 +387,19 @@ class StarryDefaultsManager {
         }
     }
     
-    var shootingStarsTrailDecay: Double {
+    // NEW: shooting stars trail half-life in seconds (0.01 .. 2.0)
+    var shootingStarsTrailHalfLifeSeconds: Double {
         set {
-            let clamped = max(0.85, min(0.99, newValue))
-            defaults.set(clamped, forKey: "ShootingStarsTrailDecay")
+            let clamped = max(0.01, min(2.0, newValue))
+            defaults.set(clamped, forKey: "ShootingStarsTrailHalfLifeSeconds")
             defaults.synchronize()
         }
         get {
-            let v = defaults.double(forKey: "ShootingStarsTrailDecay")
-            return (v >= 0.85 && v <= 0.99) ? v : defaultShootingStarsTrailDecay
+            if defaults.object(forKey: "ShootingStarsTrailHalfLifeSeconds") == nil {
+                return defaultShootingStarsTrailHalfLifeSeconds
+            }
+            let v = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
+            return max(0.01, min(2.0, v))
         }
     }
     
@@ -369,7 +416,7 @@ class StarryDefaultsManager {
         }
     }
     
-    // MARK: - Satellites Settings (NEW)
+    // MARK: - Satellites Settings
     
     var satellitesEnabled: Bool {
         set { defaults.set(newValue, forKey: "SatellitesEnabled"); defaults.synchronize() }
@@ -447,25 +494,19 @@ class StarryDefaultsManager {
         }
     }
     
-    // Trail fade time in seconds (0.1 .. 3.0). Store seconds; migrate legacy factor values automatically.
-    var satellitesTrailDecay: Double {
+    // NEW: satellites trail half-life in seconds (0.01 .. 2.0)
+    var satellitesTrailHalfLifeSeconds: Double {
         set {
-            let clamped = max(0.1, min(3.0, newValue))
-            defaults.set(clamped, forKey: "SatellitesTrailDecay")
+            let clamped = max(0.01, min(2.0, newValue))
+            defaults.set(clamped, forKey: "SatellitesTrailHalfLifeSeconds")
             defaults.synchronize()
         }
         get {
-            if defaults.object(forKey: "SatellitesTrailDecay") == nil {
-                return defaultSatellitesTrailDecaySeconds
+            if defaults.object(forKey: "SatellitesTrailHalfLifeSeconds") == nil {
+                return defaultSatellitesTrailHalfLifeSeconds
             }
-            let v = defaults.double(forKey: "SatellitesTrailDecay")
-            if v > 0.0 && v <= 1.0 {
-                // Legacy factor path (should have been migrated already, but just in case):
-                let factor = max(0.0001, min(0.9999, v))
-                let tSeconds = max(0.1, min(3.0, log(0.01) / log(factor)))
-                return tSeconds
-            }
-            return max(0.1, min(3.0, v))
+            let v = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
+            return max(0.01, min(2.0, v))
         }
     }
     
