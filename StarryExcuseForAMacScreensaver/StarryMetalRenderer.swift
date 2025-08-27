@@ -62,9 +62,9 @@ final class StarryMetalRenderer {
     // Controls visual debug output (no-op now; retained API)
     private var debugOverlayEnabled: Bool = false
     
-    // Trail decay control (FPS-agnostic half-lives). Nil => fall back to drawData keep factors.
-    private var satellitesHalfLifeSeconds: Double? = nil
-    private var shootingHalfLifeSeconds: Double? = nil
+    // Trail decay control (FPS-agnostic half-lives). Always used; defaults to 0.5s if not set explicitly.
+    private var satellitesHalfLifeSeconds: Double = 0.5
+    private var shootingHalfLifeSeconds: Double = 0.5
     
     // Track time between frames (onscreen/headless)
     private var lastRenderTime: CFTimeInterval?
@@ -277,14 +277,12 @@ final class StarryMetalRenderer {
         debugOverlayEnabled = enabled
     }
     
-    // Expose trail half-life controls. Pass nil to disable dt-based decay for that trail.
+    // Expose trail half-life controls. Pass nil to reset to default 0.5s.
     func setTrailHalfLives(satellites: Double?, shooting: Double?) {
-        satellitesHalfLifeSeconds = satellites
-        shootingHalfLifeSeconds = shooting
-        os_log("Trail half-lives updated: satellites=%{public}@, shooting=%{public}@",
-               log: log, type: .info,
-               satellites.map { String(format: "%.3f s", $0) } ?? "nil",
-               shooting.map { String(format: "%.3f s", $0) } ?? "nil")
+        satellitesHalfLifeSeconds = satellites ?? 0.5
+        shootingHalfLifeSeconds = shooting ?? 0.5
+        os_log("Trail half-lives updated: satellites=%{public}.3f s, shooting=%{public}.3f s",
+               log: log, type: .info, satellitesHalfLifeSeconds, shootingHalfLifeSeconds)
     }
     
     // Prepare moon albedo textures and stage CPU upload for GPU blit (no blocking on main thread).
@@ -380,24 +378,14 @@ final class StarryMetalRenderer {
         let dt: CFTimeInterval? = lastRenderTime.map { now - $0 }
         lastRenderTime = now
         
-        // Compute effective keep factors (dt-based if half-life provided; otherwise use drawData values)
-        let effSat = effectiveKeepFactor(halfLife: satellitesHalfLifeSeconds,
-                                         fallbackKeep: drawData.satellitesKeepFactor,
-                                         dt: dt)
-        let effShoot = effectiveKeepFactor(halfLife: shootingHalfLifeSeconds,
-                                           fallbackKeep: drawData.shootingKeepFactor,
-                                           dt: dt)
-        let satNeedsDecay = effSat.forceDecay || effSat.keep < 1.0
-        let shootNeedsDecay = effShoot.forceDecay || effShoot.keep < 1.0
-        
         // Skip work if there's nothing to draw and no decay/clear needed
+        let willDecay = ((layerTex.satellites != nil) || (layerTex.shooting != nil)) && (dt ?? 0) > 0
         let nothingToDraw =
             drawData.baseSprites.isEmpty &&
             drawData.satellitesSprites.isEmpty &&
             drawData.shootingSprites.isEmpty &&
             drawData.moon == nil &&
-            !satNeedsDecay &&
-            !shootNeedsDecay &&
+            !willDecay &&
             drawData.clearAll == false
         if nothingToDraw {
             return
@@ -439,10 +427,7 @@ final class StarryMetalRenderer {
         
         // 2) Satellites trail: decay then draw
         if layerTex.satellites != nil {
-            let keep = effSat.keep
-            if effSat.forceDecay || keep < 1.0 {
-                applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
-            }
+            applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
             if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
@@ -453,10 +438,7 @@ final class StarryMetalRenderer {
         
         // 3) Shooting stars trail: decay then draw
         if layerTex.shooting != nil {
-            let keep = effShoot.keep
-            if effShoot.forceDecay || keep < 1.0 {
-                applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
-            }
+            applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
                 renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
@@ -582,14 +564,6 @@ final class StarryMetalRenderer {
         let dt: CFTimeInterval? = lastHeadlessRenderTime.map { now - $0 }
         lastHeadlessRenderTime = now
         
-        // Compute effective keep factors (dt-based if half-life provided; otherwise use drawData values)
-        let effSat = effectiveKeepFactor(halfLife: satellitesHalfLifeSeconds,
-                                         fallbackKeep: drawData.satellitesKeepFactor,
-                                         dt: dt)
-        let effShoot = effectiveKeepFactor(halfLife: shootingHalfLifeSeconds,
-                                           fallbackKeep: drawData.shootingKeepFactor,
-                                           dt: dt)
-        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             renderSprites(into: baseTex,
@@ -600,10 +574,7 @@ final class StarryMetalRenderer {
         
         // 2) Satellites trail: decay then draw
         if layerTex.satellites != nil {
-            let keep = effSat.keep
-            if effSat.forceDecay || keep < 1.0 {
-                applyDecay(into: .satellites, keepFactor: keep, commandBuffer: commandBuffer)
-            }
+            applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
             if !drawData.satellitesSprites.isEmpty, let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
@@ -614,10 +585,7 @@ final class StarryMetalRenderer {
         
         // 3) Shooting stars trail: decay then draw
         if layerTex.shooting != nil {
-            let keep = effShoot.keep
-            if effShoot.forceDecay || keep < 1.0 {
-                applyDecay(into: .shooting, keepFactor: keep, commandBuffer: commandBuffer)
-            }
+            applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
                 renderSprites(into: dst,
                               sprites: drawData.shootingSprites,
@@ -842,10 +810,19 @@ final class StarryMetalRenderer {
     }
     
     private func applyDecay(into which: TrailLayer,
-                            keepFactor: Float,
+                            dt: CFTimeInterval?,
                             commandBuffer: MTLCommandBuffer) {
-        // If keepFactor == 0 -> clear the current target texture
-        if keepFactor <= 0 {
+        // Require a valid dt to perform exponential decay; skip on first frame.
+        guard let dt = dt, dt > 0 else { return }
+        
+        // Choose half-life based on layer
+        let halfLife: Double = (which == .satellites) ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
+        
+        // Compute per-frame keep based on dt and half-life: keep = 0.5^(dt/halfLife)
+        let keep = Float(pow(0.5, dt / max(halfLife, 1e-6)))
+        
+        // If keep is effectively zero, clear the target texture for efficiency.
+        if keep <= 1e-6 {
             let target: MTLTexture? = (which == .satellites) ? layerTex.satellites : layerTex.shooting
             let rpd = MTLRenderPassDescriptor()
             rpd.colorAttachments[0].texture = target
@@ -855,7 +832,6 @@ final class StarryMetalRenderer {
             if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd),
                let t = target {
                 enc.pushDebugGroup("Decay Clear -> \(t.label ?? "tex")")
-                // Set viewport to texture size
                 let vp = MTLViewport(originX: 0, originY: 0,
                                      width: Double(t.width), height: Double(t.height),
                                      znear: 0, zfar: 1)
@@ -888,7 +864,7 @@ final class StarryMetalRenderer {
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         }
-        var keepColor = SIMD4<Float>(repeating: keepFactor)
+        var keepColor = SIMD4<Float>(repeating: keep)
         encoder.setFragmentTexture(src, index: 0)
         encoder.setFragmentBytes(&keepColor, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
@@ -910,21 +886,5 @@ final class StarryMetalRenderer {
     private func ptrString(_ t: MTLTexture) -> String {
         let p = Unmanaged.passUnretained(t as AnyObject).toOpaque()
         return String(describing: p)
-    }
-    
-    // Compute an FPS-agnostic keep factor if a half-life is provided; otherwise return the fallback.
-    // forceDecay is true when a half-life is active and dt is known, so we should run the decay pass every frame.
-    private func effectiveKeepFactor(halfLife: Double?,
-                                     fallbackKeep: Float,
-                                     dt: CFTimeInterval?) -> (keep: Float, forceDecay: Bool) {
-        guard let hl = halfLife, let dt = dt, hl > 0 else {
-            // No half-life configured or dt unknown: use provided fallback keep factor.
-            return (keep: max(0.0, min(1.0, fallbackKeep)), forceDecay: false)
-        }
-        // keep = 0.5^(dt / hl)
-        let k = pow(0.5, dt / hl)
-        // Clamp to [0,1] for safety
-        let keep = Float(max(0.0, min(1.0, k)))
-        return (keep: keep, forceDecay: true)
     }
 }
