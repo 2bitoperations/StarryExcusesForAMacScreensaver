@@ -181,6 +181,11 @@ class StarryExcuseForAView: ScreenSaverView {
                     } else {
                         os_log("Initial drawableSize update skipped due to invalid size (%{public}dx%{public}d)", log: self.log!, type: .error, wPx, hPx)
                     }
+                    // Propagate trail half-lives into renderer from defaults
+                    self.metalRenderer?.setTrailHalfLives(
+                        satellites: self.defaultsManager.satellitesTrailHalfLifeSeconds,
+                        shooting: self.defaultsManager.shootingStarsTrailHalfLifeSeconds
+                    )
                 }
             } else {
                 os_log("setupAnimation: reusing existing CAMetalLayer", log: self.log!, type: .info)
@@ -192,8 +197,27 @@ class StarryExcuseForAView: ScreenSaverView {
                Int(bounds.width), Int(bounds.height))
     }
     
+    // Convert half-life to per-frame keep factor at a target FPS (for legacy engine config compatibility)
+    private func perFrameKeep(fromHalfLife halfLife: Double, fps: Double) -> Double {
+        guard halfLife > 0, fps > 0 else { return 1.0 }
+        return pow(0.5, 1.0 / (halfLife * fps))
+    }
+    
+    // Convert half-life to "seconds to 1% residual" (legacy satellites field) for engine compatibility
+    private func secondsToOnePercent(fromHalfLife halfLife: Double) -> Double {
+        guard halfLife > 0 else { return 0.1 }
+        return halfLife * log(100.0) / log(2.0) // ≈ halfLife / 0.1505
+    }
+    
     private func currentRuntimeConfig() -> StarryRuntimeConfig {
-        StarryRuntimeConfig(
+        // Convert new half-life defaults to legacy engine fields
+        let shootingHL = defaultsManager.shootingStarsTrailHalfLifeSeconds
+        let satellitesHL = defaultsManager.satellitesTrailHalfLifeSeconds
+        let assumedFPS = 60.0
+        let shootingKeepFactor = perFrameKeep(fromHalfLife: shootingHL, fps: assumedFPS)
+        let satellitesFadeSecondsTo1Percent = secondsToOnePercent(fromHalfLife: satellitesHL)
+        
+        return StarryRuntimeConfig(
             starsPerUpdate: defaultsManager.starsPerUpdate,
             buildingHeight: defaultsManager.buildingHeight,
             buildingFrequency: defaultsManager.buildingFrequency,
@@ -213,7 +237,7 @@ class StarryExcuseForAView: ScreenSaverView {
             shootingStarsSpeed: defaultsManager.shootingStarsSpeed,
             shootingStarsThickness: defaultsManager.shootingStarsThickness,
             shootingStarsBrightness: defaultsManager.shootingStarsBrightness,
-            shootingStarsTrailDecay: defaultsManager.shootingStarsTrailDecay,
+            shootingStarsTrailDecay: shootingKeepFactor,
             shootingStarsDebugShowSpawnBounds: defaultsManager.shootingStarsDebugShowSpawnBounds,
             satellitesEnabled: defaultsManager.satellitesEnabled,
             satellitesAvgSpawnSeconds: defaultsManager.satellitesAvgSpawnSeconds,
@@ -221,7 +245,7 @@ class StarryExcuseForAView: ScreenSaverView {
             satellitesSize: defaultsManager.satellitesSize,
             satellitesBrightness: defaultsManager.satellitesBrightness,
             satellitesTrailing: defaultsManager.satellitesTrailing,
-            satellitesTrailDecay: defaultsManager.satellitesTrailDecay,
+            satellitesTrailDecay: satellitesFadeSecondsTo1Percent,
             debugOverlayEnabled: defaultsManager.debugOverlayEnabled
         )
     }
@@ -236,6 +260,11 @@ class StarryExcuseForAView: ScreenSaverView {
                                        log: log!,
                                        config: currentRuntimeConfig())
         }
+        // Update renderer half-lives immediately
+        metalRenderer?.setTrailHalfLives(
+            satellites: defaultsManager.satellitesTrailHalfLifeSeconds,
+            shooting: defaultsManager.shootingStarsTrailHalfLifeSeconds
+        )
     }
     
     @objc func willStopHandler(_ note: Notification) {
