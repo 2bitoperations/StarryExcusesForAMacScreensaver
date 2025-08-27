@@ -27,7 +27,7 @@ vertex VertexOut TexturedQuadVertex(uint vid [[vertex_id]],
 // Debug/diagnostic: compositor with per-draw tint multiplier (premultiplied-friendly)
 fragment float4 TexturedQuadFragmentTinted(VertexOut in [[stage_in]],
                                            texture2d<float, access::sample> colorTex [[texture(0)]],
-                                           constant float4 &tint [[buffer(3)]]) {
+                                           constant float4 &tint [[buffer(0)]]) {
     constexpr sampler s(address::clamp_to_edge,
                         filter::linear,
                         coord::normalized);
@@ -112,7 +112,7 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
 // Robust: sample source texture and multiply by keep; render into scratch target (no blending).
 fragment float4 DecaySampledFragment(VertexOut in [[stage_in]],
                                      texture2d<float, access::sample> srcTex [[texture(0)]],
-                                     constant float4 &keepColor [[buffer(3)]]) {
+                                     constant float4 &keepColor [[buffer(0)]]) {
     constexpr sampler s(address::clamp_to_edge,
                         filter::nearest,
                         coord::normalized);

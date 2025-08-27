@@ -27,6 +27,11 @@ final class StarryMetalRenderer {
         var params1: SIMD4<Float>        // debugShowMask, pad, pad, pad
     }
     
+    // Fragment buffer binding indices used by our quad-based fragment shaders
+    private enum FragmentBufferIndex {
+        static let quadUniforms = 0
+    }
+    
     // MARK: - Properties
     
     private let device: MTLDevice
@@ -481,7 +486,7 @@ final class StarryMetalRenderer {
         func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
             encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
         drawTex(layerTex.base)
@@ -622,7 +627,7 @@ final class StarryMetalRenderer {
         func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
             encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
         drawTex(layerTex.base)
@@ -866,7 +871,7 @@ final class StarryMetalRenderer {
         }
         var keepColor = SIMD4<Float>(repeating: keep)
         encoder.setFragmentTexture(src, index: 0)
-        encoder.setFragmentBytes(&keepColor, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+        encoder.setFragmentBytes(&keepColor, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
         encoder.endEncoding()
