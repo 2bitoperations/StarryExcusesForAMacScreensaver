@@ -150,6 +150,9 @@ final class StarryMetalRenderer {
     
     // Controls visual debug output (tints, probe dot, trails-only frames, decay pulses)
     private var debugOverlayEnabled: Bool = false
+
+    // Detailed logging cadence: when overlay is off, log every N frames; when on, log every frame.
+    private let detailedLogEveryNFrames: UInt64 = 50
     
     // MARK: - Init (onscreen)
     
@@ -741,12 +744,16 @@ final class StarryMetalRenderer {
                         enqueueROIReadback(blit: blit2, texture: debugTex, halfSize: debugROIHSize, buffer: robuf)
                     }
                     blit2.endEncoding()
-                    os_log("Debug: enqueued trails-only composite and readbacks", log: log, type: .info)
+                    if shouldLogDetailedThisFrame() {
+                        os_log("Debug: enqueued trails-only composite and readbacks", log: log, type: .info)
+                    }
                 } else {
                     os_log("Debug: failed to create blit encoder for trails-only readbacks", log: log, type: .error)
                 }
             } else {
-                os_log("Debug: debugTrailsComposite is nil — trails-only readback skipped", log: log, type: .error)
+                if shouldLogDetailedThisFrame() {
+                    os_log("Debug: debugTrailsComposite is nil — trails-only readback skipped", log: log, type: .error)
+                }
             }
             // We'll enqueue the drawable readback after composite encoding, below.
             commandBuffer.addCompletedHandler { [weak self] _ in
@@ -805,8 +812,8 @@ final class StarryMetalRenderer {
         // Remember for prediction check logs
         lastPresentedTrailsOnly = presentTrailsOnlyThisFrame
         
-        // Log a concise summary each readback interval (and at first few frames)
-        if (frameCounter < 5) || shouldReadbackThisFrame() {
+        // Log a concise summary using the new cadence (and always for the first few frames)
+        if (frameCounter < 5) || shouldLogDetailedThisFrame() {
             os_log("Frame #%{public}llu summary: baseSprites=%{public}d satSprites=%{public}d shootSprites=%{public}d keep(sat)=%.3f keep(shoot)=%.3f presentTrailsOnly=%{public}@ clearReason=%{public}@",
                    log: log, type: .info,
                    frameCounter, drawData.baseSprites.count, drawData.satellitesSprites.count, drawData.shootingSprites.count,
@@ -1582,7 +1589,17 @@ final class StarryMetalRenderer {
         }
     }
     
+    // MARK: - Detailed logging cadence helper
+    
+    private func shouldLogDetailedThisFrame() -> Bool {
+        // When overlay is enabled, we log every frame; otherwise every N frames.
+        return debugOverlayEnabled || (detailedLogEveryNFrames > 0 && (frameCounter % detailedLogEveryNFrames == 0))
+    }
+    
     private func logReadbackValues() {
+        // Throttle detailed logs to every N frames unless overlay is enabled.
+        guard shouldLogDetailedThisFrame() else { return }
+        
         rbLogCounter &+= 1
         func read(_ buf: MTLBuffer?) -> (b: UInt8, g: UInt8, r: UInt8, a: UInt8)? {
             guard let buf = buf else { return nil }
@@ -1628,7 +1645,7 @@ final class StarryMetalRenderer {
         let trailsROI = roiStats(rbBufferTrailsROI)
         let drawableROI = roiStats(rbBufferDrawableROI)
         
-        // Log every time (temporary) to catch state precisely
+        // Log periodically (or every frame when overlay is enabled)
         if let v = base {
             os_log("RB Base center BGRA=(%{public}u,%{public}u,%{public}u,%{public}u)", log: log, type: .info, v.b, v.g, v.r, v.a)
         } else {
@@ -1830,8 +1847,10 @@ final class StarryMetalRenderer {
             os_log("ALERT: Base changed in frame with zero baseSprites (%{public}@). pre=(%{public}u,%{public}u,%{public}u,%{public}u) post=(%{public}u,%{public}u,%{public}u,%{public}u)",
                    log: log, type: .fault, phase, vPre.b, vPre.g, vPre.r, vPre.a, vPost.b, vPost.g, vPost.r, vPost.a)
         } else {
-            os_log("Base pre/post (%{public}@): pre=(%{public}u,%{public}u,%{public}u,%{public}u) post=(%{public}u,%{public}u,%{public}u,%{public}u) baseSprites=%{public}d changed=%{public}@",
-                   log: log, type: .debug, phase, vPre.b, vPre.g, vPre.r, vPre.a, vPost.b, vPost.g, vPost.r, vPost.a, baseSpritesCount, changed ? "YES" : "no")
+            if shouldLogDetailedThisFrame() {
+                os_log("Base pre/post (%{public}@): pre=(%{public}u,%{public}u,%{public}u,%{public}u) post=(%{public}u,%{public}u,%{public}u,%{public}u) baseSprites=%{public}d changed=%{public}@",
+                       log: log, type: .debug, phase, vPre.b, vPre.g, vPre.r, vPre.a, vPost.b, vPost.g, vPost.r, vPost.a, baseSpritesCount, changed ? "YES" : "no")
+            }
         }
     }
 }
