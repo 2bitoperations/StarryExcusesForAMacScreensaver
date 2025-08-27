@@ -69,6 +69,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var shootingStarsTrailDecayPreview: NSTextField!
     // Alias reflecting half-life semantics
     var shootingStarsTrailHalfLifePreview: NSTextField { shootingStarsTrailDecayPreview }
+    // Debug: show spawn bounds checkbox (missing IBOutlet added)
+    @IBOutlet weak var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch!
     
     // Satellites controls (NEW - optional until XIB updated)
     @IBOutlet weak var satellitesEnabledCheckbox: NSSwitch?
