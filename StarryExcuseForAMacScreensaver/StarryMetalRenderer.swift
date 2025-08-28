@@ -116,6 +116,14 @@ final class StarryMetalRenderer {
     
     private var debugObserversInstalled: Bool = false
     
+    // --- Strong verification for "base contamination" ---
+    // When enabled, and baseSprites == 0, snapshot BaseLayer before non-base work and after all work,
+    // compute checksums, and ALERT if BaseLayer changed.
+    private var debugVerifyBaseImmutability: Bool = false
+    private var baseSnapshotBefore: MTLTexture?
+    private var baseSnapshotAfter: MTLTexture?
+    private var snapshotSize: SIMD2<Int32> = SIMD2<Int32>(0, 0)
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -364,7 +372,7 @@ final class StarryMetalRenderer {
         // Validate inputs to avoid CAMetalLayer logs about invalid sizes.
         guard scale > 0 else { return }
         let wPx = Int(round(size.width * scale))
-        let hPx = Int(round(size.height * scale))
+        theightround(size.height * scale))
         // If either dimension is zero or negative, do not touch the layer or textures yet.
         guard wPx > 0, hPx > 0 else { return }
         
@@ -430,6 +438,12 @@ final class StarryMetalRenderer {
         os_log("Debug: composite mode set to %{public}@",
                log: log, type: .info,
                enabled ? "BASE-ONLY" : "NORMAL")
+    }
+    
+    // Verify BaseLayer immutability in frames with zero baseSprites
+    func setDebugVerifyBaseImmutability(_ enabled: Bool) {
+        debugVerifyBaseImmutability = enabled
+        os_log("Debug: verify BaseLayer immutability is %{public}@", log: log, type: .info, enabled ? "ENABLED" : "disabled")
     }
     
     // Expose trail half-life controls. Pass nil to reset to default 0.5s.
@@ -594,6 +608,15 @@ final class StarryMetalRenderer {
             debugClearBasePending = false
         }
         
+        // Strong verification: snapshot BaseLayer BEFORE any non-base work (if baseSprites == 0)
+        let shouldVerifyBase = debugVerifyBaseImmutability && drawData.baseSprites.isEmpty && (layerTex.base != nil)
+        if shouldVerifyBase, let baseTex = layerTex.base {
+            baseSnapshotBefore = makeSnapshotTextureLike(baseTex)
+            if let snap = baseSnapshotBefore {
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base BEFORE")
+            }
+        }
+        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             renderSprites(into: baseTex,
@@ -643,6 +666,29 @@ final class StarryMetalRenderer {
                     } else {
                         os_log("ALERT: No safe shooting target available — skipping shooting-stars draw to prevent BASE contamination", log: log, type: .fault)
                     }
+                }
+            }
+        }
+        
+        // Snapshot Base AFTER all work if we're verifying
+        if shouldVerifyBase, let baseTex = layerTex.base {
+            baseSnapshotAfter = makeSnapshotTextureLike(baseTex)
+            if let snap = baseSnapshotAfter {
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER")
+            }
+            
+            // Add completion handler to compute checksums and alert if changed
+            let before = baseSnapshotBefore
+            let after = baseSnapshotAfter
+            commandBuffer.addCompletedHandler { [weak self] _ in
+                guard let self = self, let b = before, let a = after else { return }
+                let sumB = self.computeChecksum(of: b)
+                let sumA = self.computeChecksum(of: a)
+                if sumB != sumA {
+                    os_log("ALERT: BaseLayer changed in a frame with ZERO baseSprites (before=%{public}@ after=%{public}@)",
+                           self.log, type: .fault, String(format: "0x%016llx", sumB), String(format: "0x%016llx", sumA))
+                } else {
+                    os_log("VerifyBase: no change (checksum=%{public}@) with zero baseSprites", self.log, type: .debug, String(format: "0x%016llx", sumB))
                 }
             }
         }
@@ -1078,7 +1124,7 @@ final class StarryMetalRenderer {
         rpd.colorAttachments[0].storeAction = .store
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
-        encoder.pushDebugGroup("RenderSprites -> \(target.label ?? "tex")")
+        encoder.pushDebugGroup("RenderSprites -> \(target.label ?? "tex") [count=\(sprites.count)]")
         // Set viewport to target size (in texels)
         let vp = MTLViewport(originX: 0, originY: 0,
                              width: Double(target.width),
@@ -1259,7 +1305,7 @@ final class StarryMetalRenderer {
             return nil
         case .shooting:
             let a = layerTex.shooting
-            let b = layerTex.shooting
+            let b = layerTex.shootingScratch
             let aIsBase = labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base)
             let bIsBase = labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base)
             if a != nil && !aIsBase { return a }
@@ -1305,5 +1351,52 @@ final class StarryMetalRenderer {
         return positions.map { p in
             SpriteInstance(centerPx: p, halfSizePx: half, colorPremul: color, shape: shape)
         }
+    }
+    
+    // Snapshot helpers
+    private func makeSnapshotTextureLike(_ src: MTLTexture) -> MTLTexture? {
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: src.pixelFormat,
+                                                            width: src.width,
+                                                            height: src.height,
+                                                            mipmapped: false)
+        desc.usage = [.shaderRead, .blitDestination, .blitSource]
+        desc.storageMode = .shared
+        return device.makeTexture(descriptor: desc)
+    }
+    
+    private func blitCopy(from src: MTLTexture, to dst: MTLTexture, using cb: MTLCommandBuffer, label: String) {
+        guard let blit = cb.makeBlitCommandEncoder() else { return }
+        blit.label = label
+        let size = MTLSize(width: min(src.width, dst.width),
+                           height: min(src.height, dst.height),
+                           depth: 1)
+        blit.copy(from: src,
+                  sourceSlice: 0,
+                  sourceLevel: 0,
+                  sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                  sourceSize: size,
+                  to: dst,
+                  destinationSlice: 0,
+                  destinationLevel: 0,
+                  destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+        blit.endEncoding()
+    }
+    
+    private func computeChecksum(of tex: MTLTexture) -> UInt64 {
+        let w = tex.width
+        let h = tex.height
+        let bpp = 4
+        let rowBytes = w * bpp
+        var bytes = [UInt8](repeating: 0, count: rowBytes * h)
+        let region = MTLRegionMake2D(0, 0, w, h)
+        tex.getBytes(&bytes, bytesPerRow: rowBytes, from: region, mipmapLevel: 0)
+        // Simple 64-bit FNV-1a
+        var hash: UInt64 = 0xcbf29ce484222325
+        let prime: UInt64 = 0x100000001b3
+        for b in bytes {
+            hash ^= UInt64(b)
+            hash &*= prime
+        }
+        return hash
     }
 }
