@@ -93,7 +93,7 @@ final class StarryMetalRenderer {
     // When true, stamp a small probe into satellites layer on the next frame (used when skipping draw)
     private var debugStampNextFrameSatellites: Bool = false
     // Composite debug mode (normal, satellites-only, base-only)
-    private var debugCompositeMode: CompositeDebugMode = .normal
+    private var debugCompositeMode: CompositeDebugMode = .baseOnly
     // One-time base clear request (used to scrub any historical contamination)
     private var debugClearBasePending: Bool = false
     
