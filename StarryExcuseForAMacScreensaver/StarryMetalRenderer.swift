@@ -611,7 +611,7 @@ final class StarryMetalRenderer {
         func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
             encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout/SIMD4<Float>/.stride, index: FragmentBufferIndex.quadUniforms)
+            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
         switch debugCompositeMode {
@@ -791,7 +791,7 @@ final class StarryMetalRenderer {
         func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
             encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout/SIMD4<Float>/.stride, index: FragmentBufferIndex.quadUniforms)
+            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
         switch debugCompositeMode {
