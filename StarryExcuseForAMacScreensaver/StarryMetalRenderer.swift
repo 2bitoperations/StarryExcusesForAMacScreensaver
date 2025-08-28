@@ -686,9 +686,10 @@ final class StarryMetalRenderer {
                 let sumA = self.computeChecksum(of: a)
                 if sumB != sumA {
                     os_log("ALERT: BaseLayer changed in a frame with ZERO baseSprites (before=%{public}@ after=%{public}@)",
-                           self.log, type: .fault, String(format: "0x%016llx", sumB), String(format: "0x%016llx", sumA))
+                           log: self.log, type: .fault, String(format: "0x%016llx", sumB), String(format: "0x%016llx", sumA))
                 } else {
-                    os_log("VerifyBase: no change (checksum=%{public}@) with zero baseSprites", self.log, type: .debug, String(format: "0x%016llx", sumB))
+                    os_log("VerifyBase: no change (checksum=%{public}@) with zero baseSprites",
+                           log: self.log, type: .debug, String(format: "0x%016llx", sumB))
                 }
             }
         }
