@@ -1036,7 +1036,7 @@ final class StarryMetalRenderer {
             SIMD2<Float>(cx, cy + d)
         ]
         let half = SIMD2<Float>(r, r)
-        let shape: UInt32 = 1 // circle
+        let shape: SpriteShape = .circle
         return positions.map { p in
             SpriteInstance(centerPx: p, halfSizePx: half, colorPremul: color, shape: shape)
         }
