@@ -586,7 +586,7 @@ final class StarryMetalRenderer {
         os_log("Debug: verify BaseLayer immutability is %{public}@", log: log, type: .info, enabled ? "ENABLED" : "disabled")
     }
     
-    // Expose trail half-life controls. Pass nil to reset to default 0.5s.
+    // Expose trail half-lives controls. Pass nil to reset to default 0.5s.
     func setTrailHalfLives(satellites: Double?, shooting: Double?) {
         satellitesHalfLifeSeconds = satellites ?? 0.5
         shootingHalfLifeSeconds = shooting ?? 0.5
@@ -892,7 +892,7 @@ final class StarryMetalRenderer {
         }
         
         // Moon
-        if let moon = drawData.moon {
+        if debugCompositeMode == .normal, let moon = drawData.moon {
             encoder.setRenderPipelineState(moonPipeline)
             // Uniforms (match Shaders.metal packing)
             var uni = MoonUniformsSwift(
@@ -1092,7 +1092,7 @@ final class StarryMetalRenderer {
         }
         
         // Moon (on top)
-        if let moon = drawData.moon {
+        if debugCompositeMode == .normal, let moon = drawData.moon {
             encoder.setRenderPipelineState(moonPipeline)
             // Uniforms (match Shaders.metal packing)
             var uni = MoonUniformsSwift(
