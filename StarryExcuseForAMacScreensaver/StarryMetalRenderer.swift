@@ -606,23 +606,23 @@ final class StarryMetalRenderer {
         if layerTex.satellites != nil {
             applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
             // If skipping satellites drawing for debug, stamp a probe once after a clear to observe decay.
-            if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst = layerTex.satellites {
-                let sprites = makeDecayProbeSprites(target: dst)
-                if !sprites.isEmpty {
-                    os_log("Debug: stamping satellites decay probe (%{public}d sprites)", log: log, type: .info, sprites.count)
-                    renderSprites(into: dst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
+            if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst0 = layerTex.satellites {
+                let sprites = makeDecayProbeSprites(target: dst0)
+                if !sprites.isEmpty, let safeDst = safeLayerTarget(.satellites) {
+                    os_log("Debug: stamping satellites decay probe (%{public}d sprites) into %{public}@ (%{public}@)",
+                           log: log, type: .info, sprites.count, safeDst.label ?? "tex", ptrString(safeDst))
+                    renderSprites(into: safeDst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
                 }
                 debugStampNextFrameSatellites = false
             } else if !debugSkipSatellitesDraw,
-                      !drawData.satellitesSprites.isEmpty,
-                      let dst = layerTex.satellites {
-                if isSameTexture(dst, layerTex.base) {
-                    os_log("ALERT: Satellites draw target is BASE layer — skipping to prevent contamination", log: log, type: .fault)
-                } else {
-                    renderSprites(into: dst,
+                      !drawData.satellitesSprites.isEmpty {
+                if let safeDst = safeLayerTarget(.satellites) {
+                    renderSprites(into: safeDst,
                                   sprites: drawData.satellitesSprites,
                                   pipeline: spriteAdditivePipeline,
                                   commandBuffer: commandBuffer)
+                } else {
+                    os_log("ALERT: No safe satellites target available — skipping satellites draw to prevent BASE contamination", log: log, type: .fault)
                 }
             }
         }
@@ -630,14 +630,14 @@ final class StarryMetalRenderer {
         // 3) Shooting stars trail: decay then draw (additive)
         if layerTex.shooting != nil {
             applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
-            if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
-                if isSameTexture(dst, layerTex.base) {
-                    os_log("ALERT: ShootingStars draw target is BASE layer — skipping to prevent contamination", log: log, type: .fault)
-                } else {
-                    renderSprites(into: dst,
+            if !drawData.shootingSprites.isEmpty {
+                if let safeDst = safeLayerTarget(.shooting) {
+                    renderSprites(into: safeDst,
                                   sprites: drawData.shootingSprites,
                                   pipeline: spriteAdditivePipeline,
                                   commandBuffer: commandBuffer)
+                } else {
+                    os_log("ALERT: No safe shooting target available — skipping shooting-stars draw to prevent BASE contamination", log: log, type: .fault)
                 }
             }
         }
@@ -802,23 +802,23 @@ final class StarryMetalRenderer {
         if layerTex.satellites != nil {
             applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
             // Stamp probe once after clear if skipping satellites draw
-            if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst = layerTex.satellites {
-                let sprites = makeDecayProbeSprites(target: dst)
-                if !sprites.isEmpty {
-                    os_log("Debug(headless): stamping satellites decay probe (%{public}d sprites)", log: log, type: .info, sprites.count)
-                    renderSprites(into: dst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
+            if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst0 = layerTex.satellites {
+                let sprites = makeDecayProbeSprites(target: dst0)
+                if !sprites.isEmpty, let safeDst = safeLayerTarget(.satellites) {
+                    os_log("Debug(headless): stamping satellites decay probe (%{public}d sprites) into %{public}@ (%{public}@)",
+                           log: log, type: .info, sprites.count, safeDst.label ?? "tex", ptrString(safeDst))
+                    renderSprites(into: safeDst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
                 }
                 debugStampNextFrameSatellites = false
             } else if !debugSkipSatellitesDraw,
-                      !drawData.satellitesSprites.isEmpty,
-                      let dst = layerTex.satellites {
-                if isSameTexture(dst, layerTex.base) {
-                    os_log("ALERT: Satellites draw target is BASE layer (headless) — skipping to prevent contamination", log: log, type: .fault)
-                } else {
-                    renderSprites(into: dst,
+                      !drawData.satellitesSprites.isEmpty {
+                if let safeDst = safeLayerTarget(.satellites) {
+                    renderSprites(into: safeDst,
                                   sprites: drawData.satellitesSprites,
                                   pipeline: spriteAdditivePipeline,
                                   commandBuffer: commandBuffer)
+                } else {
+                    os_log("ALERT: No safe satellites target available (headless) — skipping satellites draw to prevent BASE contamination", log: log, type: .fault)
                 }
             }
         }
@@ -826,14 +826,14 @@ final class StarryMetalRenderer {
         // 3) Shooting stars trail: decay then draw (additive)
         if layerTex.shooting != nil {
             applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
-            if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
-                if isSameTexture(dst, layerTex.base) {
-                    os_log("ALERT: ShootingStars draw target is BASE layer (headless) — skipping to prevent contamination", log: log, type: .fault)
-                } else {
-                    renderSprites(into: dst,
+            if !drawData.shootingSprites.isEmpty {
+                if let safeDst = safeLayerTarget(.shooting) {
+                    renderSprites(into: safeDst,
                                   sprites: drawData.shootingSprites,
                                   pipeline: spriteAdditivePipeline,
                                   commandBuffer: commandBuffer)
+                } else {
+                    os_log("ALERT: No safe shooting target available (headless) — skipping shooting-stars draw to prevent BASE contamination", log: log, type: .fault)
                 }
             }
         }
@@ -1147,6 +1147,18 @@ final class StarryMetalRenderer {
             return
         }
         
+        // Safety: never let decay pass write into base
+        if labelContains(dstScratch, "BaseLayer") || isSameTexture(dstScratch, layerTex.base) {
+            os_log("ALERT: Decay target scratch for %{public}@ is BaseLayer (%{public}@) — skipping decay to prevent contamination",
+                   log: log, type: .fault, which == .satellites ? "satellites" : "shooting", ptrString(dstScratch))
+            return
+        }
+        if labelContains(srcTex, "BaseLayer") || isSameTexture(srcTex, layerTex.base) {
+            os_log("ALERT: Decay source for %{public}@ is BaseLayer (%{public}@) — skipping decay",
+                   log: log, type: .fault, which == .satellites ? "satellites" : "shooting", ptrString(srcTex))
+            return
+        }
+        
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = dstScratch
         rpd.colorAttachments[0].loadAction = .dontCare
@@ -1199,6 +1211,52 @@ final class StarryMetalRenderer {
         let pa = Unmanaged.passUnretained(a as AnyObject).toOpaque()
         let pb = Unmanaged.passUnretained(b as AnyObject).toOpaque()
         return pa == pb
+    }
+    
+    private func labelContains(_ t: MTLTexture?, _ needle: String) -> Bool {
+        guard let lbl = t?.label else { return false }
+        return lbl.contains(needle)
+    }
+    
+    // Returns a guaranteed non-base target for the given trail layer (satellites/shooting).
+    // If the primary texture is somehow BaseLayer, fall back to scratch (and vice versa).
+    // If both are BaseLayer (should never happen), returns nil and logs a fault.
+    private func safeLayerTarget(_ which: TrailLayer) -> MTLTexture? {
+        let basePtr = layerTex.base.flatMap { ptrString($0) } ?? "nil"
+        switch which {
+        case .satellites:
+            let a = layerTex.satellites
+            let b = layerTex.satellitesScratch
+            let aIsBase = labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base)
+            let bIsBase = labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base)
+            if a != nil && !aIsBase { return a }
+            if b != nil && !bIsBase {
+                os_log("SAFE-TARGET: satellites primary was invalid (base=%{public}@); using scratch %{public}@ (%{public}@)",
+                       log: log, type: .error, basePtr, b?.label ?? "nil", b.map { ptrString($0) } ?? "nil")
+                return b
+            }
+            os_log("ALERT: No safe satellites target (a=%{public}@ base?=%{public}@, b=%{public}@ base?=%{public}@) basePtr=%{public}@",
+                   log: log, type: .fault,
+                   a?.label ?? "nil", aIsBase ? "YES" : "no",
+                   b?.label ?? "nil", bIsBase ? "YES" : "no", basePtr)
+            return nil
+        case .shooting:
+            let a = layerTex.shooting
+            let b = layerTex.shootingScratch
+            let aIsBase = labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base)
+            let bIsBase = labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base)
+            if a != nil && !aIsBase { return a }
+            if b != nil && !bIsBase {
+                os_log("SAFE-TARGET: shooting primary was invalid (base=%{public}@); using scratch %{public}@ (%{public}@)",
+                       log: log, type: .error, basePtr, b?.label ?? "nil", b.map { ptrString($0) } ?? "nil")
+                return b
+            }
+            os_log("ALERT: No safe shooting target (a=%{public}@ base?=%{public}@, b=%{public}@ base?=%{public}@) basePtr=%{public}@",
+                   log: log, type: .fault,
+                   a?.label ?? "nil", aIsBase ? "YES" : "no",
+                   b?.label ?? "nil", bIsBase ? "YES" : "no", basePtr)
+            return nil
+        }
     }
     
     // MARK: - Debug helpers
