@@ -82,7 +82,7 @@ final class StarryMetalRenderer {
     private var diagnosticsEveryNFrames: Int = 30
     private var frameIndex: UInt64 = 0
     // Debug switch: skip drawing satellites sprites (to verify decay is working)
-    private var debugSkipSatellitesDraw: Bool = true
+    private var debugSkipSatellitesDraw: Bool = false
     // When true, stamp a small probe into satellites layer on the next frame (used when skipping draw)
     private var debugStampNextFrameSatellites: Bool = false
     // When true, composite will draw only the satellites layer (hide base/shooting) to validate layer contents
