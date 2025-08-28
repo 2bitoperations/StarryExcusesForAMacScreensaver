@@ -53,8 +53,7 @@ final class StarryMetalRenderer {
         // Cross-process observers
         DistributedNotificationCenter.default().post(name: debugCompositeModeNotification,
                                                      object: nil,
-                                                     userInfo: ["mode": mode.rawValue],
-                                                     deliverImmediately: true)
+                                                     userInfo: ["mode": mode.rawValue])
     }
     
     // MARK: - Properties
@@ -107,7 +106,7 @@ final class StarryMetalRenderer {
     private var diagnosticsEveryNFrames: Int = 30
     private var frameIndex: UInt64 = 0
     // Debug switch: skip drawing satellites sprites (to verify decay is working)
-    private var debugSkipSatellitesDraw: Bool = false
+    private var debugSkipSatellitesDraw: Bool = true
     // When true, stamp a small probe into satellites layer on the next frame (used when skipping draw)
     private var debugStampNextFrameSatellites: Bool = false
     // Composite debug mode (normal, satellites-only, base-only)
