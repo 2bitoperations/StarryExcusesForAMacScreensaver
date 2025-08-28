@@ -44,10 +44,17 @@ final class StarryMetalRenderer {
     private static let debugCompositeModeNotification = Notification.Name("StarryDebugCompositeMode")
     
     // Allow external code to change composite mode at runtime without needing a direct reference
+    // Posts to both local (in-process) and distributed (cross-process) centers.
     static func postCompositeMode(_ mode: CompositeDebugMode) {
+        // Local (in-process) observers
         NotificationCenter.default.post(name: debugCompositeModeNotification,
                                         object: nil,
                                         userInfo: ["mode": mode.rawValue])
+        // Cross-process observers
+        DistributedNotificationCenter.default().post(name: debugCompositeModeNotification,
+                                                     object: nil,
+                                                     userInfo: ["mode": mode.rawValue],
+                                                     deliverImmediately: true)
     }
     
     // MARK: - Properties
@@ -163,16 +170,23 @@ final class StarryMetalRenderer {
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+        DistributedNotificationCenter.default().removeObserver(self)
     }
     
     // MARK: - Debug control observers
     
     private func installDebugObservers() {
         guard !debugObserversInstalled else { return }
+        // In-process notifications
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(handleCompositeModeNotification(_:)),
                                                name: StarryMetalRenderer.debugCompositeModeNotification,
                                                object: nil)
+        // Cross-process notifications
+        DistributedNotificationCenter.default().addObserver(self,
+                                                            selector: #selector(handleCompositeModeNotification(_:)),
+                                                            name: StarryMetalRenderer.debugCompositeModeNotification,
+                                                            object: nil)
         debugObserversInstalled = true
     }
     
@@ -351,7 +365,7 @@ final class StarryMetalRenderer {
         // Validate inputs to avoid CAMetalLayer logs about invalid sizes.
         guard scale > 0 else { return }
         let wPx = Int(round(size.width * scale))
-        let hPx = Int(round(size.height * scale))
+        the hPx = Int(round(size.height * scale))
         // If either dimension is zero or negative, do not touch the layer or textures yet.
         guard wPx > 0, hPx > 0 else { return }
         
