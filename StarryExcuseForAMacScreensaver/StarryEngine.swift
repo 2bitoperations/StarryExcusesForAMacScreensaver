@@ -5,6 +5,38 @@ import QuartzCore   // For CACurrentMediaTime()
 import Darwin       // For task_info CPU sampling
 import simd
 
+// StarryEngine notifications (listens to same channel as StarryMetalRenderer)
+//
+// Post to NotificationCenter.default or DistributedNotificationCenter.default().
+//
+// Names:
+// - "StarryDiagnostics"
+//     userInfo keys (optional; only provided keys are applied):
+//       Engine-affecting:
+//         "starsPerUpdate": Int
+//         "buildingLightsPerUpdate": Int
+//         "dropBaseEveryN": Int                 -> maps to config.debugDropBaseEveryNFrames
+//         "forceClearOnNextFrame": Bool         -> schedule a full clear next frame
+//         "debugLogEveryN": Int                 -> control periodic engine logs (default 50)
+//         "debugLogEveryFrame": Bool            -> config.debugLogEveryFrame
+//       Note: Renderer-specific keys are ignored here (handled by StarryMetalRenderer).
+//
+// - "StarryClear"
+//     userInfo: ["target": String] where target is one of:
+//       "all" (default if missing/unknown), "base", "satellites", "shooting"
+//     Effect:
+//       - "all": reset engine state (skyline/renderers) and schedule renderer clear
+//       - "base": reset skyline frame counter and schedule renderer base clear
+//       - "satellites"/"shooting": reset respective simulation state
+//
+// Example:
+// DistributedNotificationCenter.default().post(name: Notification.Name("StarryDiagnostics"),
+//                                              object: nil,
+//                                              userInfo: ["starsPerUpdate": 120,
+//                                                         "buildingLightsPerUpdate": 25,
+//                                                         "dropBaseEveryN": 300,
+//                                                         "debugLogEveryN": 120])
+
 // Encapsulates the rendering state and logic so both the main ScreenSaverView
 // and the configuration sheet preview can share the exact same code path.
 struct StarryRuntimeConfig {
@@ -23,7 +55,7 @@ struct StarryRuntimeConfig {
     var traceEnabled: Bool
     // Debug: show the illuminated region mask (in red) instead of bright texture
     var showLightAreaTextureFillMask: Bool
-    
+
     // Shooting Stars (extended config)
     var shootingStarsEnabled: Bool
     var shootingStarsAvgSeconds: Double
@@ -33,7 +65,7 @@ struct StarryRuntimeConfig {
     var shootingStarsThickness: Double
     var shootingStarsBrightness: Double
     var shootingStarsDebugShowSpawnBounds: Bool
-    
+
     // Satellites (new layer)
     var satellitesEnabled: Bool = true
     var satellitesAvgSpawnSeconds: Double = 0.75
@@ -41,7 +73,7 @@ struct StarryRuntimeConfig {
     var satellitesSize: Double = 2.0
     var satellitesBrightness: Double = 0.9
     var satellitesTrailing: Bool = true
-    
+
     // Debug overlay (FPS / CPU / Time)
     var debugOverlayEnabled: Bool = false
 
@@ -56,6 +88,9 @@ struct StarryRuntimeConfig {
     var debugForceClearEveryNFrames: Int = 0
     // If true, log per frame (not just first few/every 60) to correlate events tightly.
     var debugLogEveryFrame: Bool = false
+
+    // New: number of building lights updated per tick (default 15 if not overridden).
+    var buildingLightsPerUpdate: Int = 15
 }
 
 // Human-readable dumping for logging/debugging
@@ -92,7 +127,8 @@ StarryRuntimeConfig(
   debugOverlayEnabled: \(debugOverlayEnabled),
   debugDropBaseEveryNFrames: \(debugDropBaseEveryNFrames),
   debugForceClearEveryNFrames: \(debugForceClearEveryNFrames),
-  debugLogEveryFrame: \(debugLogEveryFrame)
+  debugLogEveryFrame: \(debugLogEveryFrame),
+  buildingLightsPerUpdate: \(buildingLightsPerUpdate)
 )
 """
     }
@@ -101,42 +137,50 @@ StarryRuntimeConfig(
 final class StarryEngine {
     private let log: OSLog
     private(set) var config: StarryRuntimeConfig
-    
+
     private var skyline: Skyline?
     private var skylineRenderer: SkylineCoreRenderer?
     private var shootingStarsRenderer: ShootingStarsLayerRenderer?
     private var satellitesRenderer: SatellitesLayerRenderer?
-    
+
     private var size: CGSize
     private var lastInitSize: CGSize
-    
+
     // Timing
     private var lastFrameTime: CFTimeInterval = CACurrentMediaTime()
-    
+
     // FPS computation (smoothed)
     private var fpsAccumulatedTime: CFTimeInterval = 0
     private var fpsFrameCount: Int = 0
     private var currentFPS: Double = 0
-    
+
     // CPU usage sampling
     private var lastProcessCPUTimesSeconds: Double = 0
     private var lastCPUSampleWallTime: CFTimeInterval = 0
     private var currentCPUPercent: Double = 0
-    
+
     // Moon albedo (for renderer upload)
     private var moonAlbedoImage: CGImage?
     private var moonAlbedoDirty: Bool = false
-    
+
     // Headless Metal renderer for preview CGImage output
     private var previewMetalRenderer: StarryMetalRenderer?
-    
+
     // Instrumentation
     private var engineFrameIndex: UInt64 = 0
     private var verboseLogging: Bool = true
 
+    // Periodic engine log cadence (N frames). If <= 0, disabled.
+    private var engineLogEveryNFrames: Int = 50
+
     // Force-clear request (e.g., on config change or resize)
     private var forceClearOnNextFrame: Bool = false
-    
+
+    // Notifications
+    private var observersInstalled: Bool = false
+    private let diagnosticsNotification = Notification.Name("StarryDiagnostics")
+    private let clearNotification = Notification.Name("StarryClear")
+
     init(size: CGSize,
          log: OSLog,
          config: StarryRuntimeConfig) {
@@ -144,32 +188,139 @@ final class StarryEngine {
         self.lastInitSize = size
         self.log = log
         self.config = config
-        
+
         // Log full configuration on engine startup for diagnostics
         os_log("StarryEngine initialized with config:\n%{public}@",
                log: log, type: .info, config.description)
         os_log("Initial size: %{public}.0fx%{public}.0f", log: log, type: .info, Double(size.width), Double(size.height))
-        
+
         // Important: always clear persistent GPU layers on the first frame of a new engine instance
         // so manual "Clear Preview" actually clears the Metal accumulation textures.
         forceClearOnNextFrame = true
         os_log("Engine init: will force clear on next frame to reset accumulation textures", log: log, type: .info)
+
+        installNotificationObservers()
     }
-    
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        DistributedNotificationCenter.default().removeObserver(self)
+    }
+
+    // MARK: - Notifications
+
+    private func installNotificationObservers() {
+        guard !observersInstalled else { return }
+        // In-process
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleDiagnosticsNotification(_:)),
+                                               name: diagnosticsNotification,
+                                               object: nil)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleClearNotification(_:)),
+                                               name: clearNotification,
+                                               object: nil)
+        // Cross-process
+        DistributedNotificationCenter.default().addObserver(self,
+                                                            selector: #selector(handleDiagnosticsNotification(_:)),
+                                                            name: diagnosticsNotification,
+                                                            object: nil)
+        DistributedNotificationCenter.default().addObserver(self,
+                                                            selector: #selector(handleClearNotification(_:)),
+                                                            name: clearNotification,
+                                                            object: nil)
+        observersInstalled = true
+    }
+
+    @objc private func handleDiagnosticsNotification(_ note: Notification) {
+        let ui = note.userInfo
+        var applied: [String] = []
+        var cfg = config
+        var cfgChanged = false
+
+        if let n: Int = value("starsPerUpdate", from: ui), n != config.starsPerUpdate {
+            cfg.starsPerUpdate = max(0, n)
+            applied.append("starsPerUpdate=\(cfg.starsPerUpdate)")
+            cfgChanged = true
+        }
+        if let n: Int = value("buildingLightsPerUpdate", from: ui), n != config.buildingLightsPerUpdate {
+            cfg.buildingLightsPerUpdate = max(0, n)
+            applied.append("buildingLightsPerUpdate=\(cfg.buildingLightsPerUpdate)")
+            cfgChanged = true
+        }
+        if let n: Int = value("dropBaseEveryN", from: ui), n != config.debugDropBaseEveryNFrames {
+            cfg.debugDropBaseEveryNFrames = max(0, n)
+            applied.append("dropBaseEveryN=\(cfg.debugDropBaseEveryNFrames)")
+            cfgChanged = true
+        }
+        if let b: Bool = value("debugLogEveryFrame", from: ui), b != config.debugLogEveryFrame {
+            cfg.debugLogEveryFrame = b
+            applied.append("debugLogEveryFrame=\(b)")
+            cfgChanged = true
+        }
+        if let n: Int = value("debugLogEveryN", from: ui) {
+            engineLogEveryNFrames = max(0, n)
+            applied.append("engine.debugLogEveryN=\(engineLogEveryNFrames)")
+        }
+        if let b: Bool = value("forceClearOnNextFrame", from: ui), b {
+            forceClearOnNextFrame = true
+            applied.append("forceClearOnNextFrame=true")
+        }
+
+        if cfgChanged {
+            updateConfig(cfg)
+        }
+        if applied.isEmpty {
+            os_log("Engine Diagnostics notification: no applicable keys", log: log, type: .info)
+        } else {
+            os_log("Engine Diagnostics applied: %{public}@", log: log, type: .info, applied.joined(separator: ", "))
+        }
+    }
+
+    @objc private func handleClearNotification(_ note: Notification) {
+        let target: String = (note.userInfo?["target"] as? String)?.lowercased() ?? "all"
+        switch target {
+        case "all":
+            os_log("Engine Clear: ALL — resetting state and scheduling renderer clear", log: log, type: .info)
+            skyline = nil
+            skylineRenderer = nil
+            satellitesRenderer = nil
+            shootingStarsRenderer = nil
+            forceClearOnNextFrame = true
+        case "base":
+            os_log("Engine Clear: BASE — resetting skyline frame counter and scheduling renderer base clear", log: log, type: .info)
+            skylineRenderer?.resetFrameCounter()
+            forceClearOnNextFrame = true
+        case "satellites":
+            os_log("Engine Clear: SATELLITES — resetting satellites simulation", log: log, type: .info)
+            satellitesRenderer?.reset()
+        case "shooting":
+            os_log("Engine Clear: SHOOTING — resetting shooting-stars simulation", log: log, type: .info)
+            shootingStarsRenderer?.reset()
+        default:
+            os_log("Engine Clear: unknown target '%{public}@' — treating as ALL", log: log, type: .error, target)
+            skyline = nil
+            skylineRenderer = nil
+            satellitesRenderer = nil
+            shootingStarsRenderer = nil
+            forceClearOnNextFrame = true
+        }
+    }
+
     // MARK: - Resizing
-    
+
     func resizeIfNeeded(newSize: CGSize) {
         guard newSize != lastInitSize, newSize.width > 0, newSize.height > 0 else { return }
         os_log("Resize: %{public}.0fx%{public}.0f -> %{public}.0fx%{public}.0f", log: log, type: .info,
                Double(lastInitSize.width), Double(lastInitSize.height), Double(newSize.width), Double(newSize.height))
         size = newSize
         lastInitSize = newSize
-        
+
         skyline = nil
         skylineRenderer = nil
         shootingStarsRenderer = nil
         satellitesRenderer = nil
-        
+
         // Moon albedo might change size (radius), request refresh
         moonAlbedoImage = nil
         moonAlbedoDirty = false
@@ -177,9 +328,9 @@ final class StarryEngine {
         // Ensure persistent GPU layers are cleared on next frame
         forceClearOnNextFrame = true
     }
-    
+
     // MARK: - Configuration
-    
+
     func updateConfig(_ newConfig: StarryRuntimeConfig) {
         let skylineAffecting =
             config.starsPerUpdate != newConfig.starsPerUpdate ||
@@ -191,8 +342,9 @@ final class StarryEngine {
             config.moonDarkBrightness != newConfig.moonDarkBrightness ||
             config.moonPhaseOverrideEnabled != newConfig.moonPhaseOverrideEnabled ||
             config.moonPhaseOverrideValue != newConfig.moonPhaseOverrideValue ||
-            config.showLightAreaTextureFillMask != newConfig.showLightAreaTextureFillMask
-        
+            config.showLightAreaTextureFillMask != newConfig.showLightAreaTextureFillMask ||
+            config.buildingLightsPerUpdate != newConfig.buildingLightsPerUpdate
+
         if skylineAffecting {
             os_log("Config changed (skyline affecting) — resetting skyline, renderers, and moon albedo", log: log, type: .info)
             skyline = nil
@@ -202,7 +354,7 @@ final class StarryEngine {
             moonAlbedoImage = nil
             moonAlbedoDirty = false
         }
-        
+
         let shootingStarsAffecting =
             config.shootingStarsEnabled != newConfig.shootingStarsEnabled ||
             config.shootingStarsAvgSeconds != newConfig.shootingStarsAvgSeconds ||
@@ -212,12 +364,12 @@ final class StarryEngine {
             config.shootingStarsThickness != newConfig.shootingStarsThickness ||
             config.shootingStarsBrightness != newConfig.shootingStarsBrightness ||
             config.shootingStarsDebugShowSpawnBounds != newConfig.shootingStarsDebugShowSpawnBounds
-        
+
         if shootingStarsAffecting {
             os_log("Config changed (shooting-stars affecting) — resetting shootingStarsRenderer", log: log, type: .info)
             shootingStarsRenderer = nil
         }
-        
+
         let satellitesAffecting =
             config.satellitesEnabled != newConfig.satellitesEnabled ||
             config.satellitesAvgSpawnSeconds != newConfig.satellitesAvgSpawnSeconds ||
@@ -225,12 +377,12 @@ final class StarryEngine {
             config.satellitesSize != newConfig.satellitesSize ||
             config.satellitesBrightness != newConfig.satellitesBrightness ||
             config.satellitesTrailing != newConfig.satellitesTrailing
-        
+
         if satellitesAffecting {
             os_log("Config changed (satellites affecting) — resetting satellitesRenderer", log: log, type: .info)
             satellitesRenderer = nil
         }
-        
+
         // Diagnostics toggles change doesn't require rebuilds, just update config.
         let diagnosticsChanged =
             config.debugDropBaseEveryNFrames != newConfig.debugDropBaseEveryNFrames ||
@@ -243,13 +395,13 @@ final class StarryEngine {
                    newConfig.debugForceClearEveryNFrames,
                    newConfig.debugLogEveryFrame ? "true" : "false")
         }
-        
+
         // If debug overlay visibility toggled, log it (no renderer rebuild needed anymore)
         let overlayChanged = (config.debugOverlayEnabled != newConfig.debugOverlayEnabled)
         if overlayChanged {
             os_log("Debug overlay toggled: %{public}@", log: log, type: .info, newConfig.debugOverlayEnabled ? "ENABLED" : "disabled")
         }
-        
+
         config = newConfig
         os_log("New config applied", log: log, type: .info)
 
@@ -259,9 +411,9 @@ final class StarryEngine {
             os_log("Config change will force full clear on next frame", log: log, type: .info)
         }
     }
-    
+
     // MARK: - Initialization of Skyline & Shooting Stars & Satellites
-    
+
     private func ensureSkyline() {
         guard skyline == nil || skylineRenderer == nil else {
             ensureSatellitesRenderer()
@@ -278,7 +430,7 @@ final class StarryEngine {
                                   buildingWidthMax: 300,
                                   buildingFrequency: config.buildingFrequency,
                                   starsPerUpdate: config.starsPerUpdate,
-                                  buildingLightsPerUpdate: 15,
+                                  buildingLightsPerUpdate: config.buildingLightsPerUpdate,
                                   buildingColor: Color(red: 0.972, green: 0.945, blue: 0.012),
                                   flasherRadius: 4,
                                   flasherPeriod: 2.0,
@@ -293,7 +445,8 @@ final class StarryEngine {
                                   moonPhaseOverrideEnabled: config.moonPhaseOverrideEnabled,
                                   moonPhaseOverrideValue: config.moonPhaseOverrideValue)
             if let skyline = skyline {
-                os_log("Skyline created. Stars/update=%{public}d, clearAfter=%{public}.1fs", log: log, type: .info, config.starsPerUpdate, config.secsBetweenClears)
+                os_log("Skyline created. Stars/update=%{public}d, buildingLights/update=%{public}d, clearAfter=%{public}.1fs",
+                       log: log, type: .info, config.starsPerUpdate, config.buildingLightsPerUpdate, config.secsBetweenClears)
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
                                                       traceEnabled: config.traceEnabled)
@@ -315,7 +468,7 @@ final class StarryEngine {
         ensureSatellitesRenderer()
         ensureShootingStarsRenderer()
     }
-    
+
     private func ensureShootingStarsRenderer() {
         guard shootingStarsRenderer == nil,
               config.shootingStarsEnabled,
@@ -335,7 +488,7 @@ final class StarryEngine {
             debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
         os_log("ShootingStarsLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.shootingStarsEnabled ? "true" : "false", config.shootingStarsAvgSeconds)
     }
-    
+
     private func ensureSatellitesRenderer() {
         guard satellitesRenderer == nil,
               config.satellitesEnabled,
@@ -351,9 +504,9 @@ final class StarryEngine {
                                                      trailDecay: 1.0) // legacy parameter ignored by GPU renderer
         os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.satellitesEnabled ? "true" : "false", config.satellitesAvgSpawnSeconds)
     }
-    
+
     // MARK: - Frame Advancement (GPU path)
-    
+
     func advanceFrameGPU() -> StarryDrawData {
         engineFrameIndex &+= 1
 
@@ -366,24 +519,25 @@ final class StarryEngine {
         }
 
         let logEveryFrame = config.debugOverlayEnabled || config.debugLogEveryFrame
-        let logThisFrame = logEveryFrame || (verboseLogging && (engineFrameIndex % 50 == 0))
+        let periodicLogThisFrame = (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
+        let logThisFrame = logEveryFrame || (verboseLogging && periodicLogThisFrame)
         if logThisFrame {
             os_log("advanceFrameGPU: begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
-        
+
         ensureSkyline()
         let now = CACurrentMediaTime()
         let dt = max(0.0, now - lastFrameTime)
         lastFrameTime = now
-        
+
         updateFPS(dt: dt)
         sampleCPU(dt: dt)
-        
+
         var clearAll = false
         var baseSprites: [SpriteInstance] = []
         var satellitesSprites: [SpriteInstance] = []
         var shootingSprites: [SpriteInstance] = []
-        
+
         if let skyline = skyline,
            let skylineRenderer = skylineRenderer {
             if skyline.shouldClearNow() {
@@ -398,7 +552,7 @@ final class StarryEngine {
                 clearAll = true
                 ensureSkyline()
             }
-            
+
             // Base sprites (accumulate on persistent texture)
             baseSprites = skylineRenderer.generateSprites()
             // Diagnostics: intentionally drop base periodically if requested
@@ -406,14 +560,14 @@ final class StarryEngine {
                 os_log("advanceFrameGPU: DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
                 baseSprites.removeAll()
             }
-            
+
             if config.satellitesEnabled, let sat = satellitesRenderer {
                 let (sprites, _) = sat.update(dt: dt)
                 satellitesSprites = sprites
             } else {
                 satellitesSprites.removeAll()
             }
-            
+
             if config.shootingStarsEnabled, let ss = shootingStarsRenderer {
                 let (sprites, _) = ss.update(dt: dt)
                 shootingSprites = sprites
@@ -430,7 +584,7 @@ final class StarryEngine {
             clearAll = true
             forceClearOnNextFrame = false
         }
-        
+
         // Moon params
         var moonParams: MoonParams?
         if let moon = skyline?.getMoon() {
@@ -444,7 +598,7 @@ final class StarryEngine {
                                     brightBrightness: Float(config.moonBrightBrightness),
                                     darkBrightness: Float(config.moonDarkBrightness))
         }
-        
+
         if logThisFrame {
             os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@",
                    log: log, type: .info,
@@ -452,7 +606,7 @@ final class StarryEngine {
                    moonParams != nil ? "yes" : "no",
                    clearAll ? "yes" : "no")
         }
-        
+
         let drawData = StarryDrawData(
             size: size,
             clearAll: clearAll,
@@ -470,10 +624,10 @@ final class StarryEngine {
         moonAlbedoDirty = false
         return drawData
     }
-    
+
     // MARK: - Frame Advancement (Preview via Metal headless)
     // Produce a CGImage by rendering through the same Metal renderer into an offscreen texture.
-    
+
     @discardableResult
     func advanceFrame() -> CGImage? {
         engineFrameIndex &+= 1
@@ -487,25 +641,26 @@ final class StarryEngine {
         }
 
         let logEveryFrame = config.debugOverlayEnabled || config.debugLogEveryFrame
-        let logThisFrame = logEveryFrame || (verboseLogging && (engineFrameIndex % 50 == 0))
+        let periodicLogThisFrame = (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
+        let logThisFrame = logEveryFrame || (verboseLogging && periodicLogThisFrame)
         if logThisFrame {
             os_log("advanceFrame (headless): begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
-        
+
         ensureSkyline()
         let now = CACurrentMediaTime()
         let dt = max(0.0, now - lastFrameTime)
         lastFrameTime = now
-        
+
         updateFPS(dt: dt)
         sampleCPU(dt: dt)
-        
+
         // Generate the same drawData used by the on-screen GPU path
         var clearAll = false
         var baseSprites: [SpriteInstance] = []
         var satellitesSprites: [SpriteInstance] = []
         var shootingSprites: [SpriteInstance] = []
-        
+
         if let skyline = skyline,
            let skylineRenderer = skylineRenderer {
             if skyline.shouldClearNow() {
@@ -520,14 +675,14 @@ final class StarryEngine {
                 clearAll = true
                 ensureSkyline()
             }
-            
+
             baseSprites = skylineRenderer.generateSprites()
             // Diagnostics: intentionally drop base periodically if requested
             if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
                 os_log("advanceFrame(headless): DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
                 baseSprites.removeAll()
             }
-            
+
             if config.satellitesEnabled, let sat = satellitesRenderer {
                 let (spr, _) = sat.update(dt: dt)
                 satellitesSprites = spr
@@ -546,7 +701,7 @@ final class StarryEngine {
             clearAll = true
             forceClearOnNextFrame = false
         }
-        
+
         // Moon params
         var moonParams: MoonParams?
         if let moon = skyline?.getMoon() {
@@ -560,7 +715,7 @@ final class StarryEngine {
                                     brightBrightness: Float(config.moonBrightBrightness),
                                     darkBrightness: Float(config.moonDarkBrightness))
         }
-        
+
         if logThisFrame {
             os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@",
                    log: log, type: .info,
@@ -568,7 +723,7 @@ final class StarryEngine {
                    moonParams != nil ? "yes" : "no",
                    clearAll ? "yes" : "no")
         }
-        
+
         let drawData = StarryDrawData(
             size: size,
             clearAll: clearAll,
@@ -583,7 +738,7 @@ final class StarryEngine {
             os_log("advanceFrame(headless): moon albedo image attached for upload", log: log, type: .info)
         }
         moonAlbedoDirty = false
-        
+
         if previewMetalRenderer == nil {
             os_log("Creating headless StarryMetalRenderer", log: log, type: .info)
             previewMetalRenderer = StarryMetalRenderer(log: log)
@@ -601,9 +756,9 @@ final class StarryEngine {
         }
         return img
     }
-    
+
     // MARK: - Debug control (runtime toggles)
-    
+
     // Broadcast to all StarryMetalRenderer instances (onscreen + headless) via NotificationCenter,
     // and also update our headless preview renderer if it exists.
     func debugSetCompositeBaseOnly(_ enabled: Bool) {
@@ -611,15 +766,15 @@ final class StarryEngine {
         previewMetalRenderer?.setCompositeBaseOnlyForDebug(enabled)
         os_log("Debug: set composite BASE-ONLY = %{public}@", log: log, type: .info, enabled ? "true" : "false")
     }
-    
+
     func debugSetCompositeSatellitesOnly(_ enabled: Bool) {
         StarryMetalRenderer.postCompositeMode(enabled ? .satellitesOnly : .normal)
         previewMetalRenderer?.setCompositeSatellitesOnlyForDebug(enabled)
         os_log("Debug: set composite SATELLITES-ONLY = %{public}@", log: log, type: .info, enabled ? "true" : "false")
     }
-    
+
     // MARK: - CPU/FPS
-    
+
     private func sampleCPU(dt: CFTimeInterval) {
         guard dt > 0 else { return }
         var info = task_thread_times_info_data_t()
@@ -629,7 +784,7 @@ final class StarryEngine {
                 task_info(mach_task_self_, task_flavor_t(TASK_THREAD_TIMES_INFO), $0, &infoCount)
             }
         }
-        
+
         var cpuSeconds: Double = 0
         if kerr == KERN_SUCCESS {
             let user = Double(info.user_time.seconds) + Double(info.user_time.microseconds) / 1_000_000.0
@@ -638,7 +793,7 @@ final class StarryEngine {
         } else {
             return
         }
-        
+
         if lastProcessCPUTimesSeconds == 0 {
             lastProcessCPUTimesSeconds = cpuSeconds
             lastCPUSampleWallTime = CACurrentMediaTime()
@@ -650,7 +805,7 @@ final class StarryEngine {
         lastProcessCPUTimesSeconds = cpuSeconds
         lastCPUSampleWallTime = CACurrentMediaTime()
     }
-    
+
     private func updateFPS(dt: CFTimeInterval) {
         fpsFrameCount += 1
         fpsAccumulatedTime += dt
@@ -661,5 +816,33 @@ final class StarryEngine {
             fpsFrameCount = 0
             os_log("Stats: FPS=%.1f CPU=%.1f%%", log: log, type: .debug, currentFPS, currentCPUPercent)
         }
+    }
+
+    // MARK: - Notification value parsing helpers
+
+    private func value<T>(_ key: String, from userInfo: [AnyHashable: Any]?) -> T? {
+        guard let ui = userInfo, let raw = ui[key] else { return nil }
+        if let v = raw as? T { return v }
+        if T.self == Bool.self {
+            if let n = raw as? NSNumber { return (n.boolValue as! T) }
+            if let s = raw as? String {
+                let lowered = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let truthy: Set<String> = ["1","true","yes","on","y"]
+                let falsy: Set<String> = ["0","false","no","off","n"]
+                if truthy.contains(lowered) { return (true as! T) }
+                if falsy.contains(lowered) { return (false as! T) }
+            }
+        } else if T.self == Int.self {
+            if let n = raw as? NSNumber { return (n.intValue as! T) }
+            if let s = raw as? String, let iv = Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return (iv as! T)
+            }
+        } else if T.self == Double.self {
+            if let n = raw as? NSNumber { return (n.doubleValue as! T) }
+            if let s = raw as? String, let dv = Double(s.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return (dv as! T)
+            }
+        }
+        return nil
     }
 }
