@@ -1352,3 +1352,51 @@ final class StarryMetalRenderer {
             SpriteInstance(centerPx: p, halfSizePx: half, colorPremul: color, shape: shape)
         }
     }
+    
+    // Snapshot helpers used by BaseLayer immutability verification
+    private func makeSnapshotTextureLike(_ src: MTLTexture) -> MTLTexture? {
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: src.pixelFormat,
+                                                            width: src.width,
+                                                            height: src.height,
+                                                            mipmapped: false)
+        desc.usage = [.shaderRead, .blitDestination, .blitSource]
+        desc.storageMode = .shared
+        return device.makeTexture(descriptor: desc)
+    }
+    
+    private func blitCopy(from src: MTLTexture, to dst: MTLTexture, using cb: MTLCommandBuffer, label: String) {
+        guard let blit = cb.makeBlitCommandEncoder() else { return }
+        blit.label = label
+        let size = MTLSize(width: min(src.width, dst.width),
+                           height: min(src.height, dst.height),
+                           depth: 1)
+        blit.copy(from: src,
+                  sourceSlice: 0,
+                  sourceLevel: 0,
+                  sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                  sourceSize: size,
+                  to: dst,
+                  destinationSlice: 0,
+                  destinationLevel: 0,
+                  destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+        blit.endEncoding()
+    }
+    
+    private func computeChecksum(of tex: MTLTexture) -> UInt64 {
+        let w = tex.width
+        let h = tex.height
+        let bpp = 4
+        let rowBytes = w * bpp
+        var bytes = [UInt8](repeating: 0, count: rowBytes * h)
+        let region = MTLRegionMake2D(0, 0, w, h)
+        tex.getBytes(&bytes, bytesPerRow: rowBytes, from: region, mipmapLevel: 0)
+        // Simple 64-bit FNV-1a
+        var hash: UInt64 = 0xcbf29ce484222325
+        let prime: UInt64 = 0x100000001b3
+        for b in bytes {
+            hash ^= UInt64(b)
+            hash &*= prime
+        }
+        return hash
+    }
+}
