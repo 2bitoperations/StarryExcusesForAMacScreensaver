@@ -43,8 +43,8 @@ final class StarryMetalRenderer {
     private var compositePipeline: MTLRenderPipelineState!
     private var spriteOverPipeline: MTLRenderPipelineState!      // standard premultiplied alpha ("over")
     private var spriteAdditivePipeline: MTLRenderPipelineState!  // additive for trails
-    private var decaySampledPipeline: MTLRenderPipelineState!    // old ping-pong decay (kept for fallback)
-    private var decayInPlacePipeline: MTLRenderPipelineState!    // new in-place decay via blendColor
+    private var decaySampledPipeline: MTLRenderPipelineState!    // robust ping-pong decay
+    private var decayInPlacePipeline: MTLRenderPipelineState!    // in-place decay via blendColor (kept but not used now)
     private var moonPipeline: MTLRenderPipelineState!
     
     private var layerTex = LayerTextures()
@@ -85,6 +85,8 @@ final class StarryMetalRenderer {
     private var debugSkipSatellitesDraw: Bool = true
     // When true, stamp a small probe into satellites layer on the next frame (used when skipping draw)
     private var debugStampNextFrameSatellites: Bool = false
+    // When true, composite will draw only the satellites layer (hide base/shooting) to validate layer contents
+    private var debugCompositeSatellitesOnly: Bool = false
     
     // MARK: - Init (onscreen)
     
@@ -340,6 +342,11 @@ final class StarryMetalRenderer {
         debugSkipSatellitesDraw = skip
         os_log("Debug: skip satellites draw is %{public}@", log: log, type: .info, skip ? "ON" : "off")
     }
+    // For testing: composite satellites-only (hide base/shooting) to validate satellites layer contents
+    func setCompositeSatellitesOnlyForDebug(_ enabled: Bool) {
+        debugCompositeSatellitesOnly = enabled
+        os_log("Debug: composite satellites-only is %{public}@", log: log, type: .info, enabled ? "ON" : "off")
+    }
     
     // Expose trail half-life controls. Pass nil to reset to default 0.5s.
     func setTrailHalfLives(satellites: Double?, shooting: Double?) {
@@ -576,9 +583,14 @@ final class StarryMetalRenderer {
             encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        drawTex(layerTex.base)
-        drawTex(layerTex.satellites)
-        drawTex(layerTex.shooting)
+        if debugCompositeSatellitesOnly {
+            // Draw satellites only to verify where the dots actually live.
+            drawTex(layerTex.satellites)
+        } else {
+            drawTex(layerTex.base)
+            drawTex(layerTex.satellites)
+            drawTex(layerTex.shooting)
+        }
         
         // Moon
         if let moon = drawData.moon {
@@ -743,9 +755,13 @@ final class StarryMetalRenderer {
             encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        drawTex(layerTex.base)
-        drawTex(layerTex.satellites)
-        drawTex(layerTex.shooting)
+        if debugCompositeSatellitesOnly {
+            drawTex(layerTex.satellites)
+        } else {
+            drawTex(layerTex.base)
+            drawTex(layerTex.satellites)
+            drawTex(layerTex.shooting)
+        }
         
         // Moon (on top)
         if let moon = drawData.moon {
@@ -978,32 +994,65 @@ final class StarryMetalRenderer {
             return
         }
         
-        // In-place decay via blending: out = dst * keep (no ping-pong, robust)
-        let target: MTLTexture? = (which == .satellites) ? layerTex.satellites : layerTex.shooting
-        guard let dst = target else { return }
+        // Robust ping-pong decay via sampling: out(scratch) = keep * src; then swap (src <-> scratch)
+        let src: MTLTexture?
+        let scratch: MTLTexture?
+        switch which {
+        case .satellites:
+            src = layerTex.satellites
+            scratch = layerTex.satellitesScratch
+        case .shooting:
+            src = layerTex.shooting
+            scratch = layerTex.shootingScratch
+        }
+        guard let srcTex = src, let dstScratch = scratch else {
+            os_log("applyDecay: missing textures for %{public}@ layer (src=%{public}@, scratch=%{public}@)",
+                   log: log, type: .error,
+                   (which == .satellites ? "satellites" : "shooting"),
+                   String(describing: src), String(describing: scratch))
+            return
+        }
         
         let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = dst
-        rpd.colorAttachments[0].loadAction = .load
+        rpd.colorAttachments[0].texture = dstScratch
+        rpd.colorAttachments[0].loadAction = .dontCare
         rpd.colorAttachments[0].storeAction = .store
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
-        encoder.pushDebugGroup("DecayInPlace -> \(dst.label ?? "tex") keep=\(keep)")
+        encoder.pushDebugGroup("DecaySampled -> \(dstScratch.label ?? "scratch") keep=\(keep)")
         let vp = MTLViewport(originX: 0, originY: 0,
-                             width: Double(dst.width),
-                             height: Double(dst.height),
+                             width: Double(dstScratch.width),
+                             height: Double(dstScratch.height),
                              znear: 0, zfar: 1)
         encoder.setViewport(vp)
-        encoder.setRenderPipelineState(decayInPlacePipeline)
+        encoder.setRenderPipelineState(decaySampledPipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         }
-        // Use constant blend color to scale destination by keep
-        encoder.setBlendColor(red: Float(Double(keep)), green: Float(Double(keep)), blue: Float(Double(keep)), alpha: Float(Double(keep)))
-        // Draw fullscreen (output color is black; blending scales dst by keep)
+        // Bind source texture and keepColor
+        encoder.setFragmentTexture(srcTex, index: 0)
+        var keepColor = SIMD4<Float>(repeating: keep)
+        encoder.setFragmentBytes(&keepColor, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
+        // Draw fullscreen (dst = keep * sample(src))
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
         encoder.endEncoding()
+        
+        // Swap src <-> scratch for next frame
+        swapTrailTextures(which)
+    }
+    
+    private func swapTrailTextures(_ which: TrailLayer) {
+        switch which {
+        case .satellites:
+            let a = layerTex.satellites
+            layerTex.satellites = layerTex.satellitesScratch
+            layerTex.satellitesScratch = a
+        case .shooting:
+            let a = layerTex.shooting
+            layerTex.shooting = layerTex.shootingScratch
+            layerTex.shootingScratch = a
+        }
     }
     
     private func ptrString(_ t: MTLTexture) -> String {
