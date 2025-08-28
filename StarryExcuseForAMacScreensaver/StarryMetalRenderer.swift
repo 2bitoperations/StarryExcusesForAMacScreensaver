@@ -83,6 +83,8 @@ final class StarryMetalRenderer {
     private var frameIndex: UInt64 = 0
     // Debug switch: skip drawing satellites sprites (to verify decay is working)
     private var debugSkipSatellitesDraw: Bool = true
+    // When true, stamp a small probe into satellites layer on the next frame (used when skipping draw)
+    private var debugStampNextFrameSatellites: Bool = false
     
     // MARK: - Init (onscreen)
     
@@ -506,9 +508,17 @@ final class StarryMetalRenderer {
         // 2) Satellites trail: decay then draw (additive blending works with decay to create trails)
         if layerTex.satellites != nil {
             applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
-            if !debugSkipSatellitesDraw,
-               !drawData.satellitesSprites.isEmpty,
-               let dst = layerTex.satellites {
+            // If skipping satellites drawing for debug, stamp a probe once after a clear to observe decay.
+            if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst = layerTex.satellites {
+                let sprites = makeDecayProbeSprites(target: dst)
+                if !sprites.isEmpty {
+                    os_log("Debug: stamping satellites decay probe (%{public}d sprites)", log: log, type: .info, sprites.count)
+                    renderSprites(into: dst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
+                }
+                debugStampNextFrameSatellites = false
+            } else if !debugSkipSatellitesDraw,
+                      !drawData.satellitesSprites.isEmpty,
+                      let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               pipeline: spriteAdditivePipeline,
@@ -673,9 +683,17 @@ final class StarryMetalRenderer {
         // 2) Satellites trail: decay then draw (additive)
         if layerTex.satellites != nil {
             applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
-            if !debugSkipSatellitesDraw,
-               !drawData.satellitesSprites.isEmpty,
-               let dst = layerTex.satellites {
+            // Stamp probe once after clear if skipping satellites draw
+            if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst = layerTex.satellites {
+                let sprites = makeDecayProbeSprites(target: dst)
+                if !sprites.isEmpty {
+                    os_log("Debug(headless): stamping satellites decay probe (%{public}d sprites)", log: log, type: .info, sprites.count)
+                    renderSprites(into: dst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
+                }
+                debugStampNextFrameSatellites = false
+            } else if !debugSkipSatellitesDraw,
+                      !drawData.satellitesSprites.isEmpty,
+                      let dst = layerTex.satellites {
                 renderSprites(into: dst,
                               sprites: drawData.satellitesSprites,
                               pipeline: spriteAdditivePipeline,
@@ -859,6 +877,12 @@ final class StarryMetalRenderer {
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         os_log("ClearOffscreenTextures: complete (reason=%{public}@)", log: log, type: .info, reason)
+        
+        // If we're skipping satellites drawing for debugging, arrange to stamp a probe on next frame.
+        if debugSkipSatellitesDraw {
+            debugStampNextFrameSatellites = true
+            os_log("Debug: will stamp satellites decay probe next frame (after clear)", log: log, type: .info)
+        }
     }
     
     private func renderSprites(into target: MTLTexture,
@@ -985,5 +1009,36 @@ final class StarryMetalRenderer {
     private func ptrString(_ t: MTLTexture) -> String {
         let p = Unmanaged.passUnretained(t as AnyObject).toOpaque()
         return String(describing: p)
+    }
+    
+    // MARK: - Debug helpers
+    
+    // Create a small set of bright circular sprites to act as a decay probe.
+    // Stamped into the satellites trail layer when debugSkipSatellitesDraw is true,
+    // on the first frame after a clear.
+    private func makeDecayProbeSprites(target: MTLTexture) -> [SpriteInstance] {
+        let w = target.width
+        let h = target.height
+        guard w > 0, h > 0 else { return [] }
+        
+        let cx = Float(w) * 0.5
+        let cy = Float(h) * 0.5
+        let r: Float = max(2.0, Float(min(w, h)) * 0.01) // ~1% of min dimension, at least 2px radius
+        let color = SIMD4<Float>(1, 1, 1, 1) // premultiplied white
+        
+        // Five dots: center and four compass points at 20% of min dimension
+        let d = Float(min(w, h)) * 0.20
+        let positions: [SIMD2<Float>] = [
+            SIMD2<Float>(cx, cy),
+            SIMD2<Float>(cx - d, cy),
+            SIMD2<Float>(cx + d, cy),
+            SIMD2<Float>(cx, cy - d),
+            SIMD2<Float>(cx, cy + d)
+        ]
+        let half = SIMD2<Float>(r, r)
+        let shape: UInt32 = 1 // circle
+        return positions.map { p in
+            SpriteInstance(centerPx: p, halfSizePx: half, colorPremul: color, shape: shape)
+        }
     }
 }
