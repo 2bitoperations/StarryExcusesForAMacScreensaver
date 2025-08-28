@@ -592,6 +592,22 @@ final class StarryEngine {
         return img
     }
     
+    // MARK: - Debug control (runtime toggles)
+    
+    // Broadcast to all StarryMetalRenderer instances (onscreen + headless) via NotificationCenter,
+    // and also update our headless preview renderer if it exists.
+    func debugSetCompositeBaseOnly(_ enabled: Bool) {
+        StarryMetalRenderer.postCompositeMode(enabled ? .baseOnly : .normal)
+        previewMetalRenderer?.setCompositeBaseOnlyForDebug(enabled)
+        os_log("Debug: set composite BASE-ONLY = %{public}@", log: log, type: .info, enabled ? "true" : "false")
+    }
+    
+    func debugSetCompositeSatellitesOnly(_ enabled: Bool) {
+        StarryMetalRenderer.postCompositeMode(enabled ? .satellitesOnly : .normal)
+        previewMetalRenderer?.setCompositeSatellitesOnlyForDebug(enabled)
+        os_log("Debug: set composite SATELLITES-ONLY = %{public}@", log: log, type: .info, enabled ? "true" : "false")
+    }
+    
     // MARK: - CPU/FPS
     
     private func sampleCPU(dt: CFTimeInterval) {

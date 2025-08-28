@@ -33,10 +33,21 @@ final class StarryMetalRenderer {
     }
     
     // Composite debug modes
-    enum CompositeDebugMode {
-        case normal
-        case satellitesOnly
-        case baseOnly
+    enum CompositeDebugMode: Int {
+        case normal = 0
+        case satellitesOnly = 1
+        case baseOnly = 2
+    }
+    
+    // MARK: - Debug Notifications
+    
+    private static let debugCompositeModeNotification = Notification.Name("StarryDebugCompositeMode")
+    
+    // Allow external code to change composite mode at runtime without needing a direct reference
+    static func postCompositeMode(_ mode: CompositeDebugMode) {
+        NotificationCenter.default.post(name: debugCompositeModeNotification,
+                                        object: nil,
+                                        userInfo: ["mode": mode.rawValue])
     }
     
     // MARK: - Properties
@@ -93,9 +104,11 @@ final class StarryMetalRenderer {
     // When true, stamp a small probe into satellites layer on the next frame (used when skipping draw)
     private var debugStampNextFrameSatellites: Bool = false
     // Composite debug mode (normal, satellites-only, base-only)
-    private var debugCompositeMode: CompositeDebugMode = .baseOnly
+    private var debugCompositeMode: CompositeDebugMode = .normal
     // One-time base clear request (used to scrub any historical contamination)
     private var debugClearBasePending: Bool = false
+    
+    private var debugObserversInstalled: Bool = false
     
     // MARK: - Init (onscreen)
     
@@ -118,6 +131,7 @@ final class StarryMetalRenderer {
         do {
             try buildPipelines()
             buildQuad()
+            installDebugObservers()
         } catch {
             os_log("Failed to build Metal pipelines: %{public}@", log: log, type: .fault, "\(error)")
             return nil
@@ -140,9 +154,41 @@ final class StarryMetalRenderer {
         do {
             try buildPipelines()
             buildQuad()
+            installDebugObservers()
         } catch {
             os_log("Failed to build Metal pipelines (headless): %{public}@", log: log, type: .fault, "\(error)")
             return nil
+        }
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    // MARK: - Debug control observers
+    
+    private func installDebugObservers() {
+        guard !debugObserversInstalled else { return }
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleCompositeModeNotification(_:)),
+                                               name: StarryMetalRenderer.debugCompositeModeNotification,
+                                               object: nil)
+        debugObserversInstalled = true
+    }
+    
+    @objc private func handleCompositeModeNotification(_ note: Notification) {
+        if let raw = note.userInfo?["mode"] as? Int,
+           let mode = CompositeDebugMode(rawValue: raw) {
+            debugCompositeMode = mode
+            os_log("Debug: composite mode changed via notification to %{public}@",
+                   log: log, type: .info,
+                   mode == .normal ? "NORMAL" : (mode == .satellitesOnly ? "SATELLITES-ONLY" : "BASE-ONLY"))
+            if mode == .normal {
+                // no-op
+            } else if mode == .baseOnly {
+                // When switching back from satellites-only we had scrub logic; keep baseOnly simple.
+                // If you switch from satellites-only elsewhere, setCompositeSatellitesOnlyForDebug(false) will scrub once.
+            }
         }
     }
     
