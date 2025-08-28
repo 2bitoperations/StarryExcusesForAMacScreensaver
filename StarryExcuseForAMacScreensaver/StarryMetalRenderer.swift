@@ -5,6 +5,41 @@ import CoreGraphics
 import os
 import simd
 
+// StarryMetalRenderer notifications
+// Post these to either NotificationCenter.default or DistributedNotificationCenter.default().
+// All notifications accept a userInfo dictionary with the keys noted below.
+//
+// Names:
+// - "StarryDebugCompositeMode"
+//     userInfo: ["mode": Int] where 0=normal, 1=satellitesOnly, 2=baseOnly
+//
+// - "StarryDiagnostics"
+//     userInfo keys (all optional; only provided keys are applied):
+//       "enabled": Bool                         -> diagnosticsEnabled
+//       "everyNFrames" | "debugLogEveryN": Int -> diagnosticsEveryNFrames
+//       "skipSatellitesDraw": Bool             -> debugSkipSatellitesDraw
+//       "verifyBaseImmutability": Bool         -> debugVerifyBaseImmutability
+//       "overlayEnabled": Bool                 -> debugOverlayEnabled
+//       "satellitesHalfLifeSeconds": Double    -> satellitesHalfLifeSeconds
+//       "shootingHalfLifeSeconds": Double      -> shootingHalfLifeSeconds
+//       "dropBaseEveryN": Int                  -> clears BaseLayer every N frames (0 disables)
+//
+//     Notes for keys intended for StarryEngine (not handled here):
+//       "starsPerUpdate": Int                  -> requires StarryEngine (not set here)
+//       "buildingLightsPerUpdate": Int         -> requires StarryEngine (not set here)
+//
+// - "StarryClear"
+//     userInfo:
+//       "target": String                       -> one of "all", "base", "satellites", "shooting"
+//     If missing or invalid, "all" is assumed.
+//
+// Convenience posting example (Swift):
+// DistributedNotificationCenter.default().post(
+//     name: Notification.Name("StarryDiagnostics"),
+//     object: nil,
+//     userInfo: ["enabled": true, "everyNFrames": 120, "dropBaseEveryN": 300]
+// )
+
 final class StarryMetalRenderer {
     
     // MARK: - Nested Types
@@ -42,6 +77,8 @@ final class StarryMetalRenderer {
     // MARK: - Debug Notifications
     
     private static let debugCompositeModeNotification = Notification.Name("StarryDebugCompositeMode")
+    private static let diagnosticsNotification = Notification.Name("StarryDiagnostics")
+    private static let clearNotification = Notification.Name("StarryClear")
     
     // Allow external code to change composite mode at runtime without needing a direct reference
     // Posts to both local (in-process) and distributed (cross-process) centers.
@@ -113,6 +150,8 @@ final class StarryMetalRenderer {
     private var debugCompositeMode: CompositeDebugMode = .normal
     // One-time base clear request (used to scrub any historical contamination)
     private var debugClearBasePending: Bool = false
+    // Periodic base clear every N frames (0 disables)
+    private var dropBaseEveryNFrames: Int = 0
     
     private var debugObserversInstalled: Bool = false
     
@@ -189,10 +228,26 @@ final class StarryMetalRenderer {
                                                selector: #selector(handleCompositeModeNotification(_:)),
                                                name: StarryMetalRenderer.debugCompositeModeNotification,
                                                object: nil)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleDiagnosticsNotification(_:)),
+                                               name: StarryMetalRenderer.diagnosticsNotification,
+                                               object: nil)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleClearNotification(_:)),
+                                               name: StarryMetalRenderer.clearNotification,
+                                               object: nil)
         // Cross-process notifications
         DistributedNotificationCenter.default().addObserver(self,
                                                             selector: #selector(handleCompositeModeNotification(_:)),
                                                             name: StarryMetalRenderer.debugCompositeModeNotification,
+                                                            object: nil)
+        DistributedNotificationCenter.default().addObserver(self,
+                                                            selector: #selector(handleDiagnosticsNotification(_:)),
+                                                            name: StarryMetalRenderer.diagnosticsNotification,
+                                                            object: nil)
+        DistributedNotificationCenter.default().addObserver(self,
+                                                            selector: #selector(handleClearNotification(_:)),
+                                                            name: StarryMetalRenderer.clearNotification,
                                                             object: nil)
         debugObserversInstalled = true
     }
@@ -211,6 +266,91 @@ final class StarryMetalRenderer {
                 // If you switch from satellites-only elsewhere, setCompositeSatellitesOnlyForDebug(false) will scrub once.
             }
         }
+    }
+    
+    @objc private func handleDiagnosticsNotification(_ note: Notification) {
+        let ui = note.userInfo
+        var applied: [String] = []
+        
+        if let v: Bool = value("enabled", from: ui) {
+            diagnosticsEnabled = v
+            applied.append("diagnosticsEnabled=\(v)")
+        }
+        if let n: Int = value("everyNFrames", from: ui) ?? value("debugLogEveryN", from: ui) {
+            diagnosticsEveryNFrames = max(1, n)
+            applied.append("diagnosticsEveryNFrames=\(diagnosticsEveryNFrames)")
+        }
+        if let v: Bool = value("skipSatellitesDraw", from: ui) {
+            debugSkipSatellitesDraw = v
+            applied.append("skipSatellitesDraw=\(v)")
+        }
+        if let v: Bool = value("verifyBaseImmutability", from: ui) {
+            debugVerifyBaseImmutability = v
+            applied.append("verifyBaseImmutability=\(v)")
+        }
+        if let v: Bool = value("overlayEnabled", from: ui) {
+            debugOverlayEnabled = v
+            applied.append("overlayEnabled=\(v)")
+        }
+        if let d: Double = value("satellitesHalfLifeSeconds", from: ui) {
+            satellitesHalfLifeSeconds = max(1e-6, d)
+            applied.append(String(format: "satellitesHalfLife=%.4f", satellitesHalfLifeSeconds))
+        }
+        if let d: Double = value("shootingHalfLifeSeconds", from: ui) {
+            shootingHalfLifeSeconds = max(1e-6, d)
+            applied.append(String(format: "shootingHalfLife=%.4f", shootingHalfLifeSeconds))
+        }
+        if let n: Int = value("dropBaseEveryN", from: ui) {
+            dropBaseEveryNFrames = max(0, n)
+            applied.append("dropBaseEveryN=\(dropBaseEveryNFrames)")
+        }
+        // StarryEngine-related keys (not applied here)
+        var ignored: [String] = []
+        if ui?["starsPerUpdate"] != nil { ignored.append("starsPerUpdate") }
+        if ui?["buildingLightsPerUpdate"] != nil { ignored.append("buildingLightsPerUpdate") }
+        if !ignored.isEmpty {
+            os_log("Diagnostics notification contained engine keys not handled by MetalRenderer: %{public}@",
+                   log: log, type: .info, ignored.joined(separator: ","))
+        }
+        
+        if applied.isEmpty {
+            os_log("Diagnostics notification received, no applicable keys found", log: log, type: .info)
+        } else {
+            os_log("Diagnostics updated via notification: %{public}@", log: log, type: .info, applied.joined(separator: ", "))
+        }
+    }
+    
+    @objc private func handleClearNotification(_ note: Notification) {
+        let target: String = (note.userInfo?["target"] as? String)?.lowercased() ?? "all"
+        if target == "all" {
+            clearOffscreenTextures(reason: "Notification(all)")
+            return
+        }
+        guard let cb = commandQueue.makeCommandBuffer() else {
+            os_log("Clear notification: failed to make command buffer", log: log, type: .error)
+            return
+        }
+        func clr(_ t: MTLTexture?, label: String) {
+            guard let t = t else { return }
+            clearTexture(t, commandBuffer: cb, label: "Clear via notification: \(label)")
+        }
+        switch target {
+        case "base":
+            clr(layerTex.base, label: "base")
+        case "satellites":
+            clr(layerTex.satellites, label: "satellites")
+            clr(layerTex.satellitesScratch, label: "satellitesScratch")
+        case "shooting":
+            clr(layerTex.shooting, label: "shooting")
+            clr(layerTex.shootingScratch, label: "shootingScratch")
+        default:
+            os_log("Clear notification: unknown target '%{public}@' — clearing ALL instead", log: log, type: .error, target)
+            clearOffscreenTextures(reason: "Notification(invalid \(target))")
+            return
+        }
+        cb.commit()
+        cb.waitUntilCompleted()
+        os_log("Clear notification: '%{public}@' complete", log: log, type: .info, target)
     }
     
     // MARK: - Setup
@@ -602,6 +742,13 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
+        // Periodic base scrub if requested
+        if dropBaseEveryNFrames > 0,
+           let baseTex = layerTex.base,
+           (frameIndex % UInt64(dropBaseEveryNFrames) == 0) {
+            clearTexture(baseTex, commandBuffer: commandBuffer, label: "DropBaseEveryN (N=\(dropBaseEveryNFrames))")
+        }
+        
         // Optional: one-time base scrub requested by debug toggles
         if debugClearBasePending, let baseTex = layerTex.base {
             clearTexture(baseTex, commandBuffer: commandBuffer, label: "Debug One-Time Base Clear")
@@ -834,6 +981,13 @@ final class StarryMetalRenderer {
             os_log("[Headless] Frame #%{public}llu dt=%{public}.4f s | satSprites=%{public}d (alpha samples=%{public}@) keep(sat)=%{public}.4f keep(shoot)=%{public}.4f",
                    log: log, type: .debug,
                    frameIndex, dtSec, satCount, alphaSamples.description, keepSat, keepShoot)
+        }
+        
+        // Ensure periodic base scrub in headless too
+        if dropBaseEveryNFrames > 0,
+           let baseTex = layerTex.base,
+           (frameIndex % UInt64(dropBaseEveryNFrames) == 0) {
+            clearTexture(baseTex, commandBuffer: commandBuffer, label: "DropBaseEveryN (headless N=\(dropBaseEveryNFrames))")
         }
         
         // Optional: one-time base scrub requested by debug toggles
@@ -1400,5 +1554,35 @@ final class StarryMetalRenderer {
             hash &*= prime
         }
         return hash
+    }
+    
+    // MARK: - Notification value parsing helpers
+    
+    private func value<T>(_ key: String, from userInfo: [AnyHashable: Any]?) -> T? {
+        guard let ui = userInfo, let raw = ui[key] else { return nil }
+        // Direct cast works for correctly typed values.
+        if let v = raw as? T { return v }
+        // Handle common conversions
+        if T.self == Bool.self {
+            if let n = raw as? NSNumber { return (n.boolValue as! T) }
+            if let s = raw as? String {
+                let lowered = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let truthy: Set<String> = ["1","true","yes","on","y"]
+                let falsy: Set<String> = ["0","false","no","off","n"]
+                if truthy.contains(lowered) { return (true as! T) }
+                if falsy.contains(lowered) { return (false as! T) }
+            }
+        } else if T.self == Int.self {
+            if let n = raw as? NSNumber { return (n.intValue as! T) }
+            if let s = raw as? String, let iv = Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return (iv as! T)
+            }
+        } else if T.self == Double.self {
+            if let n = raw as? NSNumber { return (n.doubleValue as! T) }
+            if let s = raw as? String, let dv = Double(s.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return (dv as! T)
+            }
+        }
+        return nil
     }
 }
