@@ -82,7 +82,7 @@ final class StarryMetalRenderer {
     private var diagnosticsEveryNFrames: Int = 30
     private var frameIndex: UInt64 = 0
     // Debug switch: skip drawing satellites sprites (to verify decay is working)
-    private var debugSkipSatellitesDraw: Bool = false
+    private var debugSkipSatellitesDraw: Bool = true
     
     // MARK: - Init (onscreen)
     
@@ -975,7 +975,7 @@ final class StarryMetalRenderer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         }
         // Use constant blend color to scale destination by keep
-        encoder.setBlendColor(red: Double(keep), green: Double(keep), blue: Double(keep), alpha: Double(keep))
+        encoder.setBlendColor(red: Float(Double(keep)), green: Float(Double(keep)), blue: Float(Double(keep)), alpha: Float(Double(keep)))
         // Draw fullscreen (output color is black; blending scales dst by keep)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
