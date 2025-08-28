@@ -32,6 +32,13 @@ final class StarryMetalRenderer {
         static let quadUniforms = 0
     }
     
+    // Composite debug modes
+    enum CompositeDebugMode {
+        case normal
+        case satellitesOnly
+        case baseOnly
+    }
+    
     // MARK: - Properties
     
     private let device: MTLDevice
@@ -85,8 +92,10 @@ final class StarryMetalRenderer {
     private var debugSkipSatellitesDraw: Bool = false
     // When true, stamp a small probe into satellites layer on the next frame (used when skipping draw)
     private var debugStampNextFrameSatellites: Bool = false
-    // When true, composite will draw only the satellites layer (hide base/shooting) to validate layer contents
-    private var debugCompositeSatellitesOnly: Bool = false
+    // Composite debug mode (normal, satellites-only, base-only)
+    private var debugCompositeMode: CompositeDebugMode = .normal
+    // One-time base clear request (used to scrub any historical contamination)
+    private var debugClearBasePending: Bool = false
     
     // MARK: - Init (onscreen)
     
@@ -344,8 +353,24 @@ final class StarryMetalRenderer {
     }
     // For testing: composite satellites-only (hide base/shooting) to validate satellites layer contents
     func setCompositeSatellitesOnlyForDebug(_ enabled: Bool) {
-        debugCompositeSatellitesOnly = enabled
-        os_log("Debug: composite satellites-only is %{public}@", log: log, type: .info, enabled ? "ON" : "off")
+        // If transitioning from satellites-only back to normal, schedule a one-time base scrub.
+        let wasSatOnly = (debugCompositeMode == .satellitesOnly)
+        debugCompositeMode = enabled ? .satellitesOnly : .normal
+        os_log("Debug: composite mode set to %{public}@",
+               log: log, type: .info,
+               enabled ? "SATELLITES-ONLY" : "NORMAL")
+        if wasSatOnly && !enabled {
+            // Clear base once to ensure any historical contamination is removed.
+            debugClearBasePending = true
+            os_log("Debug: scheduling one-time BASE clear on next frame (leaving satellites-only)", log: log, type: .info)
+        }
+    }
+    // For testing: composite base-only (hide satellites/shooting) to see if base is contaminated
+    func setCompositeBaseOnlyForDebug(_ enabled: Bool) {
+        debugCompositeMode = enabled ? .baseOnly : .normal
+        os_log("Debug: composite mode set to %{public}@",
+               log: log, type: .info,
+               enabled ? "BASE-ONLY" : "NORMAL")
     }
     
     // Expose trail half-life controls. Pass nil to reset to default 0.5s.
@@ -504,6 +529,12 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
+        // Optional: one-time base scrub requested by debug toggles
+        if debugClearBasePending, let baseTex = layerTex.base {
+            clearTexture(baseTex, commandBuffer: commandBuffer, label: "Debug One-Time Base Clear")
+            debugClearBasePending = false
+        }
+        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             renderSprites(into: baseTex,
@@ -580,13 +611,15 @@ final class StarryMetalRenderer {
         func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
             encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
+            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout/SIMD4<Float>/.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        if debugCompositeSatellitesOnly {
-            // Draw satellites only to verify where the dots actually live.
+        switch debugCompositeMode {
+        case .satellitesOnly:
             drawTex(layerTex.satellites)
-        } else {
+        case .baseOnly:
+            drawTex(layerTex.base)
+        case .normal:
             drawTex(layerTex.base)
             drawTex(layerTex.satellites)
             drawTex(layerTex.shooting)
@@ -684,6 +717,12 @@ final class StarryMetalRenderer {
                    frameIndex, dtSec, satCount, alphaSamples.description, keepSat, keepShoot)
         }
         
+        // Optional: one-time base scrub requested by debug toggles
+        if debugClearBasePending, let baseTex = layerTex.base {
+            clearTexture(baseTex, commandBuffer: commandBuffer, label: "Debug One-Time Base Clear (headless)")
+            debugClearBasePending = false
+        }
+        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             renderSprites(into: baseTex,
@@ -752,12 +791,15 @@ final class StarryMetalRenderer {
         func drawTex(_ tex: MTLTexture?) {
             guard let t = tex else { return }
             encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
+            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout/SIMD4<Float>/.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        if debugCompositeSatellitesOnly {
+        switch debugCompositeMode {
+        case .satellitesOnly:
             drawTex(layerTex.satellites)
-        } else {
+        case .baseOnly:
+            drawTex(layerTex.base)
+        case .normal:
             drawTex(layerTex.base)
             drawTex(layerTex.satellites)
             drawTex(layerTex.shooting)
@@ -899,6 +941,23 @@ final class StarryMetalRenderer {
             debugStampNextFrameSatellites = true
             os_log("Debug: will stamp satellites decay probe next frame (after clear)", log: log, type: .info)
         }
+    }
+    
+    private func clearTexture(_ texture: MTLTexture, commandBuffer: MTLCommandBuffer, label: String) {
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = texture
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].storeAction = .store
+        rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+        guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
+        enc.pushDebugGroup(label)
+        let vp = MTLViewport(originX: 0, originY: 0,
+                             width: Double(texture.width),
+                             height: Double(texture.height),
+                             znear: 0, zfar: 1)
+        enc.setViewport(vp)
+        enc.popDebugGroup()
+        enc.endEncoding()
     }
     
     private func renderSprites(into target: MTLTexture,
