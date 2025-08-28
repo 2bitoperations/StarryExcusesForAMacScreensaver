@@ -1359,7 +1359,8 @@ final class StarryMetalRenderer {
                                                             width: src.width,
                                                             height: src.height,
                                                             mipmapped: false)
-        desc.usage = [.shaderRead, .blitDestination, .blitSource]
+        // Blit operations do not require special usage flags.
+        desc.usage = [.shaderRead]
         desc.storageMode = .shared
         return device.makeTexture(descriptor: desc)
     }
