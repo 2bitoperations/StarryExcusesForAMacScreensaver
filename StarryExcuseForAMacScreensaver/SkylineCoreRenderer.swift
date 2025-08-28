@@ -1,4 +1,4 @@
-//
+﻿//
 //  SkylineCoreRenderer.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -53,7 +53,9 @@ class SkylineCoreRenderer {
     }
     
     private func appendStars(into sprites: inout [SpriteInstance]) {
-        for _ in 0...skyline.starsPerUpdate {
+        // Use half-open range to emit exactly skyline.starsPerUpdate items (0 emits none)
+        guard skyline.starsPerUpdate > 0 else { return }
+        for _ in 0..<skyline.starsPerUpdate {
             let star = skyline.getSingleStar()
             let cx = Float(star.xPos) + 0.5
             let cy = Float(star.yPos) + 0.5
@@ -64,7 +66,9 @@ class SkylineCoreRenderer {
     }
     
     private func appendBuildingLights(into sprites: inout [SpriteInstance]) {
-        for _ in 0...skyline.buildingLightsPerUpdate {
+        // Use half-open range to emit exactly skyline.buildingLightsPerUpdate items (0 emits none)
+        guard skyline.buildingLightsPerUpdate > 0 else { return }
+        for _ in 0..<skyline.buildingLightsPerUpdate {
             let light = skyline.getSingleBuildingPoint()
             let cx = Float(light.xPos) + 0.5
             let cy = Float(light.yPos) + 0.5

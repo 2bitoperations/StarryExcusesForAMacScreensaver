@@ -401,6 +401,11 @@ final class StarryEngine {
             
             // Base sprites (accumulate on persistent texture)
             baseSprites = skylineRenderer.generateSprites()
+            // Diagnostics: intentionally drop base periodically if requested
+            if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
+                os_log("advanceFrameGPU: DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
+                baseSprites.removeAll()
+            }
             
             if config.satellitesEnabled, let sat = satellitesRenderer {
                 let (sprites, _) = sat.update(dt: dt)
@@ -517,6 +522,11 @@ final class StarryEngine {
             }
             
             baseSprites = skylineRenderer.generateSprites()
+            // Diagnostics: intentionally drop base periodically if requested
+            if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
+                os_log("advanceFrame(headless): DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
+                baseSprites.removeAll()
+            }
             
             if config.satellitesEnabled, let sat = satellitesRenderer {
                 let (spr, _) = sat.update(dt: dt)

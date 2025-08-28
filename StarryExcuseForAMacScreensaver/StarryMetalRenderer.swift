@@ -106,7 +106,7 @@ final class StarryMetalRenderer {
     private var diagnosticsEveryNFrames: Int = 30
     private var frameIndex: UInt64 = 0
     // Debug switch: skip drawing satellites sprites (to verify decay is working)
-    private var debugSkipSatellitesDraw: Bool = true
+    private var debugSkipSatellitesDraw: Bool = false
     // When true, stamp a small probe into satellites layer on the next frame (used when skipping draw)
     private var debugStampNextFrameSatellites: Bool = false
     // Composite debug mode (normal, satellites-only, base-only)
@@ -616,10 +616,14 @@ final class StarryMetalRenderer {
             } else if !debugSkipSatellitesDraw,
                       !drawData.satellitesSprites.isEmpty,
                       let dst = layerTex.satellites {
-                renderSprites(into: dst,
-                              sprites: drawData.satellitesSprites,
-                              pipeline: spriteAdditivePipeline,
-                              commandBuffer: commandBuffer)
+                if isSameTexture(dst, layerTex.base) {
+                    os_log("ALERT: Satellites draw target is BASE layer — skipping to prevent contamination", log: log, type: .fault)
+                } else {
+                    renderSprites(into: dst,
+                                  sprites: drawData.satellitesSprites,
+                                  pipeline: spriteAdditivePipeline,
+                                  commandBuffer: commandBuffer)
+                }
             }
         }
         
@@ -627,10 +631,14 @@ final class StarryMetalRenderer {
         if layerTex.shooting != nil {
             applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
-                renderSprites(into: dst,
-                              sprites: drawData.shootingSprites,
-                              pipeline: spriteAdditivePipeline,
-                              commandBuffer: commandBuffer)
+                if isSameTexture(dst, layerTex.base) {
+                    os_log("ALERT: ShootingStars draw target is BASE layer — skipping to prevent contamination", log: log, type: .fault)
+                } else {
+                    renderSprites(into: dst,
+                                  sprites: drawData.shootingSprites,
+                                  pipeline: spriteAdditivePipeline,
+                                  commandBuffer: commandBuffer)
+                }
             }
         }
 
@@ -804,10 +812,14 @@ final class StarryMetalRenderer {
             } else if !debugSkipSatellitesDraw,
                       !drawData.satellitesSprites.isEmpty,
                       let dst = layerTex.satellites {
-                renderSprites(into: dst,
-                              sprites: drawData.satellitesSprites,
-                              pipeline: spriteAdditivePipeline,
-                              commandBuffer: commandBuffer)
+                if isSameTexture(dst, layerTex.base) {
+                    os_log("ALERT: Satellites draw target is BASE layer (headless) — skipping to prevent contamination", log: log, type: .fault)
+                } else {
+                    renderSprites(into: dst,
+                                  sprites: drawData.satellitesSprites,
+                                  pipeline: spriteAdditivePipeline,
+                                  commandBuffer: commandBuffer)
+                }
             }
         }
         
@@ -815,10 +827,14 @@ final class StarryMetalRenderer {
         if layerTex.shooting != nil {
             applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
             if !drawData.shootingSprites.isEmpty, let dst = layerTex.shooting {
-                renderSprites(into: dst,
-                              sprites: drawData.shootingSprites,
-                              pipeline: spriteAdditivePipeline,
-                              commandBuffer: commandBuffer)
+                if isSameTexture(dst, layerTex.base) {
+                    os_log("ALERT: ShootingStars draw target is BASE layer (headless) — skipping to prevent contamination", log: log, type: .fault)
+                } else {
+                    renderSprites(into: dst,
+                                  sprites: drawData.shootingSprites,
+                                  pipeline: spriteAdditivePipeline,
+                                  commandBuffer: commandBuffer)
+                }
             }
         }
         
@@ -1176,6 +1192,13 @@ final class StarryMetalRenderer {
     private func ptrString(_ t: MTLTexture) -> String {
         let p = Unmanaged.passUnretained(t as AnyObject).toOpaque()
         return String(describing: p)
+    }
+    
+    private func isSameTexture(_ a: MTLTexture?, _ b: MTLTexture?) -> Bool {
+        guard let a = a, let b = b else { return false }
+        let pa = Unmanaged.passUnretained(a as AnyObject).toOpaque()
+        let pb = Unmanaged.passUnretained(b as AnyObject).toOpaque()
+        return pa == pb
     }
     
     // MARK: - Debug helpers
