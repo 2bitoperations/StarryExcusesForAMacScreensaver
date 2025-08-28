@@ -39,6 +39,11 @@ fragment float4 TexturedQuadFragmentTinted(VertexOut in [[stage_in]],
     return c * tint;
 }
 
+// A solid black fragment (used for in-place decay; final color is 0, blending scales dst)
+fragment float4 SolidBlackFragment(VertexOut in [[stage_in]]) {
+    return float4(0.0);
+}
+
 // MARK: - Instanced sprites (rect or circle)
 
 struct SpriteInstanceIn {

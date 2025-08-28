@@ -43,7 +43,8 @@ final class StarryMetalRenderer {
     private var compositePipeline: MTLRenderPipelineState!
     private var spriteOverPipeline: MTLRenderPipelineState!      // standard premultiplied alpha ("over")
     private var spriteAdditivePipeline: MTLRenderPipelineState!  // additive for trails
-    private var decaySampledPipeline: MTLRenderPipelineState!
+    private var decaySampledPipeline: MTLRenderPipelineState!    // old ping-pong decay (kept for fallback)
+    private var decayInPlacePipeline: MTLRenderPipelineState!    // new in-place decay via blendColor
     private var moonPipeline: MTLRenderPipelineState!
     
     private var layerTex = LayerTextures()
@@ -197,6 +198,25 @@ final class StarryMetalRenderer {
             // No blending; we write keep * src directly into the scratch target.
             desc.colorAttachments[0].isBlendingEnabled = false
             decaySampledPipeline = try device.makeRenderPipelineState(descriptor: desc)
+        }
+        // Decay in-place pipeline: draw solid black with blending that scales dst by constant keep.
+        do {
+            let desc = MTLRenderPipelineDescriptor()
+            desc.label = "DecayInPlace"
+            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex")
+            desc.fragmentFunction = library.makeFunction(name: "SolidBlackFragment")
+            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+            let blend = desc.colorAttachments[0]!
+            blend.isBlendingEnabled = true
+            // out = src*srcFactor + dst*dstFactor
+            // We want: out = dst * keep. So set srcFactor=0, dstFactor=blendColor (keep).
+            blend.sourceRGBBlendFactor = .zero
+            blend.sourceAlphaBlendFactor = .zero
+            blend.destinationRGBBlendFactor = .blendColor
+            blend.destinationAlphaBlendFactor = .blendAlpha
+            blend.rgbBlendOperation = .add
+            blend.alphaBlendOperation = .add
+            decayInPlacePipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
         // Moon pipeline
         do {
@@ -934,45 +954,32 @@ final class StarryMetalRenderer {
             return
         }
         
-        // Sample-based decay: render keep * src into the scratch texture, then swap.
-        guard let src = (which == .satellites) ? layerTex.satellites : layerTex.shooting else { return }
-        guard let dst = (which == .satellites) ? layerTex.satellitesScratch : layerTex.shootingScratch else { return }
+        // In-place decay via blending: out = dst * keep (no ping-pong, robust)
+        let target: MTLTexture? = (which == .satellites) ? layerTex.satellites : layerTex.shooting
+        guard let dst = target else { return }
         
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = dst
-        rpd.colorAttachments[0].loadAction = .dontCare
+        rpd.colorAttachments[0].loadAction = .load
         rpd.colorAttachments[0].storeAction = .store
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
-        encoder.pushDebugGroup("DecaySampled src=\(src.label ?? "src") -> dst=\(dst.label ?? "dst")")
-        // Set viewport to target size
+        encoder.pushDebugGroup("DecayInPlace -> \(dst.label ?? "tex") keep=\(keep)")
         let vp = MTLViewport(originX: 0, originY: 0,
                              width: Double(dst.width),
                              height: Double(dst.height),
                              znear: 0, zfar: 1)
         encoder.setViewport(vp)
-        
-        encoder.setRenderPipelineState(decaySampledPipeline)
+        encoder.setRenderPipelineState(decayInPlacePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         }
-        var keepColor = SIMD4<Float>(repeating: keep)
-        encoder.setFragmentTexture(src, index: 0)
-        encoder.setFragmentBytes(&keepColor, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
+        // Use constant blend color to scale destination by keep
+        encoder.setBlendColor(red: Double(keep), green: Double(keep), blue: Double(keep), alpha: Double(keep))
+        // Draw fullscreen (output color is black; blending scales dst by keep)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
         encoder.endEncoding()
-        
-        // Swap textures so that the decayed result becomes the new current layer.
-        if which == .satellites {
-            let tmp = layerTex.satellites
-            layerTex.satellites = layerTex.satellitesScratch
-            layerTex.satellitesScratch = tmp
-        } else {
-            let tmp = layerTex.shooting
-            layerTex.shooting = layerTex.shootingScratch
-            layerTex.shootingScratch = tmp
-        }
     }
     
     private func ptrString(_ t: MTLTexture) -> String {
