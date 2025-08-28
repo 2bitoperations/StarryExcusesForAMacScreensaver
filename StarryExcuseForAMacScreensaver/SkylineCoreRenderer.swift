@@ -17,20 +17,31 @@ class SkylineCoreRenderer {
     let traceEnabled: Bool
     
     private var frameCounter: Int = 0
+
+    // When true, do NOT emit the flasher sprite into the BaseLayer.
+    // This prevents a moving/blinking dot from "baking" trails into the persistent base.
+    private var disableFlasherOnBase: Bool = false
     
-    init(skyline: Skyline, log: OSLog, traceEnabled: Bool) {
+    init(skyline: Skyline, log: OSLog, traceEnabled: Bool, disableFlasherOnBase: Bool) {
         self.skyline = skyline
         self.log = log
         self.traceEnabled = traceEnabled
+        self.disableFlasherOnBase = disableFlasherOnBase
     }
     
     func resetFrameCounter() { frameCounter = 0 }
+
+    func setDisableFlasherOnBase(_ disabled: Bool) {
+        guard disabled != disableFlasherOnBase else { return }
+        disableFlasherOnBase = disabled
+        os_log("SkylineCoreRenderer: disableFlasherOnBase -> %{public}@", log: log, type: .info, disabled ? "true" : "false")
+    }
     
     // Generate sprite instances to draw this frame onto the persistent base texture.
     // Stars and building lights are 1px rects; flasher is a circle.
     func generateSprites() -> [SpriteInstance] {
         if traceEnabled {
-            os_log("generating base sprites (no moon)", log: log, type: .debug)
+            os_log("generating base sprites (no moon) flasherDisabled=%{public}@", log: log, type: .debug, disableFlasherOnBase ? "true" : "false")
         }
         frameCounter &+= 1
         var sprites: [SpriteInstance] = []
@@ -39,7 +50,11 @@ class SkylineCoreRenderer {
         let afterStars = sprites.count
         appendBuildingLights(into: &sprites)
         let afterLights = sprites.count
-        appendFlasher(into: &sprites)
+        if !disableFlasherOnBase {
+            appendFlasher(into: &sprites)
+        } else if traceEnabled && (frameCounter <= 5 || frameCounter % 60 == 0) {
+            os_log("SkylineCoreRenderer: flasher suppressed this frame", log: log, type: .info)
+        }
         if traceEnabled && (frameCounter <= 5 || frameCounter % 60 == 0) {
             os_log("SkylineCoreRenderer frame=%{public}d starsAdded=%{public}d lightsAdded=%{public}d flasherAdded=%{public}d total=%{public}d",
                    log: log, type: .info,
@@ -88,6 +103,9 @@ class SkylineCoreRenderer {
                                       halfSizePx: SIMD2<Float>(r, r),
                                       colorPremul: color,
                                       shape: .circle))
+        if traceEnabled && (frameCounter <= 5 || frameCounter % 60 == 0) {
+            os_log("SkylineCoreRenderer flasher at (%.1f, %.1f) r=%.1f", log: log, type: .info, Double(cx), Double(cy), Double(r))
+        }
     }
     
     // Store colors as premultiplied RGBA to match shader expectations.

@@ -19,6 +19,7 @@ import simd
 //         "forceClearOnNextFrame": Bool         -> schedule a full clear next frame
 //         "debugLogEveryN": Int                 -> control periodic engine logs (default 50)
 //         "debugLogEveryFrame": Bool            -> config.debugLogEveryFrame
+//         "disableFlasherOnBase": Bool          -> config.disableFlasherOnBase (prevents flasher from writing to BaseLayer)
 //       Note: Renderer-specific keys are ignored here (handled by StarryMetalRenderer).
 //
 // - "StarryClear"
@@ -91,6 +92,10 @@ struct StarryRuntimeConfig {
 
     // New: number of building lights updated per tick (default 15 if not overridden).
     var buildingLightsPerUpdate: Int = 15
+
+    // New: when true, do NOT emit the flasher sprite into the BaseLayer.
+    // This prevents a moving/blinking dot from "baking" trails into the persistent base.
+    var disableFlasherOnBase: Bool = false
 }
 
 // Human-readable dumping for logging/debugging
@@ -128,7 +133,8 @@ StarryRuntimeConfig(
   debugDropBaseEveryNFrames: \(debugDropBaseEveryNFrames),
   debugForceClearEveryNFrames: \(debugForceClearEveryNFrames),
   debugLogEveryFrame: \(debugLogEveryFrame),
-  buildingLightsPerUpdate: \(buildingLightsPerUpdate)
+  buildingLightsPerUpdate: \(buildingLightsPerUpdate),
+  disableFlasherOnBase: \(disableFlasherOnBase)
 )
 """
     }
@@ -190,8 +196,7 @@ final class StarryEngine {
         self.config = config
 
         // Log full configuration on engine startup for diagnostics
-        os_log("StarryEngine initialized with config:\n%{public}@",
-               log: log, type: .info, config.description)
+        os_log("StarryEngine initialized with config:\n%{public}@", log: log, type: .info, config.description)
         os_log("Initial size: %{public}.0fx%{public}.0f", log: log, type: .info, Double(size.width), Double(size.height))
 
         // Important: always clear persistent GPU layers on the first frame of a new engine instance
@@ -265,6 +270,11 @@ final class StarryEngine {
         if let b: Bool = value("forceClearOnNextFrame", from: ui), b {
             forceClearOnNextFrame = true
             applied.append("forceClearOnNextFrame=true")
+        }
+        if let b: Bool = value("disableFlasherOnBase", from: ui), b != config.disableFlasherOnBase {
+            cfg.disableFlasherOnBase = b
+            applied.append("disableFlasherOnBase=\(b)")
+            cfgChanged = true
         }
 
         if cfgChanged {
@@ -387,13 +397,15 @@ final class StarryEngine {
         let diagnosticsChanged =
             config.debugDropBaseEveryNFrames != newConfig.debugDropBaseEveryNFrames ||
             config.debugForceClearEveryNFrames != newConfig.debugForceClearEveryNFrames ||
-            config.debugLogEveryFrame != newConfig.debugLogEveryFrame
+            config.debugLogEveryFrame != newConfig.debugLogEveryFrame ||
+            config.disableFlasherOnBase != newConfig.disableFlasherOnBase
         if diagnosticsChanged {
-            os_log("Diagnostics config changed: dropBaseEveryN=%{public}d, forceClearEveryN=%{public}d, logEveryFrame=%{public}@",
+            os_log("Diagnostics config changed: dropBaseEveryN=%{public}d, forceClearEveryN=%{public}d, logEveryFrame=%{public}@, disableFlasherOnBase=%{public}@",
                    log: log, type: .info,
                    newConfig.debugDropBaseEveryNFrames,
                    newConfig.debugForceClearEveryNFrames,
-                   newConfig.debugLogEveryFrame ? "true" : "false")
+                   newConfig.debugLogEveryFrame ? "true" : "false",
+                   newConfig.disableFlasherOnBase ? "true" : "false")
         }
 
         // If debug overlay visibility toggled, log it (no renderer rebuild needed anymore)
@@ -404,6 +416,11 @@ final class StarryEngine {
 
         config = newConfig
         os_log("New config applied", log: log, type: .info)
+
+        // Apply flasher suppression to the existing skyline renderer if present (no rebuild needed)
+        if let sr = skylineRenderer {
+            sr.setDisableFlasherOnBase(config.disableFlasherOnBase)
+        }
 
         // Any material change should trigger a visual clear of accumulation textures.
         if skylineAffecting || shootingStarsAffecting || satellitesAffecting {
@@ -449,8 +466,9 @@ final class StarryEngine {
                        log: log, type: .info, config.starsPerUpdate, config.buildingLightsPerUpdate, config.secsBetweenClears)
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
-                                                      traceEnabled: config.traceEnabled)
-                os_log("SkylineCoreRenderer created", log: log, type: .info)
+                                                      traceEnabled: config.traceEnabled,
+                                                      disableFlasherOnBase: config.disableFlasherOnBase)
+                os_log("SkylineCoreRenderer created (disableFlasherOnBase=%{public}@)", log: log, type: .info, config.disableFlasherOnBase ? "true" : "false")
                 // fetch moon albedo once for GPU
                 if let tex = skyline.getMoon()?.textureImage {
                     moonAlbedoImage = tex
