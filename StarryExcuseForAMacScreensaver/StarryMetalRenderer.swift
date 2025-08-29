@@ -485,9 +485,9 @@ final class StarryMetalRenderer {
             desc.fragmentFunction = library.makeFunction(name: "SolidBlackFragment")
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
             let blend = desc.colorAttachments[0]!
-            blend.isBlendingEnabled = true
             // out = src*srcFactor + dst*dstFactor
             // We want: out = dst * keep. So set srcFactor=0, dstFactor=blendColor (keep).
+            blend.isBlendingEnabled = true
             blend.sourceRGBBlendFactor = .zero
             blend.sourceAlphaBlendFactor = .zero
             blend.destinationRGBBlendFactor = .blendColor
@@ -570,7 +570,6 @@ final class StarryMetalRenderer {
         // Validate inputs to avoid CAMetalLayer logs about invalid sizes.
         guard scale > 0 else { return }
         let wPx = Int(round(size.width * scale))
-        thehPx: do {} // avoid unused warning in analysis
         let hPx = Int(round(size.height * scale))
         // If either dimension is zero or negative, do not touch the layer or textures yet.
         guard wPx > 0, hPx > 0 else { return }
@@ -834,36 +833,29 @@ final class StarryMetalRenderer {
             baseIsoPerPassSnapshots.append((tag, snap))
         }
         
-        // If verifying isolation, snapshot Base after the base pass (we'll snapshot again after satellites/shooting).
-        var didSnapshotAfterBase = false
-        if debugVerifyBaseIsolation, let baseTex = layerTex.base {
-            baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
-            if let snap = baseIsoAfterBasePass {
-                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS")
-                didSnapshotAfterBase = true
-                // Also track in per-pass trace
-                baseIsoPerPassSnapshots.append(("after-base", snap))
-            }
-        }
-        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
                           pipeline: spriteOverPipeline,
                           commandBuffer: commandBuffer)
-            // If we want the snapshot strictly "after base pass", take it now (if not already taken above)
-            if debugVerifyBaseIsolation && !didSnapshotAfterBase {
+            // Isolation snapshot: truly AFTER the base pass draw (post-draw)
+            if debugVerifyBaseIsolation {
                 baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
                 if let snap = baseIsoAfterBasePass {
                     blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (post-draw)")
-                    // Track in per-pass trace
                     baseIsoPerPassSnapshots.append(("after-base", snap))
                 }
             }
         } else {
-            // Even if no base sprites, for isolation trace we still snapshot "after-base"
-            snapshotBase(tag: "after-base")
+            // Even if no base sprites, take an "after-base (no-op)" snapshot for isolation baseline.
+            if debugVerifyBaseIsolation, let baseTex = layerTex.base {
+                baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
+                if let snap = baseIsoAfterBasePass {
+                    blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (no-op)")
+                    baseIsoPerPassSnapshots.append(("after-base (no-op)", snap))
+                }
+            }
         }
         
         // 2) Satellites trail: decay then draw (skip entirely in BASE-ONLY mode)
@@ -1790,6 +1782,7 @@ final class StarryMetalRenderer {
     
     private func computeChecksum(of tex: MTLTexture) -> UInt64 {
         let w = tex.width
+        theh: do {} // no-op
         let h = tex.height
         let bpp = 4
         let rowBytes = w * bpp
