@@ -20,6 +20,7 @@ import simd
 //         "debugLogEveryN": Int                 -> control periodic engine logs (default 50)
 //         "debugLogEveryFrame": Bool            -> config.debugLogEveryFrame
 //         "disableFlasherOnBase": Bool          -> config.disableFlasherOnBase (prevents flasher from writing to BaseLayer)
+//         "verifyBaseIsolation": Bool           -> when true, suppress skyline/stars/flasher base emission (engine-side)
 //       Note: Renderer-specific keys are ignored here (handled by StarryMetalRenderer).
 //
 // - "StarryClear"
@@ -182,6 +183,9 @@ final class StarryEngine {
     // Force-clear request (e.g., on config change or resize)
     private var forceClearOnNextFrame: Bool = false
 
+    // When true, we suppress baseSprites (skyline/stars/flasher) emission while isolation is being verified.
+    private var suppressBaseForIsolation: Bool = false
+
     // Notifications
     private var observersInstalled: Bool = false
     private let diagnosticsNotification = Notification.Name("StarryDiagnostics")
@@ -275,6 +279,24 @@ final class StarryEngine {
             cfg.disableFlasherOnBase = b
             applied.append("disableFlasherOnBase=\(b)")
             cfgChanged = true
+        }
+        // When verifyBaseIsolation is toggled, suppress base emission engine-side and schedule a clear to avoid stale content.
+        if let iso: Bool = value("verifyBaseIsolation", from: ui) {
+            let prev = suppressBaseForIsolation
+            suppressBaseForIsolation = iso
+            applied.append("verifyBaseIsolation=\(iso)")
+            // Apply flasher suppression live (without forcing a rebuild)
+            if let sr = skylineRenderer {
+                sr.setDisableFlasherOnBase(iso || cfg.disableFlasherOnBase)
+            }
+            if iso != prev {
+                forceClearOnNextFrame = true
+                os_log("Engine: verifyBaseIsolation toggled to %{public}@ — suppressBaseForIsolation=%{public}@; scheduling full clear",
+                       log: log, type: .info, iso ? "true" : "false", suppressBaseForIsolation ? "true" : "false")
+            } else {
+                os_log("Engine: verifyBaseIsolation unchanged (%{public}@)",
+                       log: log, type: .debug, suppressBaseForIsolation ? "true" : "false")
+            }
         }
 
         if cfgChanged {
@@ -419,7 +441,7 @@ final class StarryEngine {
 
         // Apply flasher suppression to the existing skyline renderer if present (no rebuild needed)
         if let sr = skylineRenderer {
-            sr.setDisableFlasherOnBase(config.disableFlasherOnBase)
+            sr.setDisableFlasherOnBase(config.disableFlasherOnBase || suppressBaseForIsolation)
         }
 
         // Any material change should trigger a visual clear of accumulation textures.
@@ -467,8 +489,8 @@ final class StarryEngine {
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
                                                       traceEnabled: config.traceEnabled,
-                                                      disableFlasherOnBase: config.disableFlasherOnBase)
-                os_log("SkylineCoreRenderer created (disableFlasherOnBase=%{public}@)", log: log, type: .info, config.disableFlasherOnBase ? "true" : "false")
+                                                      disableFlasherOnBase: (config.disableFlasherOnBase || suppressBaseForIsolation))
+                os_log("SkylineCoreRenderer created (disableFlasherOnBase=%{public}@)", log: log, type: .info, (config.disableFlasherOnBase || suppressBaseForIsolation) ? "true" : "false")
                 // fetch moon albedo once for GPU
                 if let tex = skyline.getMoon()?.textureImage {
                     moonAlbedoImage = tex
@@ -576,6 +598,11 @@ final class StarryEngine {
             // Diagnostics: intentionally drop base periodically if requested
             if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
                 os_log("advanceFrameGPU: DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
+                baseSprites.removeAll()
+            }
+            // Engine-side suppression during verifyBaseIsolation
+            if suppressBaseForIsolation && !baseSprites.isEmpty {
+                os_log("advanceFrameGPU: Isolation active — suppressing baseSprites this frame (was=%{public}d)", log: log, type: .info, baseSprites.count)
                 baseSprites.removeAll()
             }
 
@@ -698,6 +725,11 @@ final class StarryEngine {
             // Diagnostics: intentionally drop base periodically if requested
             if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
                 os_log("advanceFrame(headless): DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
+                baseSprites.removeAll()
+            }
+            // Engine-side suppression during verifyBaseIsolation
+            if suppressBaseForIsolation && !baseSprites.isEmpty {
+                os_log("advanceFrame(headless): Isolation active — suppressing baseSprites this frame (was=%{public}d)", log: log, type: .info, baseSprites.count)
                 baseSprites.removeAll()
             }
 
