@@ -174,6 +174,8 @@ final class StarryMetalRenderer {
     private var debugVerifyBaseIsolation: Bool = false
     private var baseIsoAfterBasePass: MTLTexture?
     private var baseIsoAfterAllWork: MTLTexture?
+    // New: per-pass snapshots to pinpoint which pass mutated Base (when verifyBaseIsolation is enabled)
+    private var baseIsoPerPassSnapshots: [(tag: String, snap: MTLTexture)] = []
     
     // --- Programmatic GPU capture (.gputrace) ---
     // Disabled by default; can be armed via diagnostics notification keys.
@@ -823,6 +825,15 @@ final class StarryMetalRenderer {
             }
         }
         
+        // Isolation trace: per-pass snapshots
+        baseIsoPerPassSnapshots.removeAll(keepingCapacity: true)
+        func snapshotBase(tag: String) {
+            guard debugVerifyBaseIsolation, let baseTex = layerTex.base,
+                  let snap = makeSnapshotTextureLike(baseTex) else { return }
+            blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base (\(tag))")
+            baseIsoPerPassSnapshots.append((tag, snap))
+        }
+        
         // If verifying isolation, snapshot Base after the base pass (we'll snapshot again after satellites/shooting).
         var didSnapshotAfterBase = false
         if debugVerifyBaseIsolation, let baseTex = layerTex.base {
@@ -830,6 +841,8 @@ final class StarryMetalRenderer {
             if let snap = baseIsoAfterBasePass {
                 blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS")
                 didSnapshotAfterBase = true
+                // Also track in per-pass trace
+                baseIsoPerPassSnapshots.append(("after-base", snap))
             }
         }
         
@@ -844,8 +857,13 @@ final class StarryMetalRenderer {
                 baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
                 if let snap = baseIsoAfterBasePass {
                     blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (post-draw)")
+                    // Track in per-pass trace
+                    baseIsoPerPassSnapshots.append(("after-base", snap))
                 }
             }
+        } else {
+            // Even if no base sprites, for isolation trace we still snapshot "after-base"
+            snapshotBase(tag: "after-base")
         }
         
         // 2) Satellites trail: decay then draw (skip entirely in BASE-ONLY mode)
@@ -854,6 +872,7 @@ final class StarryMetalRenderer {
         } else {
             if layerTex.satellites != nil {
                 applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
+                snapshotBase(tag: "after-sat-decay")
                 // If skipping satellites drawing for debug, stamp a probe once after a clear to observe decay.
                 if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst0 = layerTex.satellites {
                     let sprites = makeDecayProbeSprites(target: dst0)
@@ -861,6 +880,7 @@ final class StarryMetalRenderer {
                         os_log("Debug: stamping satellites decay probe (%{public}d sprites) into %{public}@ (%{public}@)",
                                log: log, type: .info, sprites.count, safeDst.label ?? "tex", ptrString(safeDst))
                         renderSprites(into: safeDst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
+                        snapshotBase(tag: "after-sat-probe")
                     }
                     debugStampNextFrameSatellites = false
                 } else if !debugSkipSatellitesDraw,
@@ -871,15 +891,19 @@ final class StarryMetalRenderer {
                                       sprites: drawData.satellitesSprites,
                                       pipeline: spriteAdditivePipeline,
                                       commandBuffer: commandBuffer)
+                        snapshotBase(tag: "after-sat-draw")
                     } else {
                         os_log("ALERT: No safe satellites target available — skipping satellites draw to prevent BASE contamination", log: log, type: .fault)
                     }
+                } else {
+                    snapshotBase(tag: "after-sat-noop")
                 }
             }
             
             // 3) Shooting stars trail: decay then draw (additive)
             if layerTex.shooting != nil {
                 applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
+                snapshotBase(tag: "after-shoot-decay")
                 if !drawData.shootingSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.shooting) {
                         os_log("Shooting draw target -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
@@ -887,9 +911,12 @@ final class StarryMetalRenderer {
                                       sprites: drawData.shootingSprites,
                                       pipeline: spriteAdditivePipeline,
                                       commandBuffer: commandBuffer)
+                        snapshotBase(tag: "after-shoot-draw")
                     } else {
                         os_log("ALERT: No safe shooting target available — skipping shooting-stars draw to prevent BASE contamination", log: log, type: .fault)
                     }
+                } else {
+                    snapshotBase(tag: "after-shoot-noop")
                 }
             }
         }
@@ -925,6 +952,7 @@ final class StarryMetalRenderer {
             }
             let afterBase = baseIsoAfterBasePass
             let afterAll = baseIsoAfterAllWork
+            // Per-frame coarse isolation check
             commandBuffer.addCompletedHandler { [weak self] _ in
                 guard let self = self, let a = afterBase, let b = afterAll else { return }
                 let sumA = self.computeChecksum(of: a)
@@ -936,6 +964,32 @@ final class StarryMetalRenderer {
                 } else {
                     os_log("VerifyIsolation: BaseLayer unchanged after non-base work (checksum=%{public}@)",
                            log: self.log, type: .debug, String(format: "0x%016llx", sumA))
+                }
+            }
+            // Fine-grained per-pass isolation trace
+            let perPass = baseIsoPerPassSnapshots
+            commandBuffer.addCompletedHandler { [weak self] _ in
+                guard let self = self else { return }
+                if perPass.count >= 2 {
+                    var prevSum: UInt64?
+                    var prevTag: String = ""
+                    for (tag, snap) in perPass {
+                        let sum = self.computeChecksum(of: snap)
+                        os_log("IsolationTrace: Base checksum after '%{public}@' = %{public}@",
+                               log: self.log, type: .debug, tag, String(format: "0x%016llx", sum))
+                        if let ps = prevSum, ps != sum {
+                            os_log("ALERT: Base changed between '%{public}@' and '%{public}@'",
+                                   log: self.log, type: .fault, prevTag, tag)
+                        }
+                        prevSum = sum
+                        prevTag = tag
+                    }
+                } else if perPass.count == 1 {
+                    let sum = self.computeChecksum(of: perPass[0].snap)
+                    os_log("IsolationTrace: Base checksum at '%{public}@' = %{public}@",
+                           log: self.log, type: .debug, perPass[0].tag, String(format: "0x%016llx", sum))
+                } else {
+                    os_log("IsolationTrace: no per-pass snapshots recorded", log: self.log, type: .debug)
                 }
             }
         }
@@ -1590,6 +1644,13 @@ final class StarryMetalRenderer {
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
         encoder.endEncoding()
+        
+        // Extra trace for decay targeting (pointers)
+        os_log("DecaySampled pass: src=%{public}@ (%{public}@) -> dstScratch=%{public}@ (%{public}@) for %{public}@",
+               log: log, type: .debug,
+               srcTex.label ?? "tex", ptrString(srcTex),
+               dstScratch.label ?? "tex", ptrString(dstScratch),
+               which == .satellites ? "SATELLITES" : "SHOOTING")
         
         // Swap src <-> scratch for next frame
         swapTrailTextures(which)
