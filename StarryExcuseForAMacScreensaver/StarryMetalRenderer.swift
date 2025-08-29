@@ -2,6 +2,7 @@ import Foundation
 import Metal
 import QuartzCore
 import CoreGraphics
+import ImageIO
 import os
 import simd
 
@@ -19,6 +20,7 @@ import simd
 //       "everyNFrames" | "debugLogEveryN": Int -> diagnosticsEveryNFrames
 //       "skipSatellitesDraw": Bool             -> debugSkipSatellitesDraw
 //       "verifyBaseImmutability": Bool         -> debugVerifyBaseImmutability
+//       "verifyBaseIsolation": Bool            -> debugVerifyBaseIsolation (snap base after base-pass and after non-base work; alert if changed)
 //       "overlayEnabled": Bool                 -> debugOverlayEnabled
 //       "satellitesHalfLifeSeconds": Double    -> satellitesHalfLifeSeconds
 //       "shootingHalfLifeSeconds": Double      -> shootingHalfLifeSeconds
@@ -27,6 +29,7 @@ import simd
 //       "gpuCaptureFrames": Int               -> number of frames to capture (default 1)
 //       "gpuCapturePath": String              -> output .gputrace path (optional; defaults to Desktop or temp)
 //       "gpuCaptureStop": Bool                -> stop capture immediately (if active)
+//       "dumpLayersNextFrame": Bool           -> one-time dump of Base/Sat/SatScratch/Shoot/ShootScratch as PNGs to Desktop
 //
 //     Notes for keys intended for StarryEngine (not handled here):
 //       "starsPerUpdate": Int                  -> requires StarryEngine (not set here)
@@ -165,7 +168,12 @@ final class StarryMetalRenderer {
     private var debugVerifyBaseImmutability: Bool = false
     private var baseSnapshotBefore: MTLTexture?
     private var baseSnapshotAfter: MTLTexture?
-    private var snapshotSize: SIMD2<Int32> = SIMD2<Int32>(0, 0)
+    
+    // --- Strong verification even when baseSprites > 0 ---
+    // Snapshot Base after base-pass and again after satellites/shooting to ensure isolation.
+    private var debugVerifyBaseIsolation: Bool = false
+    private var baseIsoAfterBasePass: MTLTexture?
+    private var baseIsoAfterAllWork: MTLTexture?
     
     // --- Programmatic GPU capture (.gputrace) ---
     // Disabled by default; can be armed via diagnostics notification keys.
@@ -173,6 +181,9 @@ final class StarryMetalRenderer {
     private var gpuCaptureActive: Bool = false
     private var gpuCaptureFramesRemaining: Int = 0
     private var gpuCaptureOutputURL: URL?
+    
+    // --- One-shot layer dumps (PNG) ---
+    private var dumpLayersNextFrame: Bool = false
     
     // MARK: - Init (onscreen)
     
@@ -273,8 +284,7 @@ final class StarryMetalRenderer {
             if mode == .normal {
                 // no-op
             } else if mode == .baseOnly {
-                // When switching back from satellites-only we had scrub logic; keep baseOnly simple.
-                // If you switch from satellites-only elsewhere, setCompositeSatellitesOnlyForDebug(false) will scrub once.
+                // no-op
             }
         }
     }
@@ -299,6 +309,10 @@ final class StarryMetalRenderer {
             debugVerifyBaseImmutability = v
             applied.append("verifyBaseImmutability=\(v)")
         }
+        if let v: Bool = value("verifyBaseIsolation", from: ui) {
+            debugVerifyBaseIsolation = v
+            applied.append("verifyBaseIsolation=\(v)")
+        }
         if let v: Bool = value("overlayEnabled", from: ui) {
             debugOverlayEnabled = v
             applied.append("overlayEnabled=\(v)")
@@ -317,7 +331,6 @@ final class StarryMetalRenderer {
         }
         // GPU capture controls
         if let start: Bool = value("gpuCaptureStart", from: ui), start {
-            // Optional path and frame count
             let frames: Int = max(1, (value("gpuCaptureFrames", from: ui) as Int?) ?? 1)
             let path: String? = value("gpuCapturePath", from: ui)
             if let path = path, !path.isEmpty {
@@ -325,7 +338,6 @@ final class StarryMetalRenderer {
             } else {
                 gpuCaptureOutputURL = nil // will compute default on start
             }
-            // If a capture is already active, stop it and restart
             if MTLCaptureManager.shared().isCapturing {
                 MTLCaptureManager.shared().stopCapture()
                 gpuCaptureActive = false
@@ -342,6 +354,10 @@ final class StarryMetalRenderer {
             gpuCapturePendingStart = false
             gpuCaptureFramesRemaining = 0
             applied.append("gpuCaptureStop")
+        }
+        if let dump: Bool = value("dumpLayersNextFrame", from: ui), dump {
+            dumpLayersNextFrame = true
+            applied.append("dumpLayersNextFrame")
         }
         
         // StarryEngine-related keys (not applied here)
@@ -552,6 +568,7 @@ final class StarryMetalRenderer {
         // Validate inputs to avoid CAMetalLayer logs about invalid sizes.
         guard scale > 0 else { return }
         let wPx = Int(round(size.width * scale))
+        thehPx: do {} // avoid unused warning in analysis
         let hPx = Int(round(size.height * scale))
         // If either dimension is zero or negative, do not touch the layer or textures yet.
         guard wPx > 0, hPx > 0 else { return }
@@ -803,7 +820,17 @@ final class StarryMetalRenderer {
         if shouldVerifyBase, let baseTex = layerTex.base {
             baseSnapshotBefore = makeSnapshotTextureLike(baseTex)
             if let snap = baseSnapshotBefore {
-                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base BEFORE")
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base BEFORE (immutability)")
+            }
+        }
+        
+        // If verifying isolation, snapshot Base after the base pass (we'll snapshot again after satellites/shooting).
+        var didSnapshotAfterBase = false
+        if debugVerifyBaseIsolation, let baseTex = layerTex.base {
+            baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
+            if let snap = baseIsoAfterBasePass {
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS")
+                didSnapshotAfterBase = true
             }
         }
         
@@ -813,11 +840,17 @@ final class StarryMetalRenderer {
                           sprites: drawData.baseSprites,
                           pipeline: spriteOverPipeline,
                           commandBuffer: commandBuffer)
+            // If we want the snapshot strictly "after base pass", take it now (if not already taken above)
+            if debugVerifyBaseIsolation && !didSnapshotAfterBase {
+                baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
+                if let snap = baseIsoAfterBasePass {
+                    blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (post-draw)")
+                }
+            }
         }
         
         // 2) Satellites trail: decay then draw (skip entirely in BASE-ONLY mode)
         if debugCompositeMode == .baseOnly {
-            // Skip all satellites/shooting work in BASE-ONLY to rule out contamination during diagnostics.
             os_log("BASE-ONLY: skipping satellites/shooting decay and draws this frame", log: log, type: .debug)
         } else {
             if layerTex.satellites != nil {
@@ -834,6 +867,7 @@ final class StarryMetalRenderer {
                 } else if !debugSkipSatellitesDraw,
                           !drawData.satellitesSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.satellites) {
+                        os_log("Satellites draw target -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
                         renderSprites(into: safeDst,
                                       sprites: drawData.satellitesSprites,
                                       pipeline: spriteAdditivePipeline,
@@ -849,6 +883,7 @@ final class StarryMetalRenderer {
                 applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
                 if !drawData.shootingSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.shooting) {
+                        os_log("Shooting draw target -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
                         renderSprites(into: safeDst,
                                       sprites: drawData.shootingSprites,
                                       pipeline: spriteAdditivePipeline,
@@ -860,14 +895,13 @@ final class StarryMetalRenderer {
             }
         }
         
-        // Snapshot Base AFTER all work if we're verifying
+        // Snapshot Base AFTER all work if we're verifying immutability (zero baseSprites case)
         if shouldVerifyBase, let baseTex = layerTex.base {
             baseSnapshotAfter = makeSnapshotTextureLike(baseTex)
             if let snap = baseSnapshotAfter {
-                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER")
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER (immutability)")
             }
             
-            // Add completion handler to compute checksums and alert if changed
             let before = baseSnapshotBefore
             let after = baseSnapshotAfter
             commandBuffer.addCompletedHandler { [weak self] _ in
@@ -880,6 +914,29 @@ final class StarryMetalRenderer {
                 } else {
                     os_log("VerifyBase: no change (checksum=%{public}@) with zero baseSprites",
                            log: self.log, type: .debug, String(format: "0x%016llx", sumB))
+                }
+            }
+        }
+        
+        // Snapshot Base AFTER all work if verifying isolation (even when baseSprites > 0)
+        if debugVerifyBaseIsolation, let baseTex = layerTex.base {
+            baseIsoAfterAllWork = makeSnapshotTextureLike(baseTex)
+            if let snap = baseIsoAfterAllWork {
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER ALL WORK")
+            }
+            let afterBase = baseIsoAfterBasePass
+            let afterAll = baseIsoAfterAllWork
+            commandBuffer.addCompletedHandler { [weak self] _ in
+                guard let self = self, let a = afterBase, let b = afterAll else { return }
+                let sumA = self.computeChecksum(of: a)
+                let sumB = self.computeChecksum(of: b)
+                if sumA != sumB {
+                    os_log("ALERT: BaseLayer changed AFTER base-pass within same frame (isolation breach). afterBase=%{public}@ afterAll=%{public}@",
+                           log: self.log, type: .fault,
+                           String(format: "0x%016llx", sumA), String(format: "0x%016llx", sumB))
+                } else {
+                    os_log("VerifyIsolation: BaseLayer unchanged after non-base work (checksum=%{public}@)",
+                           log: self.log, type: .debug, String(format: "0x%016llx", sumA))
                 }
             }
         }
@@ -957,6 +1014,12 @@ final class StarryMetalRenderer {
         }
         encoder.popDebugGroup()
         encoder.endEncoding()
+        
+        // Optional: one-shot dumps of layers as PNG to Desktop
+        if dumpLayersNextFrame {
+            enqueueLayerDumps(commandBuffer: commandBuffer)
+            dumpLayersNextFrame = false
+        }
         
         commandBuffer.present(drawable)
         commandBuffer.commit()
@@ -1073,6 +1136,7 @@ final class StarryMetalRenderer {
                 } else if !debugSkipSatellitesDraw,
                           !drawData.satellitesSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.satellites) {
+                        os_log("Satellites draw target (headless) -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
                         renderSprites(into: safeDst,
                                       sprites: drawData.satellitesSprites,
                                       pipeline: spriteAdditivePipeline,
@@ -1088,6 +1152,7 @@ final class StarryMetalRenderer {
                 applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
                 if !drawData.shootingSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.shooting) {
+                        os_log("Shooting draw target (headless) -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
                         renderSprites(into: safeDst,
                                       sprites: drawData.shootingSprites,
                                       pipeline: spriteAdditivePipeline,
@@ -1165,31 +1230,7 @@ final class StarryMetalRenderer {
         commandBuffer.waitUntilCompleted()
         noteFrameCommittedForGpuCapture()
         
-        // Read back pixels into CPU buffer
-        let w = finalTarget.width
-        let h = finalTarget.height
-        let bpp = 4
-        let rowBytes = w * bpp
-        var bytes = [UInt8](repeating: 0, count: rowBytes * h)
-        let region = MTLRegionMake2D(0, 0, w, h)
-        finalTarget.getBytes(&bytes, bytesPerRow: rowBytes, from: region, mipmapLevel: 0)
-        
-        // Create CGImage (BGRA8 premultiplied first, little-endian)
-        let cs = CGColorSpaceCreateDeviceRGB()
-        let provider = CGDataProvider(data: NSData(bytes: &bytes, length: bytes.count))!
-        let alphaFirst = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)
-        let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(alphaFirst)
-        return CGImage(width: w,
-                       height: h,
-                       bitsPerComponent: 8,
-                       bitsPerPixel: 32,
-                       bytesPerRow: rowBytes,
-                       space: cs,
-                       bitmapInfo: bitmapInfo,
-                       provider: provider,
-                       decode: nil,
-                       shouldInterpolate: false,
-                       intent: .defaultIntent)
+        return textureToImage(finalTarget)
     }
     
     // MARK: - Helpers
@@ -1608,6 +1649,87 @@ final class StarryMetalRenderer {
         return hash
     }
     
+    // Turn any BGRA8 texture into a CGImage (requires shared or managed storage).
+    private func textureToImage(_ tex: MTLTexture) -> CGImage? {
+        let w = tex.width
+        let h = tex.height
+        guard w > 0, h > 0 else { return nil }
+        let bpp = 4
+        let rowBytes = w * bpp
+        var bytes = [UInt8](repeating: 0, count: rowBytes * h)
+        let region = MTLRegionMake2D(0, 0, w, h)
+        tex.getBytes(&bytes, bytesPerRow: rowBytes, from: region, mipmapLevel: 0)
+        let cs = CGColorSpaceCreateDeviceRGB()
+        guard let provider = CGDataProvider(data: NSData(bytes: &bytes, length: bytes.count)) else { return nil }
+        let alphaFirst = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(alphaFirst)
+        return CGImage(width: w,
+                       height: h,
+                       bitsPerComponent: 8,
+                       bitsPerPixel: 32,
+                       bytesPerRow: rowBytes,
+                       space: cs,
+                       bitmapInfo: bitmapInfo,
+                       provider: provider,
+                       decode: nil,
+                       shouldInterpolate: false,
+                       intent: .defaultIntent)
+    }
+    
+    private func savePNG(_ image: CGImage, to url: URL) {
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
+            os_log("PNG save: failed to create destination for %{public}@", log: log, type: .error, url.path)
+            return
+        }
+        CGImageDestinationAddImage(dest, image, nil)
+        if CGImageDestinationFinalize(dest) {
+            os_log("PNG saved -> %{public}@", log: log, type: .info, url.path)
+        } else {
+            os_log("PNG save failed -> %{public}@", log: log, type: .error, url.path)
+        }
+    }
+    
+    private func enqueueLayerDumps(commandBuffer: MTLCommandBuffer) {
+        func snapshot(_ t: MTLTexture?) -> MTLTexture? {
+            guard let t = t else { return nil }
+            let snap = makeSnapshotTextureLike(t)
+            if let snap = snap {
+                blitCopy(from: t, to: snap, using: commandBuffer, label: "Dump snapshot \(t.label ?? "tex")")
+            }
+            return snap
+        }
+        let baseSnap = snapshot(layerTex.base)
+        let satSnap = snapshot(layerTex.satellites)
+        let satScratchSnap = snapshot(layerTex.satellitesScratch)
+        let shootSnap = snapshot(layerTex.shooting)
+        let shootScratchSnap = snapshot(layerTex.shootingScratch)
+        let frame = frameIndex
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop", isDirectory: true)
+            .appendingPathComponent("StarryLayerDump-\(stamp)-f\(frame)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            os_log("DumpLayers: failed to create directory %{public}@ (%{public}@)", log: log, type: .error, dir.path, "\(error)")
+        }
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            guard let self = self else { return }
+            func write(_ tex: MTLTexture?, name: String) {
+                guard let tex = tex, let img = self.textureToImage(tex) else { return }
+                let filename = "\(name)-\(tex.label ?? "tex")-\(self.ptrString(tex)).png"
+                let url = dir.appendingPathComponent(filename, isDirectory: false)
+                self.savePNG(img, to: url)
+            }
+            write(baseSnap, "Base")
+            write(satSnap, "Sat")
+            write(satScratchSnap, "SatScratch")
+            write(shootSnap, "Shoot")
+            write(shootScratchSnap, "ShootScratch")
+            os_log("DumpLayers: completed -> %{public}@", log: self.log, type: .info, dir.path)
+        }
+    }
+    
     // MARK: - Programmatic GPU capture helpers
     
     private func startGpuCaptureIfArmed() {
@@ -1660,7 +1782,6 @@ final class StarryMetalRenderer {
             .standardizedFileURL
             .resolvingSymlinksInPath()
             .absoluteURL
-            ?? tempCandidate
     }
     
     private func noteFrameCommittedForGpuCapture() {
