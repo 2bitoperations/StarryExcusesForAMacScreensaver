@@ -314,6 +314,9 @@ final class StarryMetalRenderer {
         if let v: Bool = value("verifyBaseIsolation", from: ui) {
             debugVerifyBaseIsolation = v
             applied.append("verifyBaseIsolation=\(v)")
+            if v {
+                os_log("VerifyBaseIsolation: auto-suppressing skyline, stars, and flasher while enabled", log: log, type: .info)
+            }
         }
         if let v: Bool = value("overlayEnabled", from: ui) {
             debugOverlayEnabled = v
@@ -833,8 +836,13 @@ final class StarryMetalRenderer {
             baseIsoPerPassSnapshots.append((tag, snap))
         }
         
+        // Suppress skyline/stars/flasher (base emitters) while verifying isolation
+        let suppressBaseForIsolation = debugVerifyBaseIsolation
+        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
-        if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
+        if let baseTex = layerTex.base,
+           !drawData.baseSprites.isEmpty,
+           !suppressBaseForIsolation {
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
                           pipeline: spriteOverPipeline,
@@ -848,12 +856,13 @@ final class StarryMetalRenderer {
                 }
             }
         } else {
-            // Even if no base sprites, take an "after-base (no-op)" snapshot for isolation baseline.
+            // Take an "after-base" snapshot regardless: if we suppressed base draw, mark it so.
             if debugVerifyBaseIsolation, let baseTex = layerTex.base {
                 baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
                 if let snap = baseIsoAfterBasePass {
-                    blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (no-op)")
-                    baseIsoPerPassSnapshots.append(("after-base (no-op)", snap))
+                    let tag = (!drawData.baseSprites.isEmpty && suppressBaseForIsolation) ? "after-base (suppressed)" : "after-base (no-op)"
+                    blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (\(tag))")
+                    baseIsoPerPassSnapshots.append((tag, snap))
                 }
             }
         }
@@ -1154,8 +1163,13 @@ final class StarryMetalRenderer {
             debugClearBasePending = false
         }
         
+        // Suppress skyline/stars/flasher (base emitters) while verifying isolation
+        let suppressBaseForIsolation = debugVerifyBaseIsolation
+        
         // 1) Base layer: render sprites onto persistent base texture (no clear)
-        if let baseTex = layerTex.base, !drawData.baseSprites.isEmpty {
+        if let baseTex = layerTex.base,
+           !drawData.baseSprites.isEmpty,
+           !suppressBaseForIsolation {
             renderSprites(into: baseTex,
                           sprites: drawData.baseSprites,
                           pipeline: spriteOverPipeline,
