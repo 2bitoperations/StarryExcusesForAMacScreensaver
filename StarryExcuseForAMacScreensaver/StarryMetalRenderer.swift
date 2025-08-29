@@ -1721,11 +1721,11 @@ final class StarryMetalRenderer {
                 let url = dir.appendingPathComponent(filename, isDirectory: false)
                 self.savePNG(img, to: url)
             }
-            write(baseSnap, "Base")
-            write(satSnap, "Sat")
-            write(satScratchSnap, "SatScratch")
-            write(shootSnap, "Shoot")
-            write(shootScratchSnap, "ShootScratch")
+            write(baseSnap, name: "Base")
+            write(satSnap, name: "Sat")
+            write(satScratchSnap, name: "SatScratch")
+            write(shootSnap, name: "Shoot")
+            write(shootScratchSnap, name: "ShootScratch")
             os_log("DumpLayers: completed -> %{public}@", log: self.log, type: .info, dir.path)
         }
     }
