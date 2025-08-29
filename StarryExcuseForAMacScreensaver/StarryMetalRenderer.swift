@@ -23,6 +23,10 @@ import simd
 //       "satellitesHalfLifeSeconds": Double    -> satellitesHalfLifeSeconds
 //       "shootingHalfLifeSeconds": Double      -> shootingHalfLifeSeconds
 //       "dropBaseEveryN": Int                  -> clears BaseLayer every N frames (0 disables)
+//       "gpuCaptureStart": Bool                -> begin programmatic GPU capture on next frame
+//       "gpuCaptureFrames": Int               -> number of frames to capture (default 1)
+//       "gpuCapturePath": String              -> output .gputrace path (optional; defaults to Desktop or temp)
+//       "gpuCaptureStop": Bool                -> stop capture immediately (if active)
 //
 //     Notes for keys intended for StarryEngine (not handled here):
 //       "starsPerUpdate": Int                  -> requires StarryEngine (not set here)
@@ -162,6 +166,13 @@ final class StarryMetalRenderer {
     private var baseSnapshotBefore: MTLTexture?
     private var baseSnapshotAfter: MTLTexture?
     private var snapshotSize: SIMD2<Int32> = SIMD2<Int32>(0, 0)
+    
+    // --- Programmatic GPU capture (.gputrace) ---
+    // Disabled by default; can be armed via diagnostics notification keys.
+    private var gpuCapturePendingStart: Bool = false
+    private var gpuCaptureActive: Bool = false
+    private var gpuCaptureFramesRemaining: Int = 0
+    private var gpuCaptureOutputURL: URL?
     
     // MARK: - Init (onscreen)
     
@@ -304,6 +315,35 @@ final class StarryMetalRenderer {
             dropBaseEveryNFrames = max(0, n)
             applied.append("dropBaseEveryN=\(dropBaseEveryNFrames)")
         }
+        // GPU capture controls
+        if let start: Bool = value("gpuCaptureStart", from: ui), start {
+            // Optional path and frame count
+            let frames: Int = max(1, (value("gpuCaptureFrames", from: ui) as Int?) ?? 1)
+            let path: String? = value("gpuCapturePath", from: ui)
+            if let path = path, !path.isEmpty {
+                gpuCaptureOutputURL = URL(fileURLWithPath: path)
+            } else {
+                gpuCaptureOutputURL = nil // will compute default on start
+            }
+            // If a capture is already active, stop it and restart
+            if MTLCaptureManager.shared().isCapturing {
+                MTLCaptureManager.shared().stopCapture()
+                gpuCaptureActive = false
+            }
+            gpuCaptureFramesRemaining = frames
+            gpuCapturePendingStart = true
+            applied.append("gpuCaptureStart(frames=\(frames), path=\(gpuCaptureOutputURL?.path ?? "auto"))")
+        }
+        if let stop: Bool = value("gpuCaptureStop", from: ui), stop {
+            if MTLCaptureManager.shared().isCapturing {
+                MTLCaptureManager.shared().stopCapture()
+            }
+            gpuCaptureActive = false
+            gpuCapturePendingStart = false
+            gpuCaptureFramesRemaining = 0
+            applied.append("gpuCaptureStop")
+        }
+        
         // StarryEngine-related keys (not applied here)
         var ignored: [String] = []
         if ui?["starsPerUpdate"] != nil { ignored.append("starsPerUpdate") }
@@ -667,6 +707,9 @@ final class StarryMetalRenderer {
     }
     
     func render(drawData: StarryDrawData) {
+        // Start GPU capture if armed (before creating any command buffers)
+        startGpuCaptureIfArmed()
+        
         // Prepare moon albedo textures if an upload is requested
         if let img = drawData.moonAlbedoImage {
             setMoonAlbedo(image: img)
@@ -845,6 +888,8 @@ final class StarryMetalRenderer {
         guard let drawable = metalLayer?.nextDrawable() else {
             os_log("No CAMetalLayer drawable available this frame", log: log, type: .error)
             commandBuffer.commit()
+            // Note: still count the frame for GPU capture lifecycle
+            noteFrameCommittedForGpuCapture()
             frameIndex &+= 1
             return
         }
@@ -856,6 +901,7 @@ final class StarryMetalRenderer {
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else {
             commandBuffer.commit()
+            noteFrameCommittedForGpuCapture()
             frameIndex &+= 1
             return
         }
@@ -914,11 +960,15 @@ final class StarryMetalRenderer {
         
         commandBuffer.present(drawable)
         commandBuffer.commit()
+        noteFrameCommittedForGpuCapture()
         frameIndex &+= 1
     }
     
     // Headless preview: render same content into an offscreen texture and return CGImage.
     func renderToImage(drawData: StarryDrawData) -> CGImage? {
+        // Start GPU capture if armed (before creating any command buffers)
+        startGpuCaptureIfArmed()
+        
         // Prepare moon albedo if provided
         if let img = drawData.moonAlbedoImage {
             setMoonAlbedo(image: img)
@@ -1059,6 +1109,7 @@ final class StarryMetalRenderer {
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else {
             commandBuffer.commit()
             commandBuffer.waitUntilCompleted()
+            noteFrameCommittedForGpuCapture()
             return nil
         }
         encoder.pushDebugGroup("Headless Composite+Moon")
@@ -1112,6 +1163,7 @@ final class StarryMetalRenderer {
         encoder.endEncoding()
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
+        noteFrameCommittedForGpuCapture()
         
         // Read back pixels into CPU buffer
         let w = finalTarget.width
@@ -1554,6 +1606,73 @@ final class StarryMetalRenderer {
             hash &*= prime
         }
         return hash
+    }
+    
+    // MARK: - Programmatic GPU capture helpers
+    
+    private func startGpuCaptureIfArmed() {
+        guard gpuCapturePendingStart, !gpuCaptureActive else { return }
+        let manager = MTLCaptureManager.shared()
+        if manager.isCapturing {
+            // Shouldn't happen (we stop before starting), but guard anyway.
+            os_log("GPU Capture: already capturing; stopping existing capture before restarting", log: log, type: .error)
+            manager.stopCapture()
+        }
+        
+        let desc = MTLCaptureDescriptor()
+        desc.captureObject = commandQueue // capture all command buffers submitted
+        desc.destination = .gpuTraceDocument
+        // Resolve output URL
+        let url = gpuCaptureOutputURL ?? defaultGpuTraceURL()
+        // Ensure parent directory exists
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            os_log("GPU Capture: failed to create directory for %{public}@ (%{public}@). Falling back to temp", log: log, type: .error, url.path, "\(error)")
+        }
+        desc.outputURL = url
+        
+        do {
+            try manager.startCapture(with: desc)
+            gpuCaptureActive = true
+            gpuCapturePendingStart = false
+            os_log("GPU Capture: STARTED -> %{public}@ (frames=%{public}d)", log: log, type: .info, (desc.outputURL?.path ?? "unknown"), gpuCaptureFramesRemaining)
+        } catch {
+            os_log("GPU Capture: FAILED to start (%{public}@)", log: log, type: .error, "\(error)")
+            gpuCaptureActive = false
+            gpuCapturePendingStart = false
+            gpuCaptureFramesRemaining = 0
+        }
+    }
+    
+    private func defaultGpuTraceURL() -> URL {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let stamp = formatter.string(from: Date())
+        // Prefer Desktop; fall back to temporary directory if Desktop unavailable.
+        let desktopURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
+        let desktopCandidate = desktopURL.appendingPathComponent("StarryCapture-\(stamp).gputrace", isDirectory: true)
+        // If homeDirectoryForCurrentUser is not accessible for some reason, use temp
+        let tempCandidate = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("StarryCapture-\(stamp).gputrace", isDirectory: true)
+        // Use Desktop by default
+        return desktopCandidate
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .absoluteURL
+            ?? tempCandidate
+    }
+    
+    private func noteFrameCommittedForGpuCapture() {
+        guard gpuCaptureActive else { return }
+        if gpuCaptureFramesRemaining > 0 {
+            gpuCaptureFramesRemaining -= 1
+        }
+        if gpuCaptureFramesRemaining <= 0 {
+            MTLCaptureManager.shared().stopCapture()
+            os_log("GPU Capture: STOPPED", log: log, type: .info)
+            gpuCaptureActive = false
+        }
     }
     
     // MARK: - Notification value parsing helpers
