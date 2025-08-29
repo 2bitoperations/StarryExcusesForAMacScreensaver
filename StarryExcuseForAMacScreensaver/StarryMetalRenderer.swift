@@ -633,8 +633,7 @@ final class StarryMetalRenderer {
     func setCompositeBaseOnlyForDebug(_ enabled: Bool) {
         debugCompositeMode = enabled ? .baseOnly : .normal
         os_log("Debug: composite mode set to %{public}@",
-               log: log, type: .info,
-               enabled ? "BASE-ONLY" : "NORMAL")
+               log: log, type: .info, enabled ? "BASE-ONLY" : "NORMAL")
     }
     
     // Verify BaseLayer immutability in frames with zero baseSprites
@@ -1339,11 +1338,108 @@ final class StarryMetalRenderer {
         enc.endEncoding()
     }
     
+    // --- Probe detection helpers ---
+    private func approxEqual(_ a: Float, _ b: Float, tol: Float) -> Bool {
+        return abs(a - b) <= tol
+    }
+    private func approxEqual2(_ a: SIMD2<Float>, _ b: SIMD2<Float>, tol: Float) -> Bool {
+        return approxEqual(a.x, b.x, tol: tol) && approxEqual(a.y, b.y, tol: tol)
+    }
+    private func isProbeSprites(_ sprites: [SpriteInstance], target: MTLTexture) -> Bool {
+        // The probe is five white circular sprites: center and four compass points at 20% of min dimension.
+        guard sprites.count == 5, target.width > 0, target.height > 0 else { return false }
+        let w = Float(target.width)
+        let h = Float(target.height)
+        let minDim = min(w, h)
+        let cx = w * 0.5
+        let cy = h * 0.5
+        let d = minDim * 0.20
+        let rExp = max(2.0, minDim * 0.01)
+        let halfExp = SIMD2<Float>(rExp, rExp)
+        let expectedPositions: [SIMD2<Float>] = [
+            SIMD2<Float>(cx, cy),
+            SIMD2<Float>(cx - d, cy),
+            SIMD2<Float>(cx + d, cy),
+            SIMD2<Float>(cx, cy - d),
+            SIMD2<Float>(cx, cy + d)
+        ]
+        var unmatched = Array(expectedPositions.enumerated())
+        let posTol: Float = max(0.5, minDim * 0.001) // 0.5px or 0.1% of min dimension
+        for s in sprites {
+            // Must be circle (SpriteInstance.shape is UInt32 of SpriteShape)
+            if s.shape != SpriteShape.circle.rawValue { return false }
+            // Half size should match rExp
+            if !(approxEqual(s.halfSizePx.x, halfExp.x, tol: 0.51) && approxEqual(s.halfSizePx.y, halfExp.y, tol: 0.51)) {
+                return false
+            }
+            // Color should be premultiplied white
+            let c = s.colorPremul
+            if !(approxEqual(c.x, 1.0, tol: 0.01) && approxEqual(c.y, 1.0, tol: 0.01) &&
+                 approxEqual(c.z, 1.0, tol: 0.01) && approxEqual(c.w, 1.0, tol: 0.01)) {
+                return false
+            }
+            // Match a position
+            var matchedIdx: Int?
+            for (idx, pair) in unmatched {
+                if approxEqual2(s.centerPx, pair, tol: posTol) {
+                    matchedIdx = idx
+                    break
+                }
+            }
+            if let idx = matchedIdx {
+                unmatched.removeAll { $0.0 == idx }
+            } else {
+                return false
+            }
+        }
+        return unmatched.isEmpty
+    }
+    
     private func renderSprites(into target: MTLTexture,
                                sprites: [SpriteInstance],
                                pipeline: MTLRenderPipelineState,
                                commandBuffer: MTLCommandBuffer) {
         guard !sprites.isEmpty else { return }
+        
+        // Probe detection: if this looks exactly like our decay probe, exhaustively log diagnostics.
+        let probeDetected = isProbeSprites(sprites, target: target)
+        if probeDetected {
+            let tgtLbl = target.label ?? "tex"
+            let tgtPtr = ptrString(target)
+            let isBase = labelContains(target, "BaseLayer") || isSameTexture(target, layerTex.base)
+            let isSat = isSameTexture(target, layerTex.satellites)
+            let isSatScratch = isSameTexture(target, layerTex.satellitesScratch)
+            let isShoot = isSameTexture(target, layerTex.shooting)
+            let isShootScratch = isSameTexture(target, layerTex.shootingScratch)
+            let pipePtr = Unmanaged.passUnretained(pipeline as AnyObject).toOpaque()
+            let pipeKind: String = (pipeline === spriteAdditivePipeline) ? "SpritesAdditive" :
+                                   (pipeline === spriteOverPipeline) ? "SpritesOver" :
+                                   (pipeline === compositePipeline) ? "Composite" :
+                                   (pipeline === decaySampledPipeline) ? "DecaySampled" :
+                                   (pipeline === decayInPlacePipeline) ? "DecayInPlace" :
+                                   (pipeline === moonPipeline) ? "Moon" : "UnknownPipeline"
+            os_log("PROBE DETECTED: renderSprites target=%{public}@ (%{public}@) size=%{public}dx%{public}d storage=%{public}@ usage=0x%{public}x | isBase=%{public}@ isSat=%{public}@ isSatScratch=%{public}@ isShoot=%{public}@ isShootScratch=%{public}@ | pipeline=%{public}@ (%{public}@) | compositeMode=%{public}@ skipSatDraw=%{public}@",
+                   log: log, type: .fault,
+                   tgtLbl, tgtPtr, target.width, target.height,
+                   String(describing: target.storageMode), target.usage.rawValue,
+                   isBase ? "YES" : "no", isSat ? "YES" : "no", isSatScratch ? "YES" : "no",
+                   isShoot ? "YES" : "no", isShootScratch ? "YES" : "no",
+                   pipeKind, String(describing: pipePtr),
+                   (debugCompositeMode == .normal ? "NORMAL" : (debugCompositeMode == .satellitesOnly ? "SAT-ONLY" : "BASE-ONLY")),
+                   debugSkipSatellitesDraw ? "YES" : "no")
+            // Dump the five probe sprites for sanity
+            for (i, s) in sprites.enumerated() {
+                os_log("PROBE SPRITE[%{public}d]: center=(%{public}.2f,%{public}.2f) half=(%{public}.2f,%{public}.2f) color=(%{public}.2f,%{public}.2f,%{public}.2f,%{public}.2f) shape=%{public}u",
+                       log: log, type: .fault,
+                       i, s.centerPx.x, s.centerPx.y, s.halfSizePx.x, s.halfSizePx.y,
+                       s.colorPremul.x, s.colorPremul.y, s.colorPremul.z, s.colorPremul.w,
+                       s.shape)
+            }
+            // Log a call stack to correlate where renderSprites was invoked from
+            let stack = Thread.callStackSymbols.joined(separator: "\n")
+            os_log("PROBE CALL STACK:\n%{public}@", log: log, type: .fault, stack)
+        }
+        
         // Ensure buffer capacity
         let byteCount = sprites.count * MemoryLayout<SpriteInstance>.stride
         if spriteBuffer == nil || (spriteBuffer!.length < byteCount) {
