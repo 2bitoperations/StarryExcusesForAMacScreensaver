@@ -763,21 +763,8 @@ final class StarryMetalRenderer {
             return
         }
         
-        if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
-            let satCount = drawData.satellitesSprites.count
-            let shootCount = drawData.shootingSprites.count
-            let dtSec = (dt ?? 0)
-            let keepSat = decayKeep(forHalfLife: satellitesHalfLifeSeconds, dt: dt)
-            let keepShoot = decayKeep(forHalfLife: shootingHalfLifeSeconds, dt: dt)
-            // Sample up to 3 alpha values from satellites to see if they are 1.0 (suspicious)
-            var alphaSamples: [Float] = []
-            for i in 0..<min(3, satCount) {
-                alphaSamples.append(drawData.satellitesSprites[i].colorPremul.w)
-            }
-            os_log("Frame #%{public}llu dt=%{public}.4f s | satSprites=%{public}d (alpha samples=%{public}@) keep(sat)=%{public}.4f keep(shoot)=%{public}.4f",
-                   log: log, type: .debug,
-                   frameIndex, dtSec, satCount, alphaSamples.description, keepSat, keepShoot)
-        }
+        // Diagnostics log (onscreen)
+        logFrameDiagnostics(prefix: "", drawData: drawData, dt: dt)
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
         commandBuffer.label = "Starry Frame CommandBuffer"
@@ -805,196 +792,14 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
-        // Periodic base scrub if requested
-        if dropBaseEveryNFrames > 0,
-           let baseTex = layerTex.base,
-           (frameIndex % UInt64(dropBaseEveryNFrames) == 0) {
-            clearTexture(baseTex, commandBuffer: commandBuffer, label: "DropBaseEveryN (N=\(dropBaseEveryNFrames))")
-        }
+        // Encode all scene passes (base, satellites, shooting) with verification enabled
+        encodeScenePasses(commandBuffer: commandBuffer,
+                          drawData: drawData,
+                          dt: dt,
+                          enableImmutabilityVerification: true,
+                          enableIsolationVerification: true,
+                          headless: false)
         
-        // Optional: one-time base scrub requested by debug toggles
-        if debugClearBasePending, let baseTex = layerTex.base {
-            clearTexture(baseTex, commandBuffer: commandBuffer, label: "Debug One-Time Base Clear")
-            debugClearBasePending = false
-        }
-        
-        // Strong verification: snapshot BaseLayer BEFORE any non-base work (if baseSprites == 0)
-        let shouldVerifyBase = debugVerifyBaseImmutability && drawData.baseSprites.isEmpty && (layerTex.base != nil)
-        if shouldVerifyBase, let baseTex = layerTex.base {
-            baseSnapshotBefore = makeSnapshotTextureLike(baseTex)
-            if let snap = baseSnapshotBefore {
-                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base BEFORE (immutability)")
-            }
-        }
-        
-        // Isolation trace: per-pass snapshots
-        baseIsoPerPassSnapshots.removeAll(keepingCapacity: true)
-        func snapshotBase(tag: String) {
-            guard debugVerifyBaseIsolation, let baseTex = layerTex.base,
-                  let snap = makeSnapshotTextureLike(baseTex) else { return }
-            blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base (\(tag))")
-            baseIsoPerPassSnapshots.append((tag, snap))
-        }
-        
-        // Suppress skyline/stars/flasher (base emitters) while verifying isolation
-        let suppressBaseForIsolation = debugVerifyBaseIsolation
-        
-        // 1) Base layer: render sprites onto persistent base texture (no clear)
-        if let baseTex = layerTex.base,
-           !drawData.baseSprites.isEmpty,
-           !suppressBaseForIsolation {
-            renderSprites(into: baseTex,
-                          sprites: drawData.baseSprites,
-                          pipeline: spriteOverPipeline,
-                          commandBuffer: commandBuffer)
-            // Isolation snapshot: truly AFTER the base pass draw (post-draw)
-            if debugVerifyBaseIsolation {
-                baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
-                if let snap = baseIsoAfterBasePass {
-                    blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (post-draw)")
-                    baseIsoPerPassSnapshots.append(("after-base", snap))
-                }
-            }
-        } else {
-            // Take an "after-base" snapshot regardless: if we suppressed base draw, mark it so.
-            if debugVerifyBaseIsolation, let baseTex = layerTex.base {
-                baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
-                if let snap = baseIsoAfterBasePass {
-                    let tag = (!drawData.baseSprites.isEmpty && suppressBaseForIsolation) ? "after-base (suppressed)" : "after-base (no-op)"
-                    blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (\(tag))")
-                    baseIsoPerPassSnapshots.append((tag, snap))
-                }
-            }
-        }
-        
-        // 2) Satellites trail: decay then draw (skip entirely in BASE-ONLY mode)
-        if debugCompositeMode == .baseOnly {
-            os_log("BASE-ONLY: skipping satellites/shooting decay and draws this frame", log: log, type: .debug)
-        } else {
-            if layerTex.satellites != nil {
-                applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
-                snapshotBase(tag: "after-sat-decay")
-                // If skipping satellites drawing for debug, stamp a probe once after a clear to observe decay.
-                if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst0 = layerTex.satellites {
-                    let sprites = makeDecayProbeSprites(target: dst0)
-                    if !sprites.isEmpty, let safeDst = safeLayerTarget(.satellites) {
-                        os_log("Debug: stamping satellites decay probe (%{public}d sprites) into %{public}@ (%{public}@)",
-                               log: log, type: .info, sprites.count, safeDst.label ?? "tex", ptrString(safeDst))
-                        renderSprites(into: safeDst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
-                        snapshotBase(tag: "after-sat-probe")
-                    }
-                    debugStampNextFrameSatellites = false
-                } else if !debugSkipSatellitesDraw,
-                          !drawData.satellitesSprites.isEmpty {
-                    if let safeDst = safeLayerTarget(.satellites) {
-                        os_log("Satellites draw target -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
-                        renderSprites(into: safeDst,
-                                      sprites: drawData.satellitesSprites,
-                                      pipeline: spriteAdditivePipeline,
-                                      commandBuffer: commandBuffer)
-                        snapshotBase(tag: "after-sat-draw")
-                    } else {
-                        os_log("ALERT: No safe satellites target available — skipping satellites draw to prevent BASE contamination", log: log, type: .fault)
-                    }
-                } else {
-                    snapshotBase(tag: "after-sat-noop")
-                }
-            }
-            
-            // 3) Shooting stars trail: decay then draw (additive)
-            if layerTex.shooting != nil {
-                applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
-                snapshotBase(tag: "after-shoot-decay")
-                if !drawData.shootingSprites.isEmpty {
-                    if let safeDst = safeLayerTarget(.shooting) {
-                        os_log("Shooting draw target -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
-                        renderSprites(into: safeDst,
-                                      sprites: drawData.shootingSprites,
-                                      pipeline: spriteAdditivePipeline,
-                                      commandBuffer: commandBuffer)
-                        snapshotBase(tag: "after-shoot-draw")
-                    } else {
-                        os_log("ALERT: No safe shooting target available — skipping shooting-stars draw to prevent BASE contamination", log: log, type: .fault)
-                    }
-                } else {
-                    snapshotBase(tag: "after-shoot-noop")
-                }
-            }
-        }
-        
-        // Snapshot Base AFTER all work if we're verifying immutability (zero baseSprites case)
-        if shouldVerifyBase, let baseTex = layerTex.base {
-            baseSnapshotAfter = makeSnapshotTextureLike(baseTex)
-            if let snap = baseSnapshotAfter {
-                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER (immutability)")
-            }
-            
-            let before = baseSnapshotBefore
-            let after = baseSnapshotAfter
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                guard let self = self, let b = before, let a = after else { return }
-                let sumB = self.computeChecksum(of: b)
-                let sumA = self.computeChecksum(of: a)
-                if sumB != sumA {
-                    os_log("ALERT: BaseLayer changed in a frame with ZERO baseSprites (before=%{public}@ after=%{public}@)",
-                           log: self.log, type: .fault, String(format: "0x%016llx", sumB), String(format: "0x%016llx", sumA))
-                } else {
-                    os_log("VerifyBase: no change (checksum=%{public}@) with zero baseSprites",
-                           log: self.log, type: .debug, String(format: "0x%016llx", sumB))
-                }
-            }
-        }
-        
-        // Snapshot Base AFTER all work if verifying isolation (even when baseSprites > 0)
-        if debugVerifyBaseIsolation, let baseTex = layerTex.base {
-            baseIsoAfterAllWork = makeSnapshotTextureLike(baseTex)
-            if let snap = baseIsoAfterAllWork {
-                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER ALL WORK")
-            }
-            let afterBase = baseIsoAfterBasePass
-            let afterAll = baseIsoAfterAllWork
-            // Per-frame coarse isolation check
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                guard let self = self, let a = afterBase, let b = afterAll else { return }
-                let sumA = self.computeChecksum(of: a)
-                let sumB = self.computeChecksum(of: b)
-                if sumA != sumB {
-                    os_log("ALERT: BaseLayer changed AFTER base-pass within same frame (isolation breach). afterBase=%{public}@ afterAll=%{public}@",
-                           log: self.log, type: .fault,
-                           String(format: "0x%016llx", sumA), String(format: "0x%016llx", sumB))
-                } else {
-                    os_log("VerifyIsolation: BaseLayer unchanged after non-base work (checksum=%{public}@)",
-                           log: self.log, type: .debug, String(format: "0x%016llx", sumA))
-                }
-            }
-            // Fine-grained per-pass isolation trace
-            let perPass = baseIsoPerPassSnapshots
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                guard let self = self else { return }
-                if perPass.count >= 2 {
-                    var prevSum: UInt64?
-                    var prevTag: String = ""
-                    for (tag, snap) in perPass {
-                        let sum = self.computeChecksum(of: snap)
-                        os_log("IsolationTrace: Base checksum after '%{public}@' = %{public}@",
-                               log: self.log, type: .debug, tag, String(format: "0x%016llx", sum))
-                        if let ps = prevSum, ps != sum {
-                            os_log("ALERT: Base changed between '%{public}@' and '%{public}@'",
-                                   log: self.log, type: .fault, prevTag, tag)
-                        }
-                        prevSum = sum
-                        prevTag = tag
-                    }
-                } else if perPass.count == 1 {
-                    let sum = self.computeChecksum(of: perPass[0].snap)
-                    os_log("IsolationTrace: Base checksum at '%{public}@' = %{public}@",
-                           log: self.log, type: .debug, perPass[0].tag, String(format: "0x%016llx", sum))
-                } else {
-                    os_log("IsolationTrace: no per-pass snapshots recorded", log: self.log, type: .debug)
-                }
-            }
-        }
-
         // 4) Composite to drawable and draw moon on top
         guard let drawable = metalLayer?.nextDrawable() else {
             os_log("No CAMetalLayer drawable available this frame", log: log, type: .error)
@@ -1004,70 +809,8 @@ final class StarryMetalRenderer {
             frameIndex &+= 1
             return
         }
-        let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = drawable.texture
-        rpd.colorAttachments[0].loadAction = .clear
-        rpd.colorAttachments[0].storeAction = .store
-        rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
         
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else {
-            commandBuffer.commit()
-            noteFrameCommittedForGpuCapture()
-            frameIndex &+= 1
-            return
-        }
-        encoder.pushDebugGroup("Composite+Moon")
-        
-        // Set viewport to drawable size
-        let dvp = MTLViewport(originX: 0, originY: 0,
-                              width: Double(drawable.texture.width),
-                              height: Double(drawable.texture.height),
-                              znear: 0, zfar: 1)
-        encoder.setViewport(dvp)
-        
-        // Composite base + satellites + shooting (white tint)
-        encoder.setRenderPipelineState(compositePipeline)
-        if let quad = quadVertexBuffer {
-            encoder.setVertexBuffer(quad, offset: 0, index: 0)
-        }
-        var whiteTint = SIMD4<Float>(1, 1, 1, 1)
-        func drawTex(_ tex: MTLTexture?) {
-            guard let t = tex else { return }
-            encoder.setFragmentTexture(t, index: 0)
-            encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
-        }
-        switch debugCompositeMode {
-        case .satellitesOnly:
-            drawTex(layerTex.satellites)
-        case .baseOnly:
-            drawTex(layerTex.base)
-        case .normal:
-            drawTex(layerTex.base)
-            drawTex(layerTex.satellites)
-            drawTex(layerTex.shooting)
-        }
-        
-        // Moon
-        if debugCompositeMode == .normal, let moon = drawData.moon {
-            encoder.setRenderPipelineState(moonPipeline)
-            // Uniforms (match Shaders.metal packing)
-            var uni = MoonUniformsSwift(
-                viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
-                centerPx: moon.centerPx,
-                params0: SIMD4<Float>(moon.radiusPx, moon.phaseFraction, moon.brightBrightness, moon.darkBrightness),
-                params1: SIMD4<Float>(drawData.showLightAreaTextureFillMask ? 1.0 : 0.0, 0, 0, 0)
-            )
-            encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
-            encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
-            if let albedo = moonAlbedoTexture {
-                encoder.setFragmentTexture(albedo, index: 0)
-            }
-            // Draw quad (6 verts) via implicit corners in shader
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
-        }
-        encoder.popDebugGroup()
-        encoder.endEncoding()
+        encodeCompositeAndMoon(commandBuffer: commandBuffer, target: drawable.texture, drawData: drawData, headless: false)
         
         // Optional: one-shot dumps of layers as PNG to Desktop
         if dumpLayersNextFrame {
@@ -1135,36 +878,69 @@ final class StarryMetalRenderer {
         let dt: CFTimeInterval? = lastHeadlessRenderTime.map { now - $0 }
         lastHeadlessRenderTime = now
         
-        if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
-            let satCount = drawData.satellitesSprites.count
-            let shootCount = drawData.shootingSprites.count
-            let dtSec = (dt ?? 0)
-            let keepSat = decayKeep(forHalfLife: satellitesHalfLifeSeconds, dt: dt)
-            let keepShoot = decayKeep(forHalfLife: shootingHalfLifeSeconds, dt: dt)
-            var alphaSamples: [Float] = []
-            for i in 0..<min(3, satCount) {
-                alphaSamples.append(drawData.satellitesSprites[i].colorPremul.w)
-            }
-            os_log("[Headless] Frame #%{public}llu dt=%{public}.4f s | satSprites=%{public}d (alpha samples=%{public}@) keep(sat)=%{public}.4f keep(shoot)=%{public}.4f",
-                   log: log, type: .debug,
-                   frameIndex, dtSec, satCount, alphaSamples.description, keepSat, keepShoot)
-        }
+        // Diagnostics log (headless)
+        logFrameDiagnostics(prefix: "[Headless] ", drawData: drawData, dt: dt)
         
-        // Ensure periodic base scrub in headless too
+        // Ensure periodic base scrub in headless too and encode scene passes
+        encodeScenePasses(commandBuffer: commandBuffer,
+                          drawData: drawData,
+                          dt: dt,
+                          enableImmutabilityVerification: false, // headless: don't do verification snapshots/checksums
+                          enableIsolationVerification: false,
+                          headless: true)
+        
+        // 4) Composite into offscreen target and draw moon
+        encodeCompositeAndMoon(commandBuffer: commandBuffer, target: finalTarget, drawData: drawData, headless: true)
+        
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        noteFrameCommittedForGpuCapture()
+        
+        return textureToImage(finalTarget)
+    }
+    
+    // MARK: - Shared encoders (consolidated)
+    
+    // Encodes base/sat/shoot passes, optional verification snapshots, and any clears.
+    private func encodeScenePasses(commandBuffer: MTLCommandBuffer,
+                                   drawData: StarryDrawData,
+                                   dt: CFTimeInterval?,
+                                   enableImmutabilityVerification: Bool,
+                                   enableIsolationVerification: Bool,
+                                   headless: Bool) {
+        // Periodic base scrub if requested
         if dropBaseEveryNFrames > 0,
            let baseTex = layerTex.base,
            (frameIndex % UInt64(dropBaseEveryNFrames) == 0) {
-            clearTexture(baseTex, commandBuffer: commandBuffer, label: "DropBaseEveryN (headless N=\(dropBaseEveryNFrames))")
+            clearTexture(baseTex, commandBuffer: commandBuffer, label: headless ? "DropBaseEveryN (headless N=\(dropBaseEveryNFrames))" : "DropBaseEveryN (N=\(dropBaseEveryNFrames))")
         }
         
         // Optional: one-time base scrub requested by debug toggles
         if debugClearBasePending, let baseTex = layerTex.base {
-            clearTexture(baseTex, commandBuffer: commandBuffer, label: "Debug One-Time Base Clear (headless)")
+            clearTexture(baseTex, commandBuffer: commandBuffer, label: headless ? "Debug One-Time Base Clear (headless)" : "Debug One-Time Base Clear")
             debugClearBasePending = false
         }
         
+        // Strong verification: snapshot BaseLayer BEFORE any non-base work (if baseSprites == 0)
+        let shouldVerifyBase = enableImmutabilityVerification && debugVerifyBaseImmutability && drawData.baseSprites.isEmpty && (layerTex.base != nil)
+        if shouldVerifyBase, let baseTex = layerTex.base {
+            baseSnapshotBefore = makeSnapshotTextureLike(baseTex)
+            if let snap = baseSnapshotBefore {
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base BEFORE (immutability)")
+            }
+        }
+        
+        // Isolation trace: per-pass snapshots
+        baseIsoPerPassSnapshots.removeAll(keepingCapacity: true)
+        func snapshotBase(tag: String) {
+            guard enableIsolationVerification, debugVerifyBaseIsolation, let baseTex = layerTex.base,
+                  let snap = makeSnapshotTextureLike(baseTex) else { return }
+            blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base (\(tag))")
+            baseIsoPerPassSnapshots.append((tag, snap))
+        }
+        
         // Suppress skyline/stars/flasher (base emitters) while verifying isolation
-        let suppressBaseForIsolation = debugVerifyBaseIsolation
+        let suppressBaseForIsolation = enableIsolationVerification && debugVerifyBaseIsolation
         
         // 1) Base layer: render sprites onto persistent base texture (no clear)
         if let baseTex = layerTex.base,
@@ -1174,76 +950,181 @@ final class StarryMetalRenderer {
                           sprites: drawData.baseSprites,
                           pipeline: spriteOverPipeline,
                           commandBuffer: commandBuffer)
+            // Isolation snapshot: truly AFTER the base pass draw (post-draw)
+            if enableIsolationVerification, debugVerifyBaseIsolation {
+                baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
+                if let snap = baseIsoAfterBasePass {
+                    blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (post-draw)")
+                    baseIsoPerPassSnapshots.append(("after-base", snap))
+                }
+            }
+        } else {
+            // Take an "after-base" snapshot regardless: if we suppressed base draw, mark it so.
+            if enableIsolationVerification, debugVerifyBaseIsolation, let baseTex = layerTex.base {
+                baseIsoAfterBasePass = makeSnapshotTextureLike(baseTex)
+                if let snap = baseIsoAfterBasePass {
+                    let tag = (!drawData.baseSprites.isEmpty && suppressBaseForIsolation) ? "after-base (suppressed)" : "after-base (no-op)"
+                    blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER BASE-PASS (\(tag))")
+                    baseIsoPerPassSnapshots.append((tag, snap))
+                }
+            }
         }
         
-        // 2) Satellites/shooting: skip entirely in BASE-ONLY mode
+        // 2) Satellites trail: decay then draw (skip entirely in BASE-ONLY mode)
         if debugCompositeMode == .baseOnly {
-            os_log("[Headless] BASE-ONLY: skipping satellites/shooting decay and draws this frame", log: log, type: .debug)
+            os_log(headless ? "[Headless] BASE-ONLY: skipping satellites/shooting decay and draws this frame" : "BASE-ONLY: skipping satellites/shooting decay and draws this frame", log: log, type: .debug)
         } else {
-            // Satellites trail: decay then draw (additive)
             if layerTex.satellites != nil {
                 applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
-                // Stamp probe once after clear if skipping satellites draw
+                snapshotBase(tag: "after-sat-decay")
+                // If skipping satellites drawing for debug, stamp a probe once after a clear to observe decay.
                 if debugSkipSatellitesDraw, debugStampNextFrameSatellites, let dst0 = layerTex.satellites {
                     let sprites = makeDecayProbeSprites(target: dst0)
                     if !sprites.isEmpty, let safeDst = safeLayerTarget(.satellites) {
-                        os_log("Debug(headless): stamping satellites decay probe (%{public}d sprites) into %{public}@ (%{public}@)",
+                        os_log(headless ? "Debug(headless): stamping satellites decay probe (%{public}d sprites) into %{public}@ (%{public}@)" : "Debug: stamping satellites decay probe (%{public}d sprites) into %{public}@ (%{public}@)",
                                log: log, type: .info, sprites.count, safeDst.label ?? "tex", ptrString(safeDst))
                         renderSprites(into: safeDst, sprites: sprites, pipeline: spriteAdditivePipeline, commandBuffer: commandBuffer)
+                        snapshotBase(tag: "after-sat-probe")
                     }
                     debugStampNextFrameSatellites = false
                 } else if !debugSkipSatellitesDraw,
                           !drawData.satellitesSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.satellites) {
-                        os_log("Satellites draw target (headless) -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
+                        os_log(headless ? "Satellites draw target (headless) -> %{public}@ (%{public}@)" : "Satellites draw target -> %{public}@ (%{public}@)",
+                               log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
                         renderSprites(into: safeDst,
                                       sprites: drawData.satellitesSprites,
                                       pipeline: spriteAdditivePipeline,
                                       commandBuffer: commandBuffer)
+                        snapshotBase(tag: "after-sat-draw")
                     } else {
-                        os_log("ALERT: No safe satellites target available (headless) — skipping satellites draw to prevent BASE contamination", log: log, type: .fault)
+                        os_log(headless ? "ALERT: No safe satellites target available (headless) — skipping satellites draw to prevent BASE contamination" : "ALERT: No safe satellites target available — skipping satellites draw to prevent BASE contamination", log: log, type: .fault)
                     }
+                } else {
+                    snapshotBase(tag: "after-sat-noop")
                 }
             }
             
             // 3) Shooting stars trail: decay then draw (additive)
             if layerTex.shooting != nil {
                 applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
+                snapshotBase(tag: "after-shoot-decay")
                 if !drawData.shootingSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.shooting) {
-                        os_log("Shooting draw target (headless) -> %{public}@ (%{public}@)", log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
+                        os_log(headless ? "Shooting draw target (headless) -> %{public}@ (%{public}@)" : "Shooting draw target -> %{public}@ (%{public}@)",
+                               log: log, type: .debug, safeDst.label ?? "tex", ptrString(safeDst))
                         renderSprites(into: safeDst,
                                       sprites: drawData.shootingSprites,
                                       pipeline: spriteAdditivePipeline,
                                       commandBuffer: commandBuffer)
+                        snapshotBase(tag: "after-shoot-draw")
                     } else {
-                        os_log("ALERT: No safe shooting target available (headless) — skipping shooting-stars draw to prevent BASE contamination", log: log, type: .fault)
+                        os_log(headless ? "ALERT: No safe shooting target available (headless) — skipping shooting-stars draw to prevent BASE contamination" : "ALERT: No safe shooting target available — skipping shooting-stars draw to prevent BASE contamination", log: log, type: .fault)
                     }
+                } else {
+                    snapshotBase(tag: "after-shoot-noop")
                 }
             }
         }
         
-        // 4) Composite into offscreen target and draw moon
+        // Snapshot Base AFTER all work if we're verifying immutability (zero baseSprites case)
+        if shouldVerifyBase, let baseTex = layerTex.base {
+            baseSnapshotAfter = makeSnapshotTextureLike(baseTex)
+            if let snap = baseSnapshotAfter {
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER (immutability)")
+            }
+            
+            let before = baseSnapshotBefore
+            let after = baseSnapshotAfter
+            commandBuffer.addCompletedHandler { [weak self] _ in
+                guard let self = self, let b = before, let a = after else { return }
+                let sumB = self.computeChecksum(of: b)
+                let sumA = self.computeChecksum(of: a)
+                if sumB != sumA {
+                    os_log("ALERT: BaseLayer changed in a frame with ZERO baseSprites (before=%{public}@ after=%{public}@)",
+                           log: self.log, type: .fault, String(format: "0x%016llx", sumB), String(format: "0x%016llx", sumA))
+                } else {
+                    os_log("VerifyBase: no change (checksum=%{public}@) with zero baseSprites",
+                           log: self.log, type: .debug, String(format: "0x%016llx", sumB))
+                }
+            }
+        }
+        
+        // Snapshot Base AFTER all work if verifying isolation (even when baseSprites > 0)
+        if enableIsolationVerification, debugVerifyBaseIsolation, let baseTex = layerTex.base {
+            baseIsoAfterAllWork = makeSnapshotTextureLike(baseTex)
+            if let snap = baseIsoAfterAllWork {
+                blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Snapshot Base AFTER ALL WORK")
+            }
+            let afterBase = baseIsoAfterBasePass
+            let afterAll = baseIsoAfterAllWork
+            // Per-frame coarse isolation check
+            commandBuffer.addCompletedHandler { [weak self] _ in
+                guard let self = self, let a = afterBase, let b = afterAll else { return }
+                let sumA = self.computeChecksum(of: a)
+                let sumB = self.computeChecksum(of: b)
+                if sumA != sumB {
+                    os_log("ALERT: BaseLayer changed AFTER base-pass within same frame (isolation breach). afterBase=%{public}@ afterAll=%{public}@",
+                           log: self.log, type: .fault,
+                           String(format: "0x%016llx", sumA), String(format: "0x%016llx", sumB))
+                } else {
+                    os_log("VerifyIsolation: BaseLayer unchanged after non-base work (checksum=%{public}@)",
+                           log: self.log, type: .debug, String(format: "0x%016llx", sumA))
+                }
+            }
+            // Fine-grained per-pass isolation trace
+            let perPass = baseIsoPerPassSnapshots
+            commandBuffer.addCompletedHandler { [weak self] _ in
+                guard let self = self else { return }
+                if perPass.count >= 2 {
+                    var prevSum: UInt64?
+                    var prevTag: String = ""
+                    for (tag, snap) in perPass {
+                        let sum = self.computeChecksum(of: snap)
+                        os_log("IsolationTrace: Base checksum after '%{public}@' = %{public}@",
+                               log: self.log, type: .debug, tag, String(format: "0x%016llx", sum))
+                        if let ps = prevSum, ps != sum {
+                            os_log("ALERT: Base changed between '%{public}@' and '%{public}@'",
+                                   log: self.log, type: .fault, prevTag, tag)
+                        }
+                        prevSum = sum
+                        prevTag = tag
+                    }
+                } else if perPass.count == 1 {
+                    let sum = self.computeChecksum(of: perPass[0].snap)
+                    os_log("IsolationTrace: Base checksum at '%{public}@' = %{public}@",
+                           log: self.log, type: .debug, perPass[0].tag, String(format: "0x%016llx", sum))
+                } else {
+                    os_log("IsolationTrace: no per-pass snapshots recorded", log: self.log, type: .debug)
+                }
+            }
+        }
+    }
+    
+    // Encodes the composite of base+sat+shoot into 'target' and draws the moon if present.
+    private func encodeCompositeAndMoon(commandBuffer: MTLCommandBuffer,
+                                        target: MTLTexture,
+                                        drawData: StarryDrawData,
+                                        headless: Bool) {
         let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = finalTarget
+        rpd.colorAttachments[0].texture = target
         rpd.colorAttachments[0].loadAction = .clear
         rpd.colorAttachments[0].storeAction = .store
         rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else {
-            commandBuffer.commit()
-            commandBuffer.waitUntilCompleted()
-            noteFrameCommittedForGpuCapture()
-            return nil
+            return
         }
-        encoder.pushDebugGroup("Headless Composite+Moon")
+        encoder.pushDebugGroup(headless ? "Headless Composite+Moon" : "Composite+Moon")
         
+        // Set viewport to target size
         let vp = MTLViewport(originX: 0, originY: 0,
-                             width: Double(finalTarget.width),
-                             height: Double(finalTarget.height),
+                             width: Double(target.width),
+                             height: Double(target.height),
                              znear: 0, zfar: 1)
         encoder.setViewport(vp)
         
+        // Composite base + satellites + shooting (white tint)
         encoder.setRenderPipelineState(compositePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
@@ -1266,7 +1147,7 @@ final class StarryMetalRenderer {
             drawTex(layerTex.shooting)
         }
         
-        // Moon (on top)
+        // Moon
         if debugCompositeMode == .normal, let moon = drawData.moon {
             encoder.setRenderPipelineState(moonPipeline)
             // Uniforms (match Shaders.metal packing)
@@ -1281,15 +1162,11 @@ final class StarryMetalRenderer {
             if let albedo = moonAlbedoTexture {
                 encoder.setFragmentTexture(albedo, index: 0)
             }
+            // Draw quad (6 verts) via implicit corners in shader
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
         encoder.popDebugGroup()
         encoder.endEncoding()
-        commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
-        noteFrameCommittedForGpuCapture()
-        
-        return textureToImage(finalTarget)
     }
     
     // MARK: - Helpers
@@ -1988,5 +1865,22 @@ final class StarryMetalRenderer {
             }
         }
         return nil
+    }
+    
+    // Shared diagnostics logger for both onscreen and headless paths
+    private func logFrameDiagnostics(prefix: String, drawData: StarryDrawData, dt: CFTimeInterval?) {
+        guard diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 else { return }
+        let satCount = drawData.satellitesSprites.count
+        let shootCount = drawData.shootingSprites.count
+        let dtSec = (dt ?? 0)
+        let keepSat = decayKeep(forHalfLife: satellitesHalfLifeSeconds, dt: dt)
+        let keepShoot = decayKeep(forHalfLife: shootingHalfLifeSeconds, dt: dt)
+        var alphaSamples: [Float] = []
+        for i in 0..<min(3, satCount) {
+            alphaSamples.append(drawData.satellitesSprites[i].colorPremul.w)
+        }
+        os_log("%{public}@Frame #%{public}llu dt=%{public}.4f s | satSprites=%{public}d (alpha samples=%{public}@) keep(sat)=%{public}.4f keep(shoot)=%{public}.4f",
+               log: log, type: .debug,
+               prefix, frameIndex, dtSec, satCount, alphaSamples.description, keepSat, keepShoot)
     }
 }
