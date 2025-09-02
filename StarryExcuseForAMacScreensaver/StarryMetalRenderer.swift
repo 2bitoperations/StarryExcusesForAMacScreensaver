@@ -53,6 +53,7 @@ final class StarryMetalRenderer {
     
     private struct LayerTextures {
         var base: MTLTexture?
+        var baseScratch: MTLTexture?
         var satellites: MTLTexture?
         var satellitesScratch: MTLTexture?
         var shooting: MTLTexture?
@@ -393,6 +394,7 @@ final class StarryMetalRenderer {
         switch target {
         case "base":
             clr(layerTex.base, label: "base")
+            clr(layerTex.baseScratch, label: "baseScratch")
         case "satellites":
             clr(layerTex.satellites, label: "satellites")
             clr(layerTex.satellitesScratch, label: "satellitesScratch")
@@ -908,12 +910,49 @@ final class StarryMetalRenderer {
            let baseTex = layerTex.base,
            (frameIndex % UInt64(dropBaseEveryNFrames) == 0) {
             clearTexture(baseTex, commandBuffer: commandBuffer, label: headless ? "DropBaseEveryN (headless N=\(dropBaseEveryNFrames))" : "DropBaseEveryN (N=\(dropBaseEveryNFrames))")
+            if let baseScratch = layerTex.baseScratch {
+                clearTexture(baseScratch, commandBuffer: commandBuffer, label: headless ? "DropBaseEveryN Scratch (headless)" : "DropBaseEveryN Scratch")
+            }
         }
         
         // Optional: one-time base scrub requested by debug toggles
-        if debugClearBasePending, let baseTex = layerTex.base {
-            clearTexture(baseTex, commandBuffer: commandBuffer, label: headless ? "Debug One-Time Base Clear (headless)" : "Debug One-Time Base Clear")
+        if debugClearBasePending {
+            if let baseTex = layerTex.base {
+                clearTexture(baseTex, commandBuffer: commandBuffer, label: headless ? "Debug One-Time Base Clear (headless)" : "Debug One-Time Base Clear")
+            }
+            if let baseScratch = layerTex.baseScratch {
+                clearTexture(baseScratch, commandBuffer: commandBuffer, label: headless ? "Debug One-Time BaseScratch Clear (headless)" : "Debug One-Time BaseScratch Clear")
+            }
             debugClearBasePending = false
+        }
+        
+        // Reset per-pass isolation trace list each frame
+        baseIsoPerPassSnapshots.removeAll(keepingCapacity: true)
+        
+        // --- Base pass (ping-pong): start from strictly last frame's base only ---
+        // Copy prior base into scratch, render base sprites into scratch, then swap.
+        if let baseTex = layerTex.base, let baseScratch = layerTex.baseScratch {
+            // 1) Copy prior frame's base into scratch
+            blitCopy(from: baseTex, to: baseScratch, using: commandBuffer, label: headless ? "Base ping-pong copy (headless)" : "Base ping-pong copy")
+            // 2) Render this frame's base sprites into scratch
+            if !drawData.baseSprites.isEmpty {
+                renderSprites(into: baseScratch,
+                              sprites: drawData.baseSprites,
+                              pipeline: spriteOverPipeline,
+                              commandBuffer: commandBuffer)
+            }
+            // 3) Swap: new base for this frame becomes scratch
+            let tmp = layerTex.base
+            layerTex.base = layerTex.baseScratch
+            layerTex.baseScratch = tmp
+        } else if let baseTex = layerTex.base {
+            // Fallback (should not happen): draw in-place
+            if !drawData.baseSprites.isEmpty {
+                renderSprites(into: baseTex,
+                              sprites: drawData.baseSprites,
+                              pipeline: spriteOverPipeline,
+                              commandBuffer: commandBuffer)
+            }
         }
         
         // Strong verification: snapshot BaseLayer BEFORE any non-base work (if baseSprites == 0)
@@ -925,19 +964,7 @@ final class StarryMetalRenderer {
             }
         }
         
-        // Reset per-pass isolation trace list each frame
-        baseIsoPerPassSnapshots.removeAll(keepingCapacity: true)
-        
-        // 1) Base layer: render sprites onto persistent base texture (no clear)
-        if let baseTex = layerTex.base,
-           !drawData.baseSprites.isEmpty {
-            renderSprites(into: baseTex,
-                          sprites: drawData.baseSprites,
-                          pipeline: spriteOverPipeline,
-                          commandBuffer: commandBuffer)
-        }
-        
-        // 1b) Take isolation baseline snapshot AFTER finishing base-pass (whether or not any base sprites were drawn)
+        // 1b) Take isolation baseline snapshot AFTER finishing base-pass (post-swap)
         var baseIsolationBaseline: MTLTexture?
         if enableIsolationVerification, debugVerifyBaseIsolation, let baseTex = layerTex.base {
             if let baseline = makeSnapshotTextureLike(baseTex) {
@@ -1184,6 +1211,8 @@ final class StarryMetalRenderer {
         desc.storageMode = .private
         layerTex.base = device.makeTexture(descriptor: desc)
         layerTex.base?.label = "BaseLayer"
+        layerTex.baseScratch = device.makeTexture(descriptor: desc)
+        layerTex.baseScratch?.label = "BaseLayerScratch"
         layerTex.satellites = device.makeTexture(descriptor: desc)
         layerTex.satellites?.label = "SatellitesLayer"
         layerTex.satellitesScratch = device.makeTexture(descriptor: desc)
@@ -1193,9 +1222,10 @@ final class StarryMetalRenderer {
         layerTex.shootingScratch = device.makeTexture(descriptor: desc)
         layerTex.shootingScratch?.label = "ShootingStarsLayerScratch"
         
-        os_log("Allocated textures: base=%{public}@ sat=%{public}@ satScratch=%{public}@ shoot=%{public}@ shootScratch=%{public}@",
+        os_log("Allocated textures: base=%{public}@ baseScratch=%{public}@ sat=%{public}@ satScratch=%{public}@ shoot=%{public}@ shootScratch=%{public}@",
                log: log, type: .info,
                ptrString(layerTex.base!),
+               ptrString(layerTex.baseScratch!),
                ptrString(layerTex.satellites!),
                ptrString(layerTex.satellitesScratch!),
                ptrString(layerTex.shooting!),
@@ -1243,6 +1273,7 @@ final class StarryMetalRenderer {
             }
         }
         clear(texture: layerTex.base)
+        clear(texture: layerTex.baseScratch)
         clear(texture: layerTex.satellites)
         clear(texture: layerTex.satellitesScratch)
         clear(texture: layerTex.shooting)
