@@ -1445,7 +1445,7 @@ final class StarryMetalRenderer {
         let halfLife: Double = (which == .satellites) ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
         let keep = decayKeep(forHalfLife: halfLife, dt: dt)
         
-        if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
+        if diagnosticsEnabled && !debugVerifyBaseIsolation && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
             os_log("Decay pass for %{public}@ keep=%{public}.4f (halfLife=%{public}.3f s, dt=%{public}.4f s)",
                    log: log, type: .debug,
                    (which == .satellites ? "satellites" : "shooting"),
@@ -1530,11 +1530,13 @@ final class StarryMetalRenderer {
         encoder.endEncoding()
         
         // Extra trace for decay targeting (pointers)
-        os_log("DecaySampled pass: src=%{public}@ (%{public}@) -> dstScratch=%{public}@ (%{public}@) for %{public}@",
-               log: log, type: .debug,
-               srcTex.label ?? "tex", ptrString(srcTex),
-               dstScratch.label ?? "tex", ptrString(dstScratch),
-               which == .satellites ? "SATELLITES" : "SHOOTING")
+        if diagnosticsEnabled && !debugVerifyBaseIsolation {
+            os_log("DecaySampled pass: src=%{public}@ (%{public}@) -> dstScratch=%{public}@ (%{public}@) for %{public}@",
+                   log: log, type: .debug,
+                   srcTex.label ?? "tex", ptrString(srcTex),
+                   dstScratch.label ?? "tex", ptrString(dstScratch),
+                   which == .satellites ? "SATELLITES" : "SHOOTING")
+        }
         
         // Swap src <-> scratch for next frame
         swapTrailTextures(which)
