@@ -813,7 +813,7 @@ final class StarryMetalRenderer {
         
         encodeCompositeAndMoon(commandBuffer: commandBuffer, target: drawable.texture, drawData: drawData, headless: false, baseIsolationBaseline: baselineForIsolation)
         
-        // If verifyBaseIsolation is enabled, enqueue per-frame dumps (Base, BaseScratch, Composite)
+        // If verifyBaseIsolation is enabled, enqueue per-frame dumps (Base, BaseScratch, Composite, Sat, SatScratch)
         if debugVerifyBaseIsolation {
             enqueuePerFrameIsolationDumps(commandBuffer: commandBuffer, finalTarget: drawable.texture, headless: false)
         }
@@ -897,7 +897,7 @@ final class StarryMetalRenderer {
         // 4) Composite into offscreen target and draw moon
         encodeCompositeAndMoon(commandBuffer: commandBuffer, target: finalTarget, drawData: drawData, headless: true, baseIsolationBaseline: nil)
         
-        // If verifyBaseIsolation is enabled, enqueue per-frame dumps (Base, BaseScratch, Composite)
+        // If verifyBaseIsolation is enabled, enqueue per-frame dumps (Base, BaseScratch, Composite, Sat, SatScratch)
         if debugVerifyBaseIsolation {
             enqueuePerFrameIsolationDumps(commandBuffer: commandBuffer, finalTarget: finalTarget, headless: true)
         }
@@ -1390,7 +1390,7 @@ final class StarryMetalRenderer {
         if probeDetected {
             let tgtLbl = target.label ?? "tex"
             let tgtPtr = ptrString(target)
-            let isBase = labelContains(target, "BaseLayer") || isSameTexture(target, layerTex.base)
+            let isBase = labelContains(target, "BaseLayer") || isSameTexture(target, layerTex.base) || isSameTexture(target, layerTex.baseScratch)
             let isSat = isSameTexture(target, layerTex.satellites)
             let isSatScratch = isSameTexture(target, layerTex.satellitesScratch)
             let isShoot = isSameTexture(target, layerTex.shooting)
@@ -1411,7 +1411,6 @@ final class StarryMetalRenderer {
                    pipeKind, String(describing: pipePtr),
                    (debugCompositeMode == .normal ? "NORMAL" : (debugCompositeMode == .satellitesOnly ? "SAT-ONLY" : "BASE-ONLY")),
                    debugSkipSatellitesDraw ? "YES" : "no")
-            // Dump the five probe sprites for sanity
             for (i, s) in sprites.enumerated() {
                 os_log("PROBE SPRITE[%{public}d]: center=(%{public}.2f,%{public}.2f) half=(%{public}.2f,%{public}.2f) color=(%{public}.2f,%{public}.2f,%{public}.2f,%{public}.2f) shape=%{public}u",
                        log: log, type: .fault,
@@ -1419,7 +1418,6 @@ final class StarryMetalRenderer {
                        s.colorPremul.x, s.colorPremul.y, s.colorPremul.z, s.colorPremul.w,
                        s.shape)
             }
-            // Log a call stack to correlate where renderSprites was invoked from
             let stack = Thread.callStackSymbols.joined(separator: "\n")
             os_log("PROBE CALL STACK:\n%{public}@", log: log, type: .fault, stack)
         }
@@ -1439,10 +1437,13 @@ final class StarryMetalRenderer {
             }
         }
         
-        // Hard guard: never let additive (trail) pipeline draw into BaseLayer
-        if (pipeline === spriteAdditivePipeline) && (isSameTexture(target, layerTex.base) || labelContains(target, "BaseLayer")) {
-            os_log("ALERT: Attempt to draw ADDITIVE sprites into BaseLayer (%{public}@) — SKIPPING draw to prevent contamination",
-                   log: log, type: .fault, ptrString(target))
+        // Hard guard: never let additive (trail) pipeline draw into BaseLayer or BaseLayerScratch
+        if (pipeline === spriteAdditivePipeline) &&
+            (isSameTexture(target, layerTex.base) ||
+             isSameTexture(target, layerTex.baseScratch) ||
+             labelContains(target, "BaseLayer")) {
+            os_log("ALERT: Attempt to draw ADDITIVE sprites into BaseLayer/Scratch (%{public}@ '%{public}@') — SKIPPING draw to prevent contamination",
+                   log: log, type: .fault, ptrString(target), target.label ?? "nil")
             return
         }
         
@@ -1538,15 +1539,19 @@ final class StarryMetalRenderer {
             return
         }
         
-        // Safety: never let decay pass write into base
-        if labelContains(dstScratch, "BaseLayer") || isSameTexture(dstScratch, layerTex.base) {
-            os_log("ALERT: Decay target scratch for %{public}@ is BaseLayer (%{public}@) — skipping decay to prevent contamination",
-                   log: log, type: .fault, which == .satellites ? "satellites" : "shooting", ptrString(dstScratch))
+        // Safety: never let decay pass read/write Base or BaseScratch
+        if labelContains(dstScratch, "BaseLayer") ||
+            isSameTexture(dstScratch, layerTex.base) ||
+            isSameTexture(dstScratch, layerTex.baseScratch) {
+            os_log("ALERT: Decay target scratch for %{public}@ is BaseLayer/Scratch (%{public}@ '%{public}@') — skipping decay to prevent contamination",
+                   log: log, type: .fault, which == .satellites ? "satellites" : "shooting", ptrString(dstScratch), dstScratch.label ?? "nil")
             return
         }
-        if labelContains(srcTex, "BaseLayer") || isSameTexture(srcTex, layerTex.base) {
-            os_log("ALERT: Decay source for %{public}@ is BaseLayer (%{public}@) — skipping decay",
-                   log: log, type: .fault, which == .satellites ? "satellites" : "shooting", ptrString(srcTex))
+        if labelContains(srcTex, "BaseLayer") ||
+            isSameTexture(srcTex, layerTex.base) ||
+            isSameTexture(srcTex, layerTex.baseScratch) {
+            os_log("ALERT: Decay source for %{public}@ is BaseLayer/Scratch (%{public}@ '%{public}@') — skipping decay",
+                   log: log, type: .fault, which == .satellites ? "satellites" : "shooting", ptrString(srcTex), srcTex.label ?? "nil")
             return
         }
         
@@ -1627,8 +1632,8 @@ final class StarryMetalRenderer {
         case .satellites:
             let a = layerTex.satellites
             let b = layerTex.satellitesScratch
-            let aIsBase = labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base)
-            let bIsBase = labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base)
+            let aIsBase = labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base) || isSameTexture(a, layerTex.baseScratch)
+            let bIsBase = labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base) || isSameTexture(b, layerTex.baseScratch)
             if a != nil && !aIsBase { return a }
             if b != nil && !bIsBase {
                 os_log("SAFE-TARGET: satellites primary was invalid (base=%{public}@); using scratch %{public}@ (%{public}@)",
@@ -1643,8 +1648,8 @@ final class StarryMetalRenderer {
         case .shooting:
             let a = layerTex.shooting
             let b = layerTex.shootingScratch
-            let aIsBase = labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base)
-            let bIsBase = labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base)
+            let aIsBase = labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base) || isSameTexture(a, layerTex.baseScratch)
+            let bIsBase = labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base) || isSameTexture(b, layerTex.baseScratch)
             if a != nil && !aIsBase { return a }
             if b != nil && !bIsBase {
                 os_log("SAFE-TARGET: shooting primary was invalid (base=%{public}@); using scratch %{public}@ (%{public}@)",
@@ -1820,7 +1825,7 @@ final class StarryMetalRenderer {
         }
     }
     
-    // MARK: - Per-frame isolation dump (Base, BaseScratch, Composite)
+    // MARK: - Per-frame isolation dump (Base, BaseScratch, Composite, Sat, SatScratch)
     
     private func ensureIsolationDumpDirectory() -> URL {
         if let dir = isolationDumpDir {
@@ -1863,6 +1868,8 @@ final class StarryMetalRenderer {
         }
         let baseSnap = snapshot(layerTex.base)
         let baseScratchSnap = snapshot(layerTex.baseScratch)
+        let satSnap = snapshot(layerTex.satellites)
+        let satScratchSnap = snapshot(layerTex.satellitesScratch)
         let compositeSnap = snapshot(finalTarget)
         let frame = frameIndex
         commandBuffer.addCompletedHandler { [weak self] _ in
@@ -1874,6 +1881,8 @@ final class StarryMetalRenderer {
             }
             write(baseSnap, name: "base")
             write(baseScratchSnap, name: "baseScratch")
+            write(satSnap, name: "satellites")
+            write(satScratchSnap, name: "satellitesScratch")
             write(compositeSnap, name: headless ? "composite-headless" : "composite-onscreen")
             os_log("IsolationDump: wrote PNGs for frame #%{public}llu to %{public}@", log: self.log, type: .info, frame, dir.path)
         }
