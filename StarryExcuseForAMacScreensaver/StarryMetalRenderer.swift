@@ -186,6 +186,9 @@ final class StarryMetalRenderer {
     // --- One-shot layer dumps (PNG) ---
     private var dumpLayersNextFrame: Bool = false
     
+    // --- Isolation per-frame dump directory (when verifyBaseIsolation enabled) ---
+    private var isolationDumpDir: URL?
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -570,6 +573,7 @@ final class StarryMetalRenderer {
         // Validate inputs to avoid CAMetalLayer logs about invalid sizes.
         guard scale > 0 else { return }
         let wPx = Int(round(size.width * scale))
+        theh: do {} // no-op for analyzer noise
         let hPx = Int(round(size.height * scale))
         // If either dimension is zero or negative, do not touch the layer or textures yet.
         guard wPx > 0, hPx > 0 else { return }
@@ -809,6 +813,11 @@ final class StarryMetalRenderer {
         
         encodeCompositeAndMoon(commandBuffer: commandBuffer, target: drawable.texture, drawData: drawData, headless: false, baseIsolationBaseline: baselineForIsolation)
         
+        // If verifyBaseIsolation is enabled, enqueue per-frame dumps (Base, BaseScratch, Composite)
+        if debugVerifyBaseIsolation {
+            enqueuePerFrameIsolationDumps(commandBuffer: commandBuffer, finalTarget: drawable.texture, headless: false)
+        }
+        
         // Optional: one-shot dumps of layers as PNG to Desktop
         if dumpLayersNextFrame {
             enqueueLayerDumps(commandBuffer: commandBuffer)
@@ -887,6 +896,11 @@ final class StarryMetalRenderer {
         
         // 4) Composite into offscreen target and draw moon
         encodeCompositeAndMoon(commandBuffer: commandBuffer, target: finalTarget, drawData: drawData, headless: true, baseIsolationBaseline: nil)
+        
+        // If verifyBaseIsolation is enabled, enqueue per-frame dumps (Base, BaseScratch, Composite)
+        if debugVerifyBaseIsolation {
+            enqueuePerFrameIsolationDumps(commandBuffer: commandBuffer, finalTarget: finalTarget, headless: true)
+        }
         
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
@@ -1803,6 +1817,65 @@ final class StarryMetalRenderer {
             write(shootSnap, name: "Shoot")
             write(shootScratchSnap, name: "ShootScratch")
             os_log("DumpLayers: completed -> %{public}@", log: self.log, type: .info, dir.path)
+        }
+    }
+    
+    // MARK: - Per-frame isolation dump (Base, BaseScratch, Composite)
+    
+    private func ensureIsolationDumpDirectory() -> URL {
+        if let dir = isolationDumpDir {
+            return dir
+        }
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let base = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop", isDirectory: true)
+            .appendingPathComponent("StarryIsolation-\(stamp)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+            isolationDumpDir = base
+            os_log("IsolationDump: created %{public}@", log: log, type: .info, base.path)
+        } catch {
+            os_log("IsolationDump: failed to create dir %{public}@ (%{public}@). Falling back to temp", log: log, type: .error, base.path, "\(error)")
+            let tmp = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("StarryIsolation-\(stamp)", isDirectory: true)
+            do {
+                try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+                isolationDumpDir = tmp
+                os_log("IsolationDump: created temp %{public}@", log: log, type: .info, tmp.path)
+            } catch {
+                // As a last resort, use temp root without creating a subdir
+                isolationDumpDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+                os_log("IsolationDump: using temp root %{public}@", log: log, type: .error, isolationDumpDir!.path)
+            }
+        }
+        return isolationDumpDir!
+    }
+    
+    private func enqueuePerFrameIsolationDumps(commandBuffer: MTLCommandBuffer, finalTarget: MTLTexture?, headless: Bool) {
+        let dir = ensureIsolationDumpDirectory()
+        // Create shared snapshots via blit to allow CPU read after GPU completes
+        func snapshot(_ t: MTLTexture?) -> MTLTexture? {
+            guard let t = t else { return nil }
+            let snap = makeSnapshotTextureLike(t)
+            if let snap = snap {
+                blitCopy(from: t, to: snap, using: commandBuffer, label: "Isolation snapshot \(t.label ?? "tex")")
+            }
+            return snap
+        }
+        let baseSnap = snapshot(layerTex.base)
+        let baseScratchSnap = snapshot(layerTex.baseScratch)
+        let compositeSnap = snapshot(finalTarget)
+        let frame = frameIndex
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            guard let self = self else { return }
+            func write(_ tex: MTLTexture?, name: String) {
+                guard let tex = tex, let img = self.textureToImage(tex) else { return }
+                let url = dir.appendingPathComponent(String(format: "f%06llu-%@.png", frame, name), isDirectory: false)
+                self.savePNG(img, to: url)
+            }
+            write(baseSnap, name: "base")
+            write(baseScratchSnap, name: "baseScratch")
+            write(compositeSnap, name: headless ? "composite-headless" : "composite-onscreen")
+            os_log("IsolationDump: wrote PNGs for frame #%{public}llu to %{public}@", log: self.log, type: .info, frame, dir.path)
         }
     }
     
