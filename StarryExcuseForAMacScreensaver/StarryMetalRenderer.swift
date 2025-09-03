@@ -947,6 +947,7 @@ final class StarryMetalRenderer {
             layerTex.baseScratch = tmp
         } else if let baseTex = layerTex.base {
             // Fallback (should not happen): draw in-place
+            os_log("error! should not happen: fallback to drawing in-place base", type: .error)
             if !drawData.baseSprites.isEmpty {
                 renderSprites(into: baseTex,
                               sprites: drawData.baseSprites,
