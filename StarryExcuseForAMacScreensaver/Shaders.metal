@@ -112,21 +112,10 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
     }
 }
 
-// MARK: - Decay (robust sampled implementation)
-
-// Robust: sample source texture and multiply by keep; render into scratch target (no blending).
-fragment float4 DecaySampledFragment(VertexOut in [[stage_in]],
-                                     texture2d<float, access::sample> srcTex [[texture(0)]],
-                                     constant float4 &keepColor [[buffer(0)]]) {
-    constexpr sampler s(address::clamp_to_edge,
-                        filter::nearest,
-                        coord::normalized);
-    if (!srcTex.get_width()) {
-        return float4(0,0,0,0);
-    }
-    float4 c = srcTex.sample(s, in.texCoord);
-    return c * keepColor;
-}
+// MARK: - In-place Decay
+// The previous sampling-based decay (DecaySampledFragment) has been removed.
+// We now perform decay by drawing a fullscreen quad with SolidBlackFragment
+// and blending factors that multiply the destination color/alpha by the blend color.
 
 // MARK: - Moon shading
 // Use 16-byte-friendly packing for constant buffer to match Swift/Metal layouts.

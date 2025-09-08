@@ -101,7 +101,6 @@ final class StarryMetalRenderer {
     private var compositePipeline: MTLRenderPipelineState!
     private var spriteOverPipeline: MTLRenderPipelineState!
     private var spriteAdditivePipeline: MTLRenderPipelineState!
-    private var decaySampledPipeline: MTLRenderPipelineState!
     private var decayInPlacePipeline: MTLRenderPipelineState!
     private var moonPipeline: MTLRenderPipelineState!
     
@@ -413,15 +412,7 @@ final class StarryMetalRenderer {
             blend?.alphaBlendOperation = .add
             spriteAdditivePipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
-        do {
-            let desc = MTLRenderPipelineDescriptor()
-            desc.label = "DecaySampled"
-            desc.vertexFunction = library.makeFunction(name: "TexturedQuadVertex")
-            desc.fragmentFunction = library.makeFunction(name: "DecaySampledFragment")
-            desc.colorAttachments[0].pixelFormat = .bgra8Unorm
-            desc.colorAttachments[0].isBlendingEnabled = false
-            decaySampledPipeline = try device.makeRenderPipelineState(descriptor: desc)
-        }
+        // Removed DecaySampled pipeline (sampling-based decay). We now use only in-place decay.
         do {
             let desc = MTLRenderPipelineDescriptor()
             desc.label = "DecayInPlace"
@@ -1155,24 +1146,28 @@ final class StarryMetalRenderer {
         let keep = decayKeep(forHalfLife: halfLife, dt: dt)
         
         if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
-            os_log("Decay pass %{public}@ keep=%{public}.4f (halfLife=%{public}.3f dt=%{public}.4f)",
+            os_log("Decay in-place %{public}@ keep=%{public}.4f (halfLife=%{public}.3f dt=%{public}.4f)",
                    log: log, type: .debug,
                    (which == .satellites ? "satellites" : "shooting"),
                    keep, halfLife, (dt ?? 0))
         }
         
+        let target: MTLTexture? = (which == .satellites) ? layerTex.satellites : layerTex.shooting
+        guard let tex = target else {
+            os_log("applyDecay: missing target texture for %{public}@ layer", log: log, type: .error, which == .satellites ? "satellites" : "shooting")
+            return
+        }
+        
         if keep <= 1e-6 {
-            let target: MTLTexture? = (which == .satellites) ? layerTex.satellites : layerTex.shooting
             let rpd = MTLRenderPassDescriptor()
-            rpd.colorAttachments[0].texture = target
+            rpd.colorAttachments[0].texture = tex
             rpd.colorAttachments[0].loadAction = .clear
             rpd.colorAttachments[0].storeAction = .store
             rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
-            if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd),
-               let t = target {
-                enc.pushDebugGroup("Decay Clear -> \(t.label ?? "tex")")
+            if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) {
+                enc.pushDebugGroup("Decay Clear -> \(tex.label ?? "tex")")
                 let vp = MTLViewport(originX: 0, originY: 0,
-                                     width: Double(t.width), height: Double(t.height),
+                                     width: Double(tex.width), height: Double(tex.height),
                                      znear: 0, zfar: 1)
                 enc.setViewport(vp)
                 enc.popDebugGroup()
@@ -1181,72 +1176,27 @@ final class StarryMetalRenderer {
             return
         }
         
-        let src: MTLTexture?
-        let scratch: MTLTexture?
-        switch which {
-        case .satellites:
-            src = layerTex.satellites
-            scratch = layerTex.satellitesScratch
-        case .shooting:
-            src = layerTex.shooting
-            scratch = layerTex.shootingScratch
-        }
-        guard let srcTex = src, let dstScratch = scratch else {
-            os_log("applyDecay: missing textures for %{public}@ layer (src=%{public}@ scratch=%{public}@)",
-                   log: log, type: .error,
-                   (which == .satellites ? "satellites" : "shooting"),
-                   String(describing: src),
-                   String(describing: scratch))
-            return
-        }
-        
+        // In-place decay: draw fullscreen quad with SolidBlackFragment; blending scales destination by keep.
         let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = dstScratch
-        rpd.colorAttachments[0].loadAction = .dontCare
+        rpd.colorAttachments[0].texture = tex
+        rpd.colorAttachments[0].loadAction = .load
         rpd.colorAttachments[0].storeAction = .store
         
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else { return }
-        encoder.pushDebugGroup("DecaySampled -> \(dstScratch.label ?? "scratch") keep=\(keep)")
+        encoder.pushDebugGroup("DecayInPlace -> \(tex.label ?? "tex") keep=\(keep)")
         let vp = MTLViewport(originX: 0, originY: 0,
-                             width: Double(dstScratch.width),
-                             height: Double(dstScratch.height),
+                             width: Double(tex.width),
+                             height: Double(tex.height),
                              znear: 0, zfar: 1)
         encoder.setViewport(vp)
-        encoder.setRenderPipelineState(decaySampledPipeline)
+        encoder.setRenderPipelineState(decayInPlacePipeline)
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         }
-        encoder.setFragmentTexture(srcTex, index: 0)
-        var keepColor = SIMD4<Float>(repeating: keep)
-        encoder.setFragmentBytes(&keepColor,
-                                 length: MemoryLayout<SIMD4<Float>>.stride,
-                                 index: FragmentBufferIndex.quadUniforms)
+        encoder.setBlendColor(red: Double(keep), green: Double(keep), blue: Double(keep), alpha: Double(keep))
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
         encoder.endEncoding()
-        
-        if diagnosticsEnabled {
-            os_log("DecaySampled: %{public}@ src=%{public}@ -> dst=%{public}@",
-                   log: log, type: .debug,
-                   which == .satellites ? "SATELLITES" : "SHOOTING",
-                   srcTex.label ?? "tex",
-                   dstScratch.label ?? "tex")
-        }
-        
-        swapTrailTextures(which)
-    }
-    
-    private func swapTrailTextures(_ which: TrailLayer) {
-        switch which {
-        case .satellites:
-            let a = layerTex.satellites
-            layerTex.satellites = layerTex.satellitesScratch
-            layerTex.satellitesScratch = a
-        case .shooting:
-            let a = layerTex.shooting
-            layerTex.shooting = layerTex.shootingScratch
-            layerTex.shootingScratch = a
-        }
     }
     
     private func ptrString(_ t: MTLTexture) -> String {
