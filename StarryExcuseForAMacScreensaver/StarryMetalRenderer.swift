@@ -1200,21 +1200,6 @@ final class StarryMetalRenderer {
             return
         }
         
-        if labelContains(dstScratch, "BaseLayer") ||
-            isSameTexture(dstScratch, layerTex.base) ||
-            isSameTexture(dstScratch, layerTex.baseScratch) {
-            os_log("ALERT: Decay scratch is BaseLayer for %{public}@ — skipping",
-                   log: log, type: .fault, which == .satellites ? "satellites" : "shooting")
-            return
-        }
-        if labelContains(srcTex, "BaseLayer") ||
-            isSameTexture(srcTex, layerTex.base) ||
-            isSameTexture(srcTex, layerTex.baseScratch) {
-            os_log("ALERT: Decay src is BaseLayer for %{public}@ — skipping",
-                   log: log, type: .fault, which == .satellites ? "satellites" : "shooting")
-            return
-        }
-        
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = dstScratch
         rpd.colorAttachments[0].loadAction = .dontCare
