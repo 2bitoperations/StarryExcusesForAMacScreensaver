@@ -20,7 +20,6 @@ import simd
 //       "everyNFrames" | "debugLogEveryN": Int -> diagnosticsEveryNFrames
 //       "skipSatellitesDraw": Bool             -> debugSkipSatellitesDraw
 //       "verifyBaseImmutability": Bool         -> debugVerifyBaseImmutability
-//       "verifyBaseIsolation": Bool            -> debugVerifyBaseIsolation (incremental checks after each non-base step; base NOT suppressed)
 //       "overlayEnabled": Bool                 -> debugOverlayEnabled
 //       "satellitesHalfLifeSeconds": Double    -> satellitesHalfLifeSeconds
 //       "shootingHalfLifeSeconds": Double      -> shootingHalfLifeSeconds
@@ -32,21 +31,13 @@ import simd
 //       "dumpLayersNextFrame": Bool           -> one-time dump of Base/Sat/SatScratch/Shoot/ShootScratch as PNGs to Desktop
 //
 //     Notes for keys intended for StarryEngine (not handled here):
-//       "starsPerUpdate": Int                  -> requires StarryEngine (not set here)
-//       "buildingLightsPerUpdate": Int         -> requires StarryEngine (not set here)
+//       "starsPerUpdate": Int
+//       "buildingLightsPerUpdate": Int
 //
 // - "StarryClear"
 //     userInfo:
-//       "target": String                       -> one of "all", "base", "satellites", "shooting"
-//     If missing or invalid, "all" is assumed.
+//       "target": String -> one of "all", "base", "satellites", "shooting" (default all)
 //
-// Convenience posting example (Swift):
-// DistributedNotificationCenter.default().post(
-//     name: Notification.Name("StarryDiagnostics"),
-//     object: nil,
-//     userInfo: ["enabled": true, "everyNFrames": 120, "dropBaseEveryN": 300]
-// )
-
 final class StarryMetalRenderer {
     
     // MARK: - Nested Types
@@ -156,21 +147,19 @@ final class StarryMetalRenderer {
     
     private var debugObserversInstalled: Bool = false
     
+    // Immutability verification
     private var debugVerifyBaseImmutability: Bool = false
     private var baseSnapshotBefore: MTLTexture?
     private var baseSnapshotAfter: MTLTexture?
     
-    private var debugVerifyBaseIsolation: Bool = false
-    private var baseIsoPerPassSnapshots: [(tag: String, snap: MTLTexture)] = []
-    
+    // GPU capture
     private var gpuCapturePendingStart: Bool = false
     private var gpuCaptureActive: Bool = false
     private var gpuCaptureFramesRemaining: Int = 0
     private var gpuCaptureOutputURL: URL?
     
+    // One-shot layer dumps
     private var dumpLayersNextFrame: Bool = false
-    
-    private var isolationDumpDir: URL?
     
     // MARK: - Init (onscreen)
     
@@ -286,10 +275,6 @@ final class StarryMetalRenderer {
         if let v: Bool = value("verifyBaseImmutability", from: ui) {
             debugVerifyBaseImmutability = v
             applied.append("verifyBaseImmutability=\(v)")
-        }
-        if let v: Bool = value("verifyBaseIsolation", from: ui) {
-            debugVerifyBaseIsolation = v
-            applied.append("verifyBaseIsolation=\(v)")
         }
         if let v: Bool = value("overlayEnabled", from: ui) {
             debugOverlayEnabled = v
@@ -720,12 +705,11 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
         
-        let baselineForIsolation = encodeScenePasses(commandBuffer: commandBuffer,
-                                                     drawData: drawData,
-                                                     dt: dt,
-                                                     enableImmutabilityVerification: true,
-                                                     enableIsolationVerification: true,
-                                                     headless: false)
+        encodeScenePasses(commandBuffer: commandBuffer,
+                          drawData: drawData,
+                          dt: dt,
+                          enableImmutabilityVerification: true,
+                          headless: false)
         
         guard let drawable = metalLayer?.nextDrawable() else {
             os_log("No CAMetalLayer drawable available this frame", log: log, type: .error)
@@ -738,14 +722,7 @@ final class StarryMetalRenderer {
         encodeCompositeAndMoon(commandBuffer: commandBuffer,
                                target: drawable.texture,
                                drawData: drawData,
-                               headless: false,
-                               baseIsolationBaseline: baselineForIsolation)
-        
-        if debugVerifyBaseIsolation {
-            enqueuePerFrameIsolationDumps(commandBuffer: commandBuffer,
-                                          finalTarget: drawable.texture,
-                                          headless: false)
-        }
+                               headless: false)
         
         if dumpLayersNextFrame {
             enqueueLayerDumps(commandBuffer: commandBuffer)
@@ -804,24 +781,16 @@ final class StarryMetalRenderer {
         
         logFrameDiagnostics(prefix: "[Headless] ", drawData: drawData, dt: dt)
         
-        _ = encodeScenePasses(commandBuffer: commandBuffer,
-                              drawData: drawData,
-                              dt: dt,
-                              enableImmutabilityVerification: false,
-                              enableIsolationVerification: false,
-                              headless: true)
+        encodeScenePasses(commandBuffer: commandBuffer,
+                          drawData: drawData,
+                          dt: dt,
+                          enableImmutabilityVerification: false,
+                          headless: true)
         
         encodeCompositeAndMoon(commandBuffer: commandBuffer,
                                target: finalTarget,
                                drawData: drawData,
-                               headless: true,
-                               baseIsolationBaseline: nil)
-        
-        if debugVerifyBaseIsolation {
-            enqueuePerFrameIsolationDumps(commandBuffer: commandBuffer,
-                                          finalTarget: finalTarget,
-                                          headless: true)
-        }
+                               headless: true)
         
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
@@ -830,14 +799,14 @@ final class StarryMetalRenderer {
         return textureToImage(finalTarget)
     }
     
-    // MARK: - Shared encoders
+    // MARK: - Scene passes (no layer isolation code anymore)
     
     private func encodeScenePasses(commandBuffer: MTLCommandBuffer,
                                    drawData: StarryDrawData,
                                    dt: CFTimeInterval?,
                                    enableImmutabilityVerification: Bool,
-                                   enableIsolationVerification: Bool,
-                                   headless: Bool) -> MTLTexture? {
+                                   headless: Bool) {
+        // Optional periodic forced base clear
         if dropBaseEveryNFrames > 0,
            let baseTex = layerTex.base,
            (frameIndex % UInt64(dropBaseEveryNFrames) == 0) {
@@ -849,6 +818,7 @@ final class StarryMetalRenderer {
             }
         }
         
+        // One-time pending base clear (debug)
         if debugClearBasePending {
             if let baseTex = layerTex.base {
                 clearTexture(baseTex, commandBuffer: commandBuffer,
@@ -861,8 +831,7 @@ final class StarryMetalRenderer {
             debugClearBasePending = false
         }
         
-        baseIsoPerPassSnapshots.removeAll(keepingCapacity: true)
-        
+        // --- BASE PASS ---
         if let baseTex = layerTex.base, let baseScratch = layerTex.baseScratch {
             if !drawData.baseSprites.isEmpty {
                 renderSprites(into: baseTex,
@@ -883,12 +852,13 @@ final class StarryMetalRenderer {
             }
         }
         
-        let shouldVerifyBase = enableImmutabilityVerification &&
+        let shouldVerifyBaseImmutability =
+            enableImmutabilityVerification &&
             debugVerifyBaseImmutability &&
             drawData.baseSprites.isEmpty &&
             (layerTex.base != nil)
         
-        if shouldVerifyBase, let baseTex = layerTex.base {
+        if shouldVerifyBaseImmutability, let baseTex = layerTex.base {
             baseSnapshotBefore = makeSnapshotTextureLike(baseTex)
             if let snap = baseSnapshotBefore {
                 blitCopy(from: baseTex, to: snap, using: commandBuffer,
@@ -896,51 +866,10 @@ final class StarryMetalRenderer {
             }
         }
         
-        var baseIsolationBaseline: MTLTexture?
-        if enableIsolationVerification,
-           debugVerifyBaseIsolation,
-           let baseTex = layerTex.base,
-           let baseline = makeSnapshotTextureLike(baseTex) {
-            blitCopy(from: baseTex, to: baseline, using: commandBuffer, label: "Isolation Baseline AFTER BASE-PASS")
-            baseIsolationBaseline = baseline
-            baseIsoPerPassSnapshots.append(("baseline", baseline))
-        }
-        
-        func checkpointIsolation(_ tag: String) {
-            guard let baseline = baseIsolationBaseline,
-                  enableIsolationVerification,
-                  debugVerifyBaseIsolation,
-                  let baseTex = layerTex.base,
-                  let snap = makeSnapshotTextureLike(baseTex) else { return }
-            blitCopy(from: baseTex, to: snap, using: commandBuffer, label: "Isolation snapshot \(tag)")
-            baseIsoPerPassSnapshots.append((tag, snap))
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                guard let self = self else { return }
-                let sumBaseline = self.computeChecksum(of: baseline)
-                let sumStep = self.computeChecksum(of: snap)
-                if sumBaseline != sumStep {
-                    os_log("ALERT: BaseLayer changed after step '%{public}@' (baseline=%{public}@, current=%{public}@)",
-                           log: self.log, type: .fault,
-                           tag,
-                           String(format: "0x%016llx", sumBaseline),
-                           String(format: "0x%016llx", sumStep))
-                } else {
-                    os_log("VerifyBaseIsolation: no change after '%{public}@' (checksum=%{public}@)",
-                           log: self.log, type: .debug,
-                           tag,
-                           String(format: "0x%016llx", sumBaseline))
-                }
-            }
-        }
-        
-        if debugCompositeMode == .baseOnly {
-            os_log(headless ? "[Headless] BASE-ONLY: skipping satellites/shooting" :
-                              "BASE-ONLY: skipping satellites/shooting",
-                   log: log, type: .debug)
-        } else {
+        if debugCompositeMode != .baseOnly {
+            // Satellites
             if layerTex.satellites != nil {
                 applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
-                checkpointIsolation("after-sat-decay")
                 if !debugSkipSatellitesDraw && !drawData.satellitesSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.satellites) {
                         renderSprites(into: safeDst,
@@ -948,19 +877,14 @@ final class StarryMetalRenderer {
                                       pipeline: spriteAdditivePipeline,
                                       commandBuffer: commandBuffer,
                                       provenance: .satellites)
-                        checkpointIsolation("after-sat-draw")
                     } else {
-                        os_log("ALERT: No safe satellites target — skipping draw", log: log, type: .fault)
-                        checkpointIsolation("after-sat-no-target")
+                        os_log("ALERT: No safe satellites target — skipping satellites draw", log: log, type: .fault)
                     }
-                } else {
-                    checkpointIsolation("after-sat-noop")
                 }
             }
-            
+            // Shooting
             if layerTex.shooting != nil {
                 applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
-                checkpointIsolation("after-shoot-decay")
                 if !drawData.shootingSprites.isEmpty {
                     if let safeDst = safeLayerTarget(.shooting) {
                         renderSprites(into: safeDst,
@@ -968,18 +892,15 @@ final class StarryMetalRenderer {
                                       pipeline: spriteAdditivePipeline,
                                       commandBuffer: commandBuffer,
                                       provenance: .shooting)
-                        checkpointIsolation("after-shoot-draw")
                     } else {
-                        os_log("ALERT: No safe shooting target — skipping draw", log: log, type: .fault)
-                        checkpointIsolation("after-shoot-no-target")
+                        os_log("ALERT: No safe shooting target — skipping shooting draw", log: log, type: .fault)
                     }
-                } else {
-                    checkpointIsolation("after-shoot-noop")
                 }
             }
         }
         
-        if shouldVerifyBase, let baseTex = layerTex.base {
+        // Immutability post-check
+        if shouldVerifyBaseImmutability, let baseTex = layerTex.base {
             baseSnapshotAfter = makeSnapshotTextureLike(baseTex)
             if let snap = baseSnapshotAfter {
                 blitCopy(from: baseTex, to: snap, using: commandBuffer,
@@ -992,7 +913,7 @@ final class StarryMetalRenderer {
                 let sumB = self.computeChecksum(of: b)
                 let sumA = self.computeChecksum(of: a)
                 if sumB != sumA {
-                    os_log("ALERT: BaseLayer changed in frame with ZERO baseSprites (before=%{public}@ after=%{public}@)",
+                    os_log("ALERT: BaseLayer changed in a frame with ZERO baseSprites (before=%{public}@ after=%{public}@)",
                            log: self.log, type: .fault,
                            String(format: "0x%016llx", sumB),
                            String(format: "0x%016llx", sumA))
@@ -1003,15 +924,12 @@ final class StarryMetalRenderer {
                 }
             }
         }
-        
-        return baseIsolationBaseline
     }
     
     private func encodeCompositeAndMoon(commandBuffer: MTLCommandBuffer,
                                         target: MTLTexture,
                                         drawData: StarryDrawData,
-                                        headless: Bool,
-                                        baseIsolationBaseline: MTLTexture?) {
+                                        headless: Bool) {
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = target
         rpd.colorAttachments[0].loadAction = .clear
@@ -1070,48 +988,6 @@ final class StarryMetalRenderer {
         }
         encoder.popDebugGroup()
         encoder.endEncoding()
-        
-        if let baseline = baseIsolationBaseline,
-           debugVerifyBaseIsolation,
-           let baseTex = layerTex.base,
-           let snap = makeSnapshotTextureLike(baseTex) {
-            blitCopy(from: baseTex, to: snap, using: commandBuffer,
-                     label: "Isolation snapshot after-composite+moon")
-            baseIsoPerPassSnapshots.append(("after-composite+moon", snap))
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                guard let self = self else { return }
-                let sumBaseline = self.computeChecksum(of: baseline)
-                let sumStep = self.computeChecksum(of: snap)
-                if sumBaseline != sumStep {
-                    os_log("ALERT: BaseLayer changed after step '%{public}@' (baseline=%{public}@, current=%{public}@)",
-                           log: self.log, type: .fault,
-                           "after-composite+moon",
-                           String(format: "0x%016llx", sumBaseline),
-                           String(format: "0x%016llx", sumStep))
-                } else {
-                    os_log("VerifyBaseIsolation: no change after '%{public}@' (checksum=%{public}@)",
-                           log: self.log, type: .debug,
-                           "after-composite+moon",
-                           String(format: "0x%016llx", sumBaseline))
-                }
-                if self.baseIsoPerPassSnapshots.count >= 2 {
-                    var prevSum: UInt64?
-                    var prevTag: String = ""
-                    for (tag, tex) in self.baseIsoPerPassSnapshots {
-                        let sum = self.computeChecksum(of: tex)
-                        os_log("IsolationTrace: Base checksum after '%{public}@' = %{public}@",
-                               log: self.log, type: .debug,
-                               tag, String(format: "0x%016llx", sum))
-                        if let p = prevSum, p != sum {
-                            os_log("ALERT: Base changed between '%{public}@' and '%{public}@'",
-                                   log: self.log, type: .fault, prevTag, tag)
-                        }
-                        prevSum = sum
-                        prevTag = tag
-                    }
-                }
-            }
-        }
     }
     
     // MARK: - Helpers
@@ -1336,7 +1212,7 @@ final class StarryMetalRenderer {
         let halfLife: Double = (which == .satellites) ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
         let keep = decayKeep(forHalfLife: halfLife, dt: dt)
         
-        if diagnosticsEnabled && !debugVerifyBaseIsolation && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
+        if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
             os_log("Decay pass %{public}@ keep=%{public}.4f (halfLife=%{public}.3f dt=%{public}.4f)",
                    log: log, type: .debug,
                    (which == .satellites ? "satellites" : "shooting"),
@@ -1354,8 +1230,7 @@ final class StarryMetalRenderer {
                let t = target {
                 enc.pushDebugGroup("Decay Clear -> \(t.label ?? "tex")")
                 let vp = MTLViewport(originX: 0, originY: 0,
-                                     width: Double(t.width),
-                                     height: Double(t.height),
+                                     width: Double(t.width), height: Double(t.height),
                                      znear: 0, zfar: 1)
                 enc.setViewport(vp)
                 enc.popDebugGroup()
@@ -1423,7 +1298,7 @@ final class StarryMetalRenderer {
         encoder.popDebugGroup()
         encoder.endEncoding()
         
-        if diagnosticsEnabled && !debugVerifyBaseIsolation {
+        if diagnosticsEnabled {
             os_log("DecaySampled: %{public}@ src=%{public}@ -> dst=%{public}@",
                    log: log, type: .debug,
                    which == .satellites ? "SATELLITES" : "SHOOTING",
@@ -1484,8 +1359,6 @@ final class StarryMetalRenderer {
             return nil
         }
     }
-    
-    // MARK: - Debug helpers
     
     private func provenanceString(_ p: LayerProvenance) -> String {
         switch p {
@@ -1619,70 +1492,6 @@ final class StarryMetalRenderer {
             write(shootSnap, name: "Shoot")
             write(shootScratchSnap, name: "ShootScratch")
             os_log("DumpLayers: completed -> %{public}@", log: self.log, type: .info, dir.path)
-        }
-    }
-    
-    // MARK: - Per-frame isolation dump
-    
-    private func ensureIsolationDumpDirectory() -> URL {
-        if let dir = isolationDumpDir {
-            return dir
-        }
-        let stamp = ISO8601DateFormatter().string(from: Date())
-        let base = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Desktop", isDirectory: true)
-            .appendingPathComponent("StarryIsolation-\(stamp)", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-            isolationDumpDir = base
-            os_log("IsolationDump: created %{public}@", log: log, type: .info, base.path)
-        } catch {
-            os_log("IsolationDump: failed to create dir %{public}@ (%{public}@). Falling back to temp",
-                   log: log, type: .error, base.path, "\(error)")
-            let tmp = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-                .appendingPathComponent("StarryIsolation-\(stamp)", isDirectory: true)
-            do {
-                try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
-                isolationDumpDir = tmp
-                os_log("IsolationDump: created temp %{public}@", log: log, type: .info, tmp.path)
-            } catch {
-                isolationDumpDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-                os_log("IsolationDump: using temp root %{public}@", log: log, type: .error, isolationDumpDir!.path)
-            }
-        }
-        return isolationDumpDir!
-    }
-    
-    private func enqueuePerFrameIsolationDumps(commandBuffer: MTLCommandBuffer, finalTarget: MTLTexture?, headless: Bool) {
-        let dir = ensureIsolationDumpDirectory()
-        func snapshot(_ t: MTLTexture?) -> MTLTexture? {
-            guard let t = t else { return nil }
-            let snap = makeSnapshotTextureLike(t)
-            if let snap = snap {
-                blitCopy(from: t, to: snap, using: commandBuffer, label: "Isolation snapshot \(t.label ?? "tex")")
-            }
-            return snap
-        }
-        let baseSnap = snapshot(layerTex.base)
-        let baseScratchSnap = snapshot(layerTex.baseScratch)
-        let satSnap = snapshot(layerTex.satellites)
-        let satScratchSnap = snapshot(layerTex.satellitesScratch)
-        let compositeSnap = snapshot(finalTarget)
-        let frame = frameIndex
-        commandBuffer.addCompletedHandler { [weak self] _ in
-            guard let self = self else { return }
-            func write(_ tex: MTLTexture?, name: String) {
-                guard let tex = tex, let img = self.textureToImage(tex) else { return }
-                let url = dir.appendingPathComponent(String(format: "f%06llu-%@.png", frame, name), isDirectory: false)
-                self.savePNG(img, to: url)
-            }
-            write(baseSnap, name: "base")
-            write(baseScratchSnap, name: "baseScratch")
-            write(satSnap, name: "satellites")
-            write(satScratchSnap, name: "satellitesScratch")
-            write(compositeSnap, name: headless ? "composite-headless" : "composite-onscreen")
-            os_log("IsolationDump: wrote PNGs for frame #%{public}llu to %{public}@",
-                   log: self.log, type: .info, frame, dir.path)
         }
     }
     
