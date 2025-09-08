@@ -1193,7 +1193,8 @@ final class StarryMetalRenderer {
         if let quad = quadVertexBuffer {
             encoder.setVertexBuffer(quad, offset: 0, index: 0)
         }
-        encoder.setBlendColor(red: Double(keep), green: Double(keep), blue: Double(keep), alpha: Double(keep))
+        // FIX: setBlendColor expects Float parameters; pass keep (Float) directly.
+        encoder.setBlendColor(red: keep, green: keep, blue: keep, alpha: keep)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
         encoder.endEncoding()
