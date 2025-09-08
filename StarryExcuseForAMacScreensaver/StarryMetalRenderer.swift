@@ -52,6 +52,10 @@ final class StarryMetalRenderer {
     // MARK: - Nested Types
     
     private struct LayerTextures {
+        // BaseLayer is now the ONLY texture that ever receives "base" sprites.
+        // After rendering those sprites, we COPY BaseLayer -> BaseLayerScratch each frame.
+        // BaseLayerScratch is read-only for the rest of the frame (composite, diagnostics, etc).
+        // We no longer ping-pong / swap these two textures.
         var base: MTLTexture?
         var baseScratch: MTLTexture?
         var satellites: MTLTexture?
@@ -849,6 +853,7 @@ final class StarryMetalRenderer {
                                    enableImmutabilityVerification: Bool,
                                    enableIsolationVerification: Bool,
                                    headless: Bool) -> MTLTexture? {
+        // Optional periodic forced base clear
         if dropBaseEveryNFrames > 0,
            let baseTex = layerTex.base,
            (frameIndex % UInt64(dropBaseEveryNFrames) == 0) {
@@ -858,6 +863,7 @@ final class StarryMetalRenderer {
             }
         }
         
+        // One-time pending base clear (debug)
         if debugClearBasePending {
             if let baseTex = layerTex.base {
                 clearTexture(baseTex, commandBuffer: commandBuffer, label: headless ? "Debug One-Time Base Clear (headless)" : "Debug One-Time Base Clear")
@@ -868,22 +874,25 @@ final class StarryMetalRenderer {
             debugClearBasePending = false
         }
         
+        // Reset isolation snapshots each frame
         baseIsoPerPassSnapshots.removeAll(keepingCapacity: true)
         
+        // --- NEW BASE PIPELINE (no ping-pong) ---
+        // 1. Render base sprites ONLY into BaseLayer (if any).
+        // 2. Copy BaseLayer -> BaseLayerScratch (read-only for the rest of this frame).
         if let baseTex = layerTex.base, let baseScratch = layerTex.baseScratch {
-            blitCopy(from: baseTex, to: baseScratch, using: commandBuffer, label: headless ? "Base ping-pong copy (headless)" : "Base ping-pong copy")
             if !drawData.baseSprites.isEmpty {
-                renderSprites(into: baseScratch,
+                renderSprites(into: baseTex,
                               sprites: drawData.baseSprites,
                               pipeline: spriteOverPipeline,
                               commandBuffer: commandBuffer,
                               provenance: .base)
             }
-            let tmp = layerTex.base
-            layerTex.base = layerTex.baseScratch
-            layerTex.baseScratch = tmp
+            // Always copy (overwrite) baseScratch so the rest of the pipeline uses the post-sprite base.
+            blitCopy(from: baseTex, to: baseScratch, using: commandBuffer, label: headless ? "Base copy -> Scratch (headless)" : "Base copy -> Scratch")
         } else if let baseTex = layerTex.base {
-            os_log("error! should not happen: fallback to drawing in-place base", type: .error)
+            // Fallback (should not happen): still render directly if scratch missing.
+            os_log("WARNING: baseScratch missing; rendering base sprites directly only", log: log, type: .fault)
             if !drawData.baseSprites.isEmpty {
                 renderSprites(into: baseTex,
                               sprites: drawData.baseSprites,
@@ -892,6 +901,7 @@ final class StarryMetalRenderer {
                               provenance: .base)
             }
         }
+        // ----------------------------------------
         
         let shouldVerifyBase = enableImmutabilityVerification && debugVerifyBaseImmutability && drawData.baseSprites.isEmpty && (layerTex.base != nil)
         if shouldVerifyBase, let baseTex = layerTex.base {
@@ -1047,13 +1057,14 @@ final class StarryMetalRenderer {
             encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
+        // IMPORTANT: We now composite using BaseLayerScratch (snapshot of persistent base after sprite updates)
         switch debugCompositeMode {
         case .satellitesOnly:
             drawTex(layerTex.satellites)
         case .baseOnly:
-            drawTex(layerTex.base)
+            drawTex(layerTex.baseScratch)
         case .normal:
-            drawTex(layerTex.base)
+            drawTex(layerTex.baseScratch)
             drawTex(layerTex.satellites)
             drawTex(layerTex.shooting)
         }
@@ -1361,12 +1372,13 @@ final class StarryMetalRenderer {
             let baseHit = (isSameTexture(target, layerTex.base) || isSameTexture(target, layerTex.baseScratch) || labelContains(target, "BaseLayer"))
             let severity: OSLogType = baseHit ? .fault : .info
             let sampleCenters = sprites.prefix(3).map { String(format: "(%.1f,%.1f)", $0.centerPx.x, $0.centerPx.y) }.joined(separator: ",")
-            os_log("SATELLITE-LIKE SPRITES DETECTED: provenance=%{public}@ pipeline=%{public}@ additive=%{public}@ target=%{public}@ (%{public}@) baseTarget=%{public}@ count=%{public}d centers=[%{public}@] compositeMode=%{public}@ skipSat=%{public}@",
+            os_log("SATELLITE-LIKE SPRITES DETECTED: provenance=%{public}@ pipeline=%{public}@ additive=%{public}@ target=%{public}@ (%{public}@) baseTarget=%{public}@ count=%{public}d centers=[%{public}@] compositeMode=%{public}@ skipSat=%{public}@ heuristic=%{public}@",
                    log: log, type: severity,
                    provenanceString(provenance), pipeKind, additive,
                    tgtLbl, tgtPtr, baseHit ? "YES" : "no", sprites.count, sampleCenters,
                    (debugCompositeMode == .normal ? "NORMAL" : (debugCompositeMode == .satellitesOnly ? "SAT-ONLY" : "BASE-ONLY")),
-                   debugSkipSatellitesDraw ? "YES" : "no")
+                   debugSkipSatellitesDraw ? "YES" : "no",
+                   satelliteHeuristic ? "YES" : "no")
             if baseHit {
                 // Dump detailed per-sprite info when suspicious
                 for (i, s) in sprites.enumerated() {
