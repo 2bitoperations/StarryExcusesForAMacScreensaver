@@ -19,7 +19,6 @@ import simd
 //       "enabled": Bool                         -> diagnosticsEnabled
 //       "everyNFrames" | "debugLogEveryN": Int -> diagnosticsEveryNFrames
 //       "skipSatellitesDraw": Bool             -> debugSkipSatellitesDraw
-//       "verifyBaseImmutability": Bool         -> debugVerifyBaseImmutability
 //       "overlayEnabled": Bool                 -> debugOverlayEnabled
 //       "satellitesHalfLifeSeconds": Double    -> satellitesHalfLifeSeconds
 //       "shootingHalfLifeSeconds": Double      -> shootingHalfLifeSeconds
@@ -147,11 +146,6 @@ final class StarryMetalRenderer {
     
     private var debugObserversInstalled: Bool = false
     
-    // Immutability verification
-    private var debugVerifyBaseImmutability: Bool = false
-    private var baseSnapshotBefore: MTLTexture?
-    private var baseSnapshotAfter: MTLTexture?
-    
     // GPU capture
     private var gpuCapturePendingStart: Bool = false
     private var gpuCaptureActive: Bool = false
@@ -271,10 +265,6 @@ final class StarryMetalRenderer {
         if let v: Bool = value("skipSatellitesDraw", from: ui) {
             debugSkipSatellitesDraw = v
             applied.append("skipSatellitesDraw=\(v)")
-        }
-        if let v: Bool = value("verifyBaseImmutability", from: ui) {
-            debugVerifyBaseImmutability = v
-            applied.append("verifyBaseImmutability=\(v)")
         }
         if let v: Bool = value("overlayEnabled", from: ui) {
             debugOverlayEnabled = v
@@ -571,11 +561,6 @@ final class StarryMetalRenderer {
         os_log("Debug: composite mode set to %{public}@", log: log, type: .info, enabled ? "BASE-ONLY" : "NORMAL")
     }
     
-    func setDebugVerifyBaseImmutability(_ enabled: Bool) {
-        debugVerifyBaseImmutability = enabled
-        os_log("Debug: verify BaseLayer immutability is %{public}@", log: log, type: .info, enabled ? "ENABLED" : "disabled")
-    }
-    
     func setTrailHalfLives(satellites: Double?, shooting: Double?) {
         satellitesHalfLifeSeconds = satellites ?? 0.5
         shootingHalfLifeSeconds = shooting ?? 0.5
@@ -708,7 +693,6 @@ final class StarryMetalRenderer {
         encodeScenePasses(commandBuffer: commandBuffer,
                           drawData: drawData,
                           dt: dt,
-                          enableImmutabilityVerification: true,
                           headless: false)
         
         guard let drawable = metalLayer?.nextDrawable() else {
@@ -784,7 +768,6 @@ final class StarryMetalRenderer {
         encodeScenePasses(commandBuffer: commandBuffer,
                           drawData: drawData,
                           dt: dt,
-                          enableImmutabilityVerification: false,
                           headless: true)
         
         encodeCompositeAndMoon(commandBuffer: commandBuffer,
@@ -799,12 +782,11 @@ final class StarryMetalRenderer {
         return textureToImage(finalTarget)
     }
     
-    // MARK: - Scene passes (no layer isolation code anymore)
+    // MARK: - Scene passes (immutability verification removed)
     
     private func encodeScenePasses(commandBuffer: MTLCommandBuffer,
                                    drawData: StarryDrawData,
                                    dt: CFTimeInterval?,
-                                   enableImmutabilityVerification: Bool,
                                    headless: Bool) {
         // Optional periodic forced base clear
         if dropBaseEveryNFrames > 0,
@@ -852,20 +834,6 @@ final class StarryMetalRenderer {
             }
         }
         
-        let shouldVerifyBaseImmutability =
-            enableImmutabilityVerification &&
-            debugVerifyBaseImmutability &&
-            drawData.baseSprites.isEmpty &&
-            (layerTex.base != nil)
-        
-        if shouldVerifyBaseImmutability, let baseTex = layerTex.base {
-            baseSnapshotBefore = makeSnapshotTextureLike(baseTex)
-            if let snap = baseSnapshotBefore {
-                blitCopy(from: baseTex, to: snap, using: commandBuffer,
-                         label: "Snapshot Base BEFORE (immutability)")
-            }
-        }
-        
         if debugCompositeMode != .baseOnly {
             // Satellites
             if layerTex.satellites != nil {
@@ -895,32 +863,6 @@ final class StarryMetalRenderer {
                     } else {
                         os_log("ALERT: No safe shooting target — skipping shooting draw", log: log, type: .fault)
                     }
-                }
-            }
-        }
-        
-        // Immutability post-check
-        if shouldVerifyBaseImmutability, let baseTex = layerTex.base {
-            baseSnapshotAfter = makeSnapshotTextureLike(baseTex)
-            if let snap = baseSnapshotAfter {
-                blitCopy(from: baseTex, to: snap, using: commandBuffer,
-                         label: "Snapshot Base AFTER (immutability)")
-            }
-            let before = baseSnapshotBefore
-            let after = baseSnapshotAfter
-            commandBuffer.addCompletedHandler { [weak self] _ in
-                guard let self = self, let b = before, let a = after else { return }
-                let sumB = self.computeChecksum(of: b)
-                let sumA = self.computeChecksum(of: a)
-                if sumB != sumA {
-                    os_log("ALERT: BaseLayer changed in a frame with ZERO baseSprites (before=%{public}@ after=%{public}@)",
-                           log: self.log, type: .fault,
-                           String(format: "0x%016llx", sumB),
-                           String(format: "0x%016llx", sumA))
-                } else {
-                    os_log("VerifyBase: no change (checksum=%{public}@) with zero baseSprites",
-                           log: self.log, type: .debug,
-                           String(format: "0x%016llx", sumB))
                 }
             }
         }
@@ -1369,16 +1311,6 @@ final class StarryMetalRenderer {
         }
     }
     
-    private func makeSnapshotTextureLike(_ src: MTLTexture) -> MTLTexture? {
-        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: src.pixelFormat,
-                                                            width: src.width,
-                                                            height: src.height,
-                                                            mipmapped: false)
-        desc.usage = [.shaderRead]
-        desc.storageMode = .shared
-        return device.makeTexture(descriptor: desc)
-    }
-    
     private func blitCopy(from src: MTLTexture, to dst: MTLTexture, using cb: MTLCommandBuffer, label: String) {
         guard let blit = cb.makeBlitCommandEncoder() else { return }
         blit.label = label
@@ -1395,23 +1327,6 @@ final class StarryMetalRenderer {
                   destinationLevel: 0,
                   destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
         blit.endEncoding()
-    }
-    
-    private func computeChecksum(of tex: MTLTexture) -> UInt64 {
-        let w = tex.width
-        let h = tex.height
-        let bpp = 4
-        let rowBytes = w * bpp
-        var bytes = [UInt8](repeating: 0, count: rowBytes * h)
-        let region = MTLRegionMake2D(0, 0, w, h)
-        tex.getBytes(&bytes, bytesPerRow: rowBytes, from: region, mipmapLevel: 0)
-        var hash: UInt64 = 0xcbf29ce484222325
-        let prime: UInt64 = 0x100000001b3
-        for b in bytes {
-            hash ^= UInt64(b)
-            hash &*= prime
-        }
-        return hash
     }
     
     private func textureToImage(_ tex: MTLTexture) -> CGImage? {
@@ -1456,10 +1371,14 @@ final class StarryMetalRenderer {
     private func enqueueLayerDumps(commandBuffer: MTLCommandBuffer) {
         func snapshot(_ t: MTLTexture?) -> MTLTexture? {
             guard let t = t else { return nil }
-            let snap = makeSnapshotTextureLike(t)
-            if let snap = snap {
-                blitCopy(from: t, to: snap, using: commandBuffer, label: "Dump snapshot \(t.label ?? "tex")")
-            }
+            let snapDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: t.pixelFormat,
+                                                                    width: t.width,
+                                                                    height: t.height,
+                                                                    mipmapped: false)
+            snapDesc.usage = [.shaderRead]
+            snapDesc.storageMode = .shared
+            guard let snap = device.makeTexture(descriptor: snapDesc) else { return nil }
+            blitCopy(from: t, to: snap, using: commandBuffer, label: "Dump snapshot \(t.label ?? "tex")")
             return snap
         }
         let baseSnap = snapshot(layerTex.base)
