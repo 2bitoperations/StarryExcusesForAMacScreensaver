@@ -133,12 +133,17 @@ final class StarryMetalRenderer {
     // Vertex buffers
     private var quadVertexBuffer: MTLBuffer? // for textured composite + decay fullscreen draws
     
-    // Per-layer sprite instance buffers (UNIQUE buffer per provenance to prevent cross-pass mutation)
-    private var baseSpriteBuffer: MTLBuffer?
-    private var satellitesSpriteBuffer: MTLBuffer?
-    private var satellitesProbeSpriteBuffer: MTLBuffer?
-    private var shootingSpriteBuffer: MTLBuffer?
-    private var otherSpriteBuffer: MTLBuffer?
+    // Per-provenance sprite instance buffer sets: staging (.shared) + device (.private)
+    private struct SpriteBufferSet {
+        var staging: MTLBuffer?
+        var device: MTLBuffer?
+        var capacity: Int = 0   // bytes
+    }
+    private var baseSpriteBuffers = SpriteBufferSet()
+    private var satellitesSpriteBuffers = SpriteBufferSet()
+    private var satellitesProbeSpriteBuffers = SpriteBufferSet()
+    private var shootingSpriteBuffers = SpriteBufferSet()
+    private var otherSpriteBuffers = SpriteBufferSet()
     
     // Moon albedo textures (staging + final)
     private var moonAlbedoTexture: MTLTexture?              // final, private, sampled by fragment
@@ -1311,30 +1316,71 @@ final class StarryMetalRenderer {
         return true
     }
     
-    // Per-provenance buffer allocator (ensures unique buffer per layer / provenance)
-    private func bufferForProvenance(_ provenance: LayerProvenance, requiredBytes: Int) -> MTLBuffer {
+    // Upload sprite instances via staging (.shared) -> device (.private) BLIT instead of CPU writing directly to a shared draw buffer.
+    private func uploadSpriteInstances(_ sprites: [SpriteInstance],
+                                       provenance: LayerProvenance,
+                                       commandBuffer: MTLCommandBuffer) -> MTLBuffer? {
+        let requiredBytes = sprites.count * MemoryLayout<SpriteInstance>.stride
+        guard requiredBytes > 0 else { return nil }
+        
         let minAlloc = 16 * 1024
-        func grow(_ current: inout MTLBuffer?, label: String) -> MTLBuffer {
-            if let cur = current, cur.length >= requiredBytes {
-                return cur
-            }
-            let newLen = max(requiredBytes, minAlloc)
-            current = device.makeBuffer(length: newLen, options: .storageModeShared)
-            current?.label = label
-            return current!
+        func grow(set: inout SpriteBufferSet, labelBase: String) {
+            if set.capacity >= requiredBytes { return }
+            // Grow to next power-of-two-ish (or at least minAlloc)
+            var newCap = max(requiredBytes, minAlloc)
+            // round up to multiple of 4KB for nicer alignment
+            let page = 4096
+            newCap = ((newCap + page - 1) / page) * page
+            set.staging = device.makeBuffer(length: newCap, options: .storageModeShared)
+            set.staging?.label = "\(labelBase)-Staging(\(newCap))"
+            set.device = device.makeBuffer(length: newCap, options: .storageModePrivate)
+            set.device?.label = "\(labelBase)-Device(\(newCap))"
+            set.capacity = newCap
         }
+        
+        var targetSetPtr: UnsafeMutablePointer<SpriteBufferSet>
         switch provenance {
         case .base:
-            return grow(&baseSpriteBuffer, label: "SpriteInstanceBuffer-Base")
+            targetSetPtr = withUnsafeMutablePointer(to: &baseSpriteBuffers) { $0 }
         case .satellites:
-            return grow(&satellitesSpriteBuffer, label: "SpriteInstanceBuffer-Satellites")
+            targetSetPtr = withUnsafeMutablePointer(to: &satellitesSpriteBuffers) { $0 }
         case .satellitesProbe:
-            return grow(&satellitesProbeSpriteBuffer, label: "SpriteInstanceBuffer-SatProbe")
+            targetSetPtr = withUnsafeMutablePointer(to: &satellitesProbeSpriteBuffers) { $0 }
         case .shooting:
-            return grow(&shootingSpriteBuffer, label: "SpriteInstanceBuffer-Shooting")
+            targetSetPtr = withUnsafeMutablePointer(to: &shootingSpriteBuffers) { $0 }
         case .other:
-            return grow(&otherSpriteBuffer, label: "SpriteInstanceBuffer-Other")
+            targetSetPtr = withUnsafeMutablePointer(to: &otherSpriteBuffers) { $0 }
         }
+        
+        grow(set: &targetSetPtr.pointee, labelBase: "SpriteInstances-\(provenanceString(provenance))")
+        guard let staging = targetSetPtr.pointee.staging,
+              let deviceBuf = targetSetPtr.pointee.device else {
+            os_log("uploadSpriteInstances: failed to allocate buffers for provenance=%{public}@ bytes=%{public}d",
+                   log: log, type: .fault, provenanceString(provenance), requiredBytes)
+            return nil
+        }
+        
+        // CPU write into staging
+        sprites.withUnsafeBytes { raw in
+            if let base = raw.baseAddress {
+                memcpy(staging.contents(), base, requiredBytes)
+            }
+        }
+        
+        // Blit from staging -> device (only copy requiredBytes, not full capacity)
+        if let blit = commandBuffer.makeBlitCommandEncoder() {
+            blit.label = "Blit SpriteInstances \(provenanceString(provenance)) (\(requiredBytes) bytes)"
+            blit.copy(from: staging,
+                      sourceOffset: 0,
+                      to: deviceBuf,
+                      destinationOffset: 0,
+                      size: requiredBytes)
+            blit.endEncoding()
+        } else {
+            os_log("uploadSpriteInstances: FAILED to make blit encoder (provenance=%{public}@)",
+                   log: log, type: .fault, provenanceString(provenance))
+        }
+        return deviceBuf
     }
     
     private func renderSprites(into target: MTLTexture,
@@ -1423,13 +1469,11 @@ final class StarryMetalRenderer {
                    satelliteHeuristic ? "YES" : "no")
         }
         
-        let byteCount = sprites.count * MemoryLayout<SpriteInstance>.stride
-        let buffer = bufferForProvenance(provenance, requiredBytes: byteCount)
-        let contents = buffer.contents()
-        sprites.withUnsafeBytes { raw in
-            if let src = raw.baseAddress {
-                memcpy(contents, src, min(byteCount, raw.count))
-            }
+        // Upload sprite instances using blit path
+        guard let deviceBuffer = uploadSpriteInstances(sprites,
+                                                       provenance: provenance,
+                                                       commandBuffer: commandBuffer) else {
+            return
         }
         
         if (pipeline === spriteAdditivePipeline) &&
@@ -1455,7 +1499,7 @@ final class StarryMetalRenderer {
         encoder.setViewport(vp)
         
         encoder.setRenderPipelineState(pipeline)
-        encoder.setVertexBuffer(buffer, offset: 0, index: 1)
+        encoder.setVertexBuffer(deviceBuffer, offset: 0, index: 1)
         var uni = SpriteUniforms(viewportSize: SIMD2<Float>(Float(target.width), Float(target.height)))
         encoder.setVertexBytes(&uni, length: MemoryLayout<SpriteUniforms>.stride, index: 2)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: sprites.count)
