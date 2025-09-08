@@ -38,9 +38,7 @@ final class SatellitesLayerRenderer {
     /// Per-second decay factor (0 = instant disappear, 0.999 ~ slow fade). Used to compute keep return value.
     private var trailDecay: CGFloat
     
-    /// Maximum number of concurrent satellites. Set to 1 to get a single bright dot with a decay-based trail.
-    private var maxConcurrent: Int = 1
-    
+    /// Active satellites.
     private var satellites: [Satellite] = []
     
     private let width: Int
@@ -74,8 +72,8 @@ final class SatellitesLayerRenderer {
         self.trailing = trailing
         self.trailDecay = min(max(0.0, trailDecay), 0.999)
         scheduleNextSpawn()
-        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f maxConcurrent=%{public}d",
-               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay), self.maxConcurrent)
+        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f",
+               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay))
     }
     
     // MARK: - Public reconfiguration
@@ -114,8 +112,7 @@ final class SatellitesLayerRenderer {
                           size: CGFloat? = nil,
                           brightness: CGFloat? = nil,
                           trailing: Bool? = nil,
-                          trailDecay: CGFloat? = nil,
-                          maxConcurrent: Int? = nil) {
+                          trailDecay: CGFloat? = nil) {
         var reschedule = false
         
         if let a = avgSpawnSeconds {
@@ -141,19 +138,9 @@ final class SatellitesLayerRenderer {
         if let td = trailDecay {
             self.trailDecay = min(max(0.0, td), 0.999)
         }
-        if let mc = maxConcurrent {
-            self.maxConcurrent = max(1, mc)
-            os_log("Satellites param changed: maxConcurrent=%{public}d", log: log, type: .info, self.maxConcurrent)
-        }
         if reschedule {
             scheduleNextSpawn()
         }
-    }
-    
-    /// Convenience specific setter for max concurrent satellites.
-    func setMaxConcurrent(_ count: Int) {
-        self.maxConcurrent = max(1, count)
-        os_log("Satellites setMaxConcurrent: %d", log: log, type: .info, self.maxConcurrent)
     }
     
     // MARK: - Private helpers
@@ -168,12 +155,8 @@ final class SatellitesLayerRenderer {
     
     private func spawn() {
         guard isEnabled else { return }
-        // Enforce concurrency cap: if at capacity, delay spawn.
-        if satellites.count >= maxConcurrent {
-            // Try again after another interval.
-            scheduleNextSpawn()
-            return
-        }
+        // NOTE: Previously we enforced a maxConcurrent cap (default=1). That cap has been removed
+        // to allow multiple satellites to coexist naturally.
         let fromLeft = Bool.random(using: &rng)
         // Constrain y so satellites stay above likely building tops (upper 70% of screen)
         let yMin = CGFloat(height) * 0.30
@@ -187,8 +170,8 @@ final class SatellitesLayerRenderer {
                           size: sizePx,
                           brightness: brightness * CGFloat.random(in: 0.8...1.05, using: &rng))
         satellites.append(s)
-        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f speed=%{public}.1f size=%{public}.1f",
-               log: log, type: .debug, fromLeft ? "L→R" : "R→L", Double(y), Double(speed), Double(sizePx))
+        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f speed=%{public}.1f size=%{public}.1f activeNow=%{public}d",
+               log: log, type: .debug, fromLeft ? "L→R" : "R→L", Double(y), Double(speed), Double(sizePx), satellites.count)
     }
     
     // MARK: - Emission to GPU
@@ -229,7 +212,7 @@ final class SatellitesLayerRenderer {
         while timeUntilNextSpawn <= 0 {
             spawn()
             scheduleNextSpawn()
-            break
+            break   // emit at most one new satellite per frame; loop kept for robustness
         }
         
         var sprites: [SpriteInstance] = []
