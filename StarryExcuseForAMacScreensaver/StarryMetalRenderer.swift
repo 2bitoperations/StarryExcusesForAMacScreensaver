@@ -52,10 +52,9 @@ final class StarryMetalRenderer {
     // MARK: - Nested Types
     
     private struct LayerTextures {
-        // BaseLayer is now the ONLY texture that ever receives "base" sprites.
+        // BaseLayer is the persistent accumulation target for base sprites.
         // After rendering those sprites, we COPY BaseLayer -> BaseLayerScratch each frame.
         // BaseLayerScratch is read-only for the rest of the frame (composite, diagnostics, etc).
-        // We no longer ping-pong / swap these two textures.
         var base: MTLTexture?
         var baseScratch: MTLTexture?
         var satellites: MTLTexture?
@@ -133,8 +132,13 @@ final class StarryMetalRenderer {
     
     // Vertex buffers
     private var quadVertexBuffer: MTLBuffer? // for textured composite + decay fullscreen draws
-    // Instanced sprite data (resized per frame)
-    private var spriteBuffer: MTLBuffer?
+    
+    // Per-layer sprite instance buffers (UNIQUE buffer per provenance to prevent cross-pass mutation)
+    private var baseSpriteBuffer: MTLBuffer?
+    private var satellitesSpriteBuffer: MTLBuffer?
+    private var satellitesProbeSpriteBuffer: MTLBuffer?
+    private var shootingSpriteBuffer: MTLBuffer?
+    private var otherSpriteBuffer: MTLBuffer?
     
     // Moon albedo textures (staging + final)
     private var moonAlbedoTexture: MTLTexture?              // final, private, sampled by fragment
@@ -877,9 +881,7 @@ final class StarryMetalRenderer {
         // Reset isolation snapshots each frame
         baseIsoPerPassSnapshots.removeAll(keepingCapacity: true)
         
-        // --- NEW BASE PIPELINE (no ping-pong) ---
-        // 1. Render base sprites ONLY into BaseLayer (if any).
-        // 2. Copy BaseLayer -> BaseLayerScratch (read-only for the rest of this frame).
+        // --- BASE PIPELINE ---
         if let baseTex = layerTex.base, let baseScratch = layerTex.baseScratch {
             if !drawData.baseSprites.isEmpty {
                 renderSprites(into: baseTex,
@@ -888,10 +890,9 @@ final class StarryMetalRenderer {
                               commandBuffer: commandBuffer,
                               provenance: .base)
             }
-            // Always copy (overwrite) baseScratch so the rest of the pipeline uses the post-sprite base.
+            // Copy persistent base to scratch (read-only for remainder of frame).
             blitCopy(from: baseTex, to: baseScratch, using: commandBuffer, label: headless ? "Base copy -> Scratch (headless)" : "Base copy -> Scratch")
         } else if let baseTex = layerTex.base {
-            // Fallback (should not happen): still render directly if scratch missing.
             os_log("WARNING: baseScratch missing; rendering base sprites directly only", log: log, type: .fault)
             if !drawData.baseSprites.isEmpty {
                 renderSprites(into: baseTex,
@@ -901,7 +902,6 @@ final class StarryMetalRenderer {
                               provenance: .base)
             }
         }
-        // ----------------------------------------
         
         let shouldVerifyBase = enableImmutabilityVerification && debugVerifyBaseImmutability && drawData.baseSprites.isEmpty && (layerTex.base != nil)
         if shouldVerifyBase, let baseTex = layerTex.base {
@@ -1057,7 +1057,6 @@ final class StarryMetalRenderer {
             encoder.setFragmentBytes(&whiteTint, length: MemoryLayout<SIMD4<Float>>.stride, index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
-        // IMPORTANT: We now composite using BaseLayerScratch (snapshot of persistent base after sprite updates)
         switch debugCompositeMode {
         case .satellitesOnly:
             drawTex(layerTex.satellites)
@@ -1291,13 +1290,6 @@ final class StarryMetalRenderer {
     }
     
     // Heuristic: detect a set of sprites that strongly looks like satellite head sprites
-    // (not trails, trails are texture accumulation not instances).
-    // Criteria:
-    //  - All shapes are circle
-    //  - Count small (<= 4); typical satellites maxConcurrent small (often 1)
-    //  - All alpha ~1
-    //  - Colors roughly neutral grey (|r-g|,|r-b|,|g-b| < threshold)
-    //  - Radii (halfSize) within a narrow range (max/min <= ratio threshold)
     private func looksLikeSatelliteHeads(_ sprites: [SpriteInstance]) -> Bool {
         guard !sprites.isEmpty, sprites.count <= 4 else { return false }
         var minHalf: Float = .greatestFiniteMagnitude
@@ -1305,22 +1297,44 @@ final class StarryMetalRenderer {
         for s in sprites {
             if s.shape != SpriteShape.circle.rawValue { return false }
             let c = s.colorPremul
-            // Alpha close to 1
             if fabsf(c.w - 1.0) > 0.05 { return false }
-            // Grey-ish
             if fabsf(c.x - c.y) > 0.05 || fabsf(c.x - c.z) > 0.05 || fabsf(c.y - c.z) > 0.05 {
                 return false
             }
-            // Premultiplied: r/g/b roughly same as alpha (since alpha ~1)
             let h = max(s.halfSizePx.x, s.halfSizePx.y)
             minHalf = min(minHalf, h)
             maxHalf = max(maxHalf, h)
         }
         if minHalf <= 0 { return false }
         if maxHalf / minHalf > 1.6 { return false }
-        // Half size plausibility: between 0.5 and 4 (diameters 1-8 px)
         if maxHalf < 0.4 || maxHalf > 6.0 { return false }
         return true
+    }
+    
+    // Per-provenance buffer allocator (ensures unique buffer per layer / provenance)
+    private func bufferForProvenance(_ provenance: LayerProvenance, requiredBytes: Int) -> MTLBuffer {
+        let minAlloc = 16 * 1024
+        func grow(_ current: inout MTLBuffer?, label: String) -> MTLBuffer {
+            if let cur = current, cur.length >= requiredBytes {
+                return cur
+            }
+            let newLen = max(requiredBytes, minAlloc)
+            current = device.makeBuffer(length: newLen, options: .storageModeShared)
+            current?.label = label
+            return current!
+        }
+        switch provenance {
+        case .base:
+            return grow(&baseSpriteBuffer, label: "SpriteInstanceBuffer-Base")
+        case .satellites:
+            return grow(&satellitesSpriteBuffer, label: "SpriteInstanceBuffer-Satellites")
+        case .satellitesProbe:
+            return grow(&satellitesProbeSpriteBuffer, label: "SpriteInstanceBuffer-SatProbe")
+        case .shooting:
+            return grow(&shootingSpriteBuffer, label: "SpriteInstanceBuffer-Shooting")
+        case .other:
+            return grow(&otherSpriteBuffer, label: "SpriteInstanceBuffer-Other")
+        }
     }
     
     private func renderSprites(into target: MTLTexture,
@@ -1362,7 +1376,6 @@ final class StarryMetalRenderer {
             os_log("PROBE CALL STACK:\n%{public}@", log: log, type: .fault, stack)
         }
         
-        // Satellite heuristic detection (even if provenance != .satellites)
         let satelliteHeuristic = looksLikeSatelliteHeads(sprites)
         if satelliteHeuristic {
             let tgtLbl = target.label ?? "tex"
@@ -1380,7 +1393,6 @@ final class StarryMetalRenderer {
                    debugSkipSatellitesDraw ? "YES" : "no",
                    satelliteHeuristic ? "YES" : "no")
             if baseHit {
-                // Dump detailed per-sprite info when suspicious
                 for (i, s) in sprites.enumerated() {
                     os_log("SAT-LIKE[%{public}d]: center=(%{public}.2f,%{public}.2f) half=(%{public}.2f,%{public}.2f) color=(%{public}.3f,%{public}.3f,%{public}.3f,%{public}.2f)",
                            log: log, type: .fault,
@@ -1412,16 +1424,11 @@ final class StarryMetalRenderer {
         }
         
         let byteCount = sprites.count * MemoryLayout<SpriteInstance>.stride
-        if spriteBuffer == nil || (spriteBuffer!.length < byteCount) {
-            spriteBuffer = device.makeBuffer(length: max(byteCount, 1024 * 16), options: .storageModeShared)
-            spriteBuffer?.label = "SpriteInstanceBuffer"
-        }
-        if let buffer = spriteBuffer {
-            let contents = buffer.contents()
-            sprites.withUnsafeBytes { raw in
-                if let src = raw.baseAddress {
-                    memcpy(contents, src, min(byteCount, raw.count))
-                }
+        let buffer = bufferForProvenance(provenance, requiredBytes: byteCount)
+        let contents = buffer.contents()
+        sprites.withUnsafeBytes { raw in
+            if let src = raw.baseAddress {
+                memcpy(contents, src, min(byteCount, raw.count))
             }
         }
         
@@ -1448,7 +1455,7 @@ final class StarryMetalRenderer {
         encoder.setViewport(vp)
         
         encoder.setRenderPipelineState(pipeline)
-        encoder.setVertexBuffer(spriteBuffer, offset: 0, index: 1)
+        encoder.setVertexBuffer(buffer, offset: 0, index: 1)
         var uni = SpriteUniforms(viewportSize: SIMD2<Float>(Float(target.width), Float(target.height)))
         encoder.setVertexBytes(&uni, length: MemoryLayout<SpriteUniforms>.stride, index: 2)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: sprites.count)
