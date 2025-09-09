@@ -6,36 +6,7 @@ import ImageIO
 import os
 import simd
 
-// StarryMetalRenderer notifications
-// Post these to either NotificationCenter.default or DistributedNotificationCenter.default().
-// All notifications accept a userInfo dictionary with the keys noted below.
-//
-// Names:
-// - "StarryDebugCompositeMode"
-//     userInfo: ["mode": Int] where 0=normal, 1=satellitesOnly, 2=baseOnly
-//
-// - "StarryDiagnostics"
-//     userInfo keys (all optional; only provided keys are applied):
-//       "enabled": Bool                         -> diagnosticsEnabled
-//       "everyNFrames" | "debugLogEveryN": Int -> diagnosticsEveryNFrames
-//       "skipSatellitesDraw": Bool             -> debugSkipSatellitesDraw
-//       "overlayEnabled": Bool                 -> debugOverlayEnabled
-//       "satellitesHalfLifeSeconds": Double    -> satellitesHalfLifeSeconds
-//       "shootingHalfLifeSeconds": Double      -> shootingHalfLifeSeconds
-//       "dropBaseEveryN": Int                  -> clears BaseLayer every N frames (0 disables)
-//       "dumpLayersNextFrame": Bool            -> one-time dump of layers as PNGs to Desktop
-//
-//     Notes for keys intended for StarryEngine (not handled here):
-//       "starsPerUpdate": Int
-//       "buildingLightsPerUpdate": Int
-//
-// - "StarryClear"
-//     userInfo:
-//       "target": String -> one of "all", "base", "satellites", "shooting" (default all)
-//
 final class StarryMetalRenderer {
-    
-    // MARK: - Nested Types
     
     private struct LayerTextures {
         var base: MTLTexture?
@@ -50,8 +21,8 @@ final class StarryMetalRenderer {
     private struct MoonUniformsSwift {
         var viewportSize: SIMD2<Float>
         var centerPx: SIMD2<Float>
-        var params0: SIMD4<Float>
-        var params1: SIMD4<Float>
+        var params0: SIMD4<Float> // x=radius, y=illuminatedFraction, z=bright, w=dark
+        var params1: SIMD4<Float> // x=debugMaskFlag, y=waxingSign (+1 / -1), z/w unused
     }
     
     private enum FragmentBufferIndex {
@@ -71,8 +42,6 @@ final class StarryMetalRenderer {
         case other
     }
     
-    // MARK: - Debug Notifications
-    
     private static let debugCompositeModeNotification = Notification.Name("StarryDebugCompositeMode")
     private static let diagnosticsNotification = Notification.Name("StarryDiagnostics")
     private static let clearNotification = Notification.Name("StarryClear")
@@ -86,14 +55,11 @@ final class StarryMetalRenderer {
                                                      userInfo: ["mode": mode.rawValue])
     }
     
-    // MARK: - Properties
-    
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private weak var metalLayer: CAMetalLayer?
     private let log: OSLog
     
-    // Pipelines
     private var compositePipeline: MTLRenderPipelineState!
     private var spriteOverPipeline: MTLRenderPipelineState!
     private var spriteAdditivePipeline: MTLRenderPipelineState!
@@ -140,17 +106,12 @@ final class StarryMetalRenderer {
     private var dropBaseEveryNFrames: Int = 0
     
     private var debugObserversInstalled: Bool = false
-    
-    // One-shot layer dumps
     private var dumpLayersNextFrame: Bool = false
     
-    // Shared notification centers for consolidated observer registration
     private let notificationCenters: [NotificationCenter] = [
         NotificationCenter.default,
         DistributedNotificationCenter.default()
     ]
-    
-    // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
         guard let device = MTLCreateSystemDefaultDevice() else {
@@ -177,8 +138,6 @@ final class StarryMetalRenderer {
         }
     }
     
-    // MARK: - Init (headless/offscreen)
-    
     init?(log: OSLog) {
         guard let device = MTLCreateSystemDefaultDevice() else {
             os_log("Metal unavailable", log: log, type: .fault)
@@ -203,8 +162,6 @@ final class StarryMetalRenderer {
         NotificationCenter.default.removeObserver(self)
         DistributedNotificationCenter.default().removeObserver(self)
     }
-    
-    // MARK: - Observer installation / handlers
     
     private func installDebugObservers() {
         guard !debugObserversInstalled else { return }
@@ -232,8 +189,6 @@ final class StarryMetalRenderer {
         processClear(userInfo: note.userInfo)
     }
     
-    // MARK: - Notification processors (deduplicated logic)
-    
     private func processCompositeMode(userInfo: [AnyHashable: Any]?) {
         guard let raw = userInfo?["mode"] as? Int,
               let mode = CompositeDebugMode(rawValue: raw) else {
@@ -250,12 +205,10 @@ final class StarryMetalRenderer {
         var applied: [String] = []
         var ignored: [String] = []
         
-        // Supported keys (for reference – not strictly required but documents intent here)
-        // Mapping to property updates is explicit below.
         struct Keys {
             static let enabled = "enabled"
             static let everyNFrames = "everyNFrames"
-            static let debugLogEveryN = "debugLogEveryN" // alias
+            static let debugLogEveryN = "debugLogEveryN"
             static let skipSat = "skipSatellitesDraw"
             static let overlay = "overlayEnabled"
             static let satHalf = "satellitesHalfLifeSeconds"
@@ -264,7 +217,6 @@ final class StarryMetalRenderer {
             static let dumpLayers = "dumpLayersNextFrame"
         }
         
-        // Legacy / engine / removed keys we ignore
         let legacyIgnoredKeys: [String] = [
             "starsPerUpdate",
             "buildingLightsPerUpdate",
@@ -307,7 +259,6 @@ final class StarryMetalRenderer {
             applied.append("dumpLayersNextFrame")
         }
         
-        // Collect ignored keys present
         if let ui = ui {
             for k in legacyIgnoredKeys where ui[k] != nil {
                 ignored.append(k)
@@ -360,8 +311,6 @@ final class StarryMetalRenderer {
         os_log("Clear notification: '%{public}@' complete", log: log, type: .info, target)
     }
     
-    // MARK: - Setup
-    
     private func buildPipelines() throws {
         let library = try makeShaderLibrary()
         do {
@@ -412,7 +361,6 @@ final class StarryMetalRenderer {
             blend?.alphaBlendOperation = .add
             spriteAdditivePipeline = try device.makeRenderPipelineState(descriptor: desc)
         }
-        // Removed DecaySampled pipeline (sampling-based decay). We now use only in-place decay.
         do {
             let desc = MTLRenderPipelineDescriptor()
             desc.label = "DecayInPlace"
@@ -490,8 +438,6 @@ final class StarryMetalRenderer {
                                              options: .storageModeShared)
         quadVertexBuffer?.label = "FullScreenQuad"
     }
-    
-    // MARK: - Public
     
     func updateDrawableSize(size: CGSize, scale: CGFloat) {
         guard scale > 0 else { return }
@@ -768,13 +714,10 @@ final class StarryMetalRenderer {
         return textureToImage(finalTarget)
     }
     
-    // MARK: - Scene passes (immutability verification removed)
-    
     private func encodeScenePasses(commandBuffer: MTLCommandBuffer,
                                    drawData: StarryDrawData,
                                    dt: CFTimeInterval?,
                                    headless: Bool) {
-        // Optional periodic forced base clear
         if dropBaseEveryNFrames > 0,
            let baseTex = layerTex.base,
            (frameIndex % UInt64(dropBaseEveryNFrames) == 0) {
@@ -786,7 +729,6 @@ final class StarryMetalRenderer {
             }
         }
         
-        // One-time pending base clear (debug)
         if debugClearBasePending {
             if let baseTex = layerTex.base {
                 clearTexture(baseTex, commandBuffer: commandBuffer,
@@ -799,7 +741,6 @@ final class StarryMetalRenderer {
             debugClearBasePending = false
         }
         
-        // --- BASE PASS ---
         if let baseTex = layerTex.base, let baseScratch = layerTex.baseScratch {
             if !drawData.baseSprites.isEmpty {
                 renderSprites(into: baseTex,
@@ -821,7 +762,6 @@ final class StarryMetalRenderer {
         }
         
         if debugCompositeMode != .baseOnly {
-            // Satellites
             if layerTex.satellites != nil {
                 applyDecay(into: .satellites, dt: dt, commandBuffer: commandBuffer)
                 if !debugSkipSatellitesDraw && !drawData.satellitesSprites.isEmpty {
@@ -836,7 +776,6 @@ final class StarryMetalRenderer {
                     }
                 }
             }
-            // Shooting
             if layerTex.shooting != nil {
                 applyDecay(into: .shooting, dt: dt, commandBuffer: commandBuffer)
                 if !drawData.shootingSprites.isEmpty {
@@ -904,8 +843,13 @@ final class StarryMetalRenderer {
             var uni = MoonUniformsSwift(
                 viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
                 centerPx: moon.centerPx,
-                params0: SIMD4<Float>(moon.radiusPx, moon.phaseFraction, moon.brightBrightness, moon.darkBrightness),
-                params1: SIMD4<Float>(drawData.showLightAreaTextureFillMask ? 1.0 : 0.0, 0, 0, 0)
+                params0: SIMD4<Float>(moon.radiusPx,
+                                      moon.phaseFraction,        // illuminated fraction
+                                      moon.brightBrightness,
+                                      moon.darkBrightness),
+                params1: SIMD4<Float>(drawData.showLightAreaTextureFillMask ? 1.0 : 0.0,
+                                      moon.waxingSign,            // +1 or -1
+                                      0, 0)
             )
             encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
             encoder.setFragmentBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
@@ -917,8 +861,6 @@ final class StarryMetalRenderer {
         encoder.popDebugGroup()
         encoder.endEncoding()
     }
-    
-    // MARK: - Helpers
     
     private func allocateTextures(size: CGSize) {
         layerTex.size = size
@@ -1020,7 +962,6 @@ final class StarryMetalRenderer {
         enc.endEncoding()
     }
     
-    // Upload sprite instances using staging (.shared) -> device (.private) BLIT
     private func uploadSpriteInstances(_ sprites: [SpriteInstance],
                                        provenance: LayerProvenance,
                                        commandBuffer: MTLCommandBuffer) -> MTLBuffer? {
@@ -1084,7 +1025,6 @@ final class StarryMetalRenderer {
                                provenance: LayerProvenance) {
         guard !sprites.isEmpty else { return }
         
-        // Upload
         guard let deviceBuffer = uploadSpriteInstances(sprites,
                                                        provenance: provenance,
                                                        commandBuffer: commandBuffer) else { return }
@@ -1171,7 +1111,6 @@ final class StarryMetalRenderer {
             return
         }
         
-        // In-place decay: draw fullscreen quad with SolidBlackFragment; blending scales destination by keep.
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = tex
         rpd.colorAttachments[0].loadAction = .load
@@ -1344,8 +1283,6 @@ final class StarryMetalRenderer {
         }
     }
     
-    // MARK: - Notification value parsing
-    
     private func value<T>(_ key: String, from userInfo: [AnyHashable: Any]?) -> T? {
         guard let ui = userInfo, let raw = ui[key] else { return nil }
         if let v = raw as? T { return v }
@@ -1371,8 +1308,6 @@ final class StarryMetalRenderer {
         }
         return nil
     }
-    
-    // MARK: - Diagnostics logger
     
     private func logFrameDiagnostics(prefix: String, drawData: StarryDrawData, dt: CFTimeInterval?) {
         guard diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 else { return }

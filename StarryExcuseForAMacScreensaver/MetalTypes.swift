@@ -34,19 +34,28 @@ public struct SpriteUniforms {
 }
 
 // Moon parameters per-frame (for renderer logic)
+// phaseFraction here is the ILLUMINATED FRACTION (0=new, 1=full).
+// waxingSign: +1.0 if waxing, -1.0 if waning. Needed for Metal shader terminator orientation.
 public struct MoonParams {
     public var centerPx: SIMD2<Float>     // pixel center
     public var radiusPx: Float            // pixel radius
-    public var phaseFraction: Float       // 0.0=new, 0.5=full, 1.0=new
+    public var phaseFraction: Float       // illuminated fraction: 0.0 = new, 1.0 = full
     public var brightBrightness: Float    // multiplier for lit side
     public var darkBrightness: Float      // multiplier for dark side
+    public var waxingSign: Float          // +1 (waxing), -1 (waning)
     
-    public init(centerPx: SIMD2<Float>, radiusPx: Float, phaseFraction: Float, brightBrightness: Float, darkBrightness: Float) {
+    public init(centerPx: SIMD2<Float>,
+                radiusPx: Float,
+                phaseFraction: Float,
+                brightBrightness: Float,
+                darkBrightness: Float,
+                waxingSign: Float) {
         self.centerPx = centerPx
         self.radiusPx = radiusPx
         self.phaseFraction = phaseFraction
         self.brightBrightness = brightBrightness
         self.darkBrightness = darkBrightness
+        self.waxingSign = waxingSign
     }
 }
 
@@ -56,7 +65,7 @@ public struct MoonUniforms {
     public var viewportSize: SIMD2<Float>     // screen size in pixels
     public var centerPx: SIMD2<Float>         // moon center in pixels
     public var radiusPx: Float                // radius in pixels
-    public var phase: Float                   // 0=new, 0.5=full
+    public var phase: Float                   // illuminated fraction (0=new, 1=full)
     public var brightBrightness: Float        // lit multiplier
     public var darkBrightness: Float          // unlit multiplier
     // Note: total floats = 8 (32 bytes). Packing/alignment matches Metal's default (16-byte alignment per vec4).
