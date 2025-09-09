@@ -27,6 +27,7 @@ fragment float4 TexturedQuadFragmentTinted(VertexOut in [[stage_in]],
                                            constant float4 &tint [[buffer(0)]]) {
     constexpr sampler s(address::clamp_to_edge,
                         filter::linear,
+                        mip_filter::linear,
                         coord::normalized);
     if (!colorTex.get_width()) {
         return float4(0,0,0,0);
@@ -139,7 +140,11 @@ vertex MoonVarying MoonVertex(uint vid [[vertex_id]],
 fragment float4 MoonFragment(MoonVarying in [[stage_in]],
                              constant MoonUniforms &uni [[buffer(2)]],
                              texture2d<float, access::sample> albedoTex [[texture(0)]]) {
-    constexpr sampler s(address::clamp_to_edge, filter::nearest, coord::normalized);
+    // Use linear + mip filtering to reduce shimmer during subpixel motion.
+    constexpr sampler s(address::clamp_to_edge,
+                        filter::linear,
+                        mip_filter::linear,
+                        coord::normalized);
 
     float2 local = in.local;
     float r2 = dot(local, local);
@@ -149,7 +154,8 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
 
     float radiusPx = max(uni.params0.x, 1.0);
     float r = sqrt(r2);
-    float featherLocal = clamp(1.5f / radiusPx, 0.001f, 0.10f);
+    // Slightly larger minimum feather for stability with linear filtering.
+    float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
     float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
 
     float z = sqrt(max(0.0, 1.0 - r2));

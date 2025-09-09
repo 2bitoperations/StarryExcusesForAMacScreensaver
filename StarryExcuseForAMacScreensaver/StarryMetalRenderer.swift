@@ -83,6 +83,7 @@ final class StarryMetalRenderer {
     private var moonAlbedoTexture: MTLTexture?
     private var moonAlbedoStagingTexture: MTLTexture?
     private var moonAlbedoNeedsBlit: Bool = false
+    private var moonAlbedoHasMipmaps: Bool = false
     
     private var offscreenComposite: MTLTexture?
     private var offscreenSize: CGSize = .zero
@@ -458,7 +459,7 @@ final class StarryMetalRenderer {
         if size.width >= 1, size.height >= 1, size != layerTex.size {
             allocateTextures(size: size)
             clearOffscreenTextures(reason: "Resize/allocate")
-            os_log("updateDrawableSize: allocated and cleared layer textures for size %{public}.0fx%{public}.0f",
+            os_log("updateDrawableSize: allocated and cleared layer textures for size %.0fx%.0f",
                    log: log, type: .info, Double(size.width), Double(size.height))
             if metalLayer == nil {
                 offscreenComposite = nil
@@ -474,18 +475,18 @@ final class StarryMetalRenderer {
     func setDiagnostics(enabled: Bool, everyNFrames: Int = 60) {
         diagnosticsEnabled = enabled
         diagnosticsEveryNFrames = max(1, everyNFrames)
-        os_log("Diagnostics %{public}@", log: log, type: .info, enabled ? "ENABLED" : "disabled")
+        os_log("Diagnostics %@", log: log, type: .info, enabled ? "ENABLED" : "disabled")
     }
     
     func setSkipSatellitesDrawingForDebug(_ skip: Bool) {
         debugSkipSatellitesDraw = skip
-        os_log("Debug: skip satellites draw is %{public}@", log: log, type: .info, skip ? "ON" : "off")
+        os_log("Debug: skip satellites draw is %@", log: log, type: .info, skip ? "ON" : "off")
     }
     
     func setCompositeSatellitesOnlyForDebug(_ enabled: Bool) {
         let wasSatOnly = (debugCompositeMode == .satellitesOnly)
         debugCompositeMode = enabled ? .satellitesOnly : .normal
-        os_log("Debug: composite mode set to %{public}@", log: log, type: .info,
+        os_log("Debug: composite mode set to %@", log: log, type: .info,
                enabled ? "SATELLITES-ONLY" : "NORMAL")
         if wasSatOnly && !enabled {
             debugClearBasePending = true
@@ -495,44 +496,52 @@ final class StarryMetalRenderer {
     
     func setCompositeBaseOnlyForDebug(_ enabled: Bool) {
         debugCompositeMode = enabled ? .baseOnly : .normal
-        os_log("Debug: composite mode set to %{public}@", log: log, type: .info, enabled ? "BASE-ONLY" : "NORMAL")
+        os_log("Debug: composite mode set to %@", log: log, type: .info, enabled ? "BASE-ONLY" : "NORMAL")
     }
     
     func setTrailHalfLives(satellites: Double?, shooting: Double?) {
         satellitesHalfLifeSeconds = satellites ?? 0.5
         shootingHalfLifeSeconds = shooting ?? 0.5
-        os_log("Trail half-lives updated: satellites=%{public}.3f s, shooting=%{public}.3f s",
+        os_log("Trail half-lives updated: satellites=%.3f s, shooting=%.3f s",
                log: log, type: .info, satellitesHalfLifeSeconds, shootingHalfLifeSeconds)
     }
+    
+    // MARK: - Moon Albedo (Mipmapped) Upload
     
     func setMoonAlbedo(image: CGImage) {
         let width = image.width
         theight: do {
             let height = image.height
             guard width > 0, height > 0 else { return }
-            os_log("setMoonAlbedo: preparing upload via staging+blit (%{public}dx%{public}d)", log: log, type: .info, width, height)
+            os_log("setMoonAlbedo: preparing upload (%dx%d) mipmapped", log: log, type: .info, width, height)
             
-            if moonAlbedoTexture == nil || moonAlbedoTexture!.width != width || moonAlbedoTexture!.height != height {
+            // Destination (private, mipmapped)
+            if moonAlbedoTexture == nil ||
+                moonAlbedoTexture!.width != width ||
+                moonAlbedoTexture!.height != height ||
+                !moonAlbedoHasMipmaps {
                 let dstDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
                                                                        width: width,
                                                                        height: height,
-                                                                       mipmapped: false)
-                dstDesc.usage = [.shaderRead]
+                                                                       mipmapped: true)
+                dstDesc.usage = [.shaderRead, .blit]
                 dstDesc.storageMode = .private
                 moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
-                moonAlbedoTexture?.label = "MoonAlbedo (private)"
+                moonAlbedoTexture?.label = "MoonAlbedo (private,mips)"
+                moonAlbedoHasMipmaps = true
                 if moonAlbedoTexture == nil {
                     os_log("setMoonAlbedo: failed to create destination texture", log: log, type: .error)
                     return
                 }
             }
             
+            // Staging (shared, single level) — we will generate mipmaps after blit
             let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
                                                                        width: width,
                                                                        height: height,
                                                                        mipmapped: false)
             stagingDesc.storageMode = .shared
-            stagingDesc.usage = []
+            stagingDesc.usage = [.blit]
             guard let staging = device.makeTexture(descriptor: stagingDesc) else {
                 os_log("setMoonAlbedo: failed to create staging texture", log: log, type: .error)
                 return
@@ -569,7 +578,6 @@ final class StarryMetalRenderer {
             
             moonAlbedoStagingTexture = staging
             moonAlbedoNeedsBlit = true
-            os_log("setMoonAlbedo: staged bytes; will blit to private on next command buffer", log: log, type: .info)
         }
     }
     
@@ -607,9 +615,11 @@ final class StarryMetalRenderer {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
         commandBuffer.label = "Starry Frame CommandBuffer"
         
-        if moonAlbedoNeedsBlit, let staging = moonAlbedoStagingTexture, let dst = moonAlbedoTexture {
+        if moonAlbedoNeedsBlit,
+           let staging = moonAlbedoStagingTexture,
+           let dst = moonAlbedoTexture {
             if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "Blit MoonAlbedo staging->private"
+                blit.label = "Blit+Mips MoonAlbedo staging->private"
                 let size = MTLSize(width: staging.width, height: staging.height, depth: 1)
                 blit.copy(from: staging,
                           sourceSlice: 0,
@@ -620,8 +630,9 @@ final class StarryMetalRenderer {
                           destinationSlice: 0,
                           destinationLevel: 0,
                           destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+                blit.generateMipmaps(for: dst)
                 blit.endEncoding()
-                os_log("render: enqueued moon albedo GPU blit (%{public}dx%{public}d)", log: log, type: .info, dst.width, dst.height)
+                os_log("render: enqueued moon albedo blit + mip gen (%dx%d)", log: log, type: .info, dst.width, dst.height)
             }
             moonAlbedoNeedsBlit = false
             moonAlbedoStagingTexture = nil
@@ -672,9 +683,11 @@ final class StarryMetalRenderer {
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return nil }
         commandBuffer.label = "Starry Headless CommandBuffer"
         
-        if moonAlbedoNeedsBlit, let staging = moonAlbedoStagingTexture, let dst = moonAlbedoTexture {
+        if moonAlbedoNeedsBlit,
+           let staging = moonAlbedoStagingTexture,
+           let dst = moonAlbedoTexture {
             if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "Blit MoonAlbedo staging->private (headless)"
+                blit.label = "Blit+Mips MoonAlbedo staging->private (headless)"
                 let size = MTLSize(width: staging.width, height: staging.height, depth: 1)
                 blit.copy(from: staging,
                           sourceSlice: 0,
@@ -685,8 +698,9 @@ final class StarryMetalRenderer {
                           destinationSlice: 0,
                           destinationLevel: 0,
                           destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+                blit.generateMipmaps(for: dst)
                 blit.endEncoding()
-                os_log("renderToImage: enqueued moon albedo GPU blit (%{public}dx%{public}d)", log: log, type: .info, dst.width, dst.height)
+                os_log("renderToImage: enqueued moon albedo blit + mip gen (%dx%d)", log: log, type: .info, dst.width, dst.height)
             }
             moonAlbedoNeedsBlit = false
             moonAlbedoStagingTexture = nil
@@ -844,11 +858,11 @@ final class StarryMetalRenderer {
                 viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
                 centerPx: moon.centerPx,
                 params0: SIMD4<Float>(moon.radiusPx,
-                                      moon.phaseFraction,        // illuminated fraction
+                                      moon.phaseFraction,
                                       moon.brightBrightness,
                                       moon.darkBrightness),
                 params1: SIMD4<Float>(drawData.showLightAreaTextureFillMask ? 1.0 : 0.0,
-                                      moon.waxingSign,            // +1 or -1
+                                      moon.waxingSign,
                                       0, 0)
             )
             encoder.setVertexBytes(&uni, length: MemoryLayout<MoonUniformsSwift>.stride, index: 2)
@@ -885,7 +899,7 @@ final class StarryMetalRenderer {
         layerTex.shootingScratch = device.makeTexture(descriptor: desc)
         layerTex.shootingScratch?.label = "ShootingStarsLayerScratch"
         
-        os_log("Allocated textures: base=%{public}@ baseScratch=%{public}@ sat=%{public}@ satScratch=%{public}@ shoot=%{public}@ shootScratch=%{public}@",
+        os_log("Allocated textures: base=%@ baseScratch=%@ sat=%@ satScratch=%@ shoot=%@ shootScratch=%@",
                log: log, type: .info,
                ptrString(layerTex.base!),
                ptrString(layerTex.baseScratch!),
@@ -911,7 +925,7 @@ final class StarryMetalRenderer {
     }
     
     private func clearOffscreenTextures(reason: String = "unspecified") {
-        os_log("ClearOffscreenTextures: begin (reason=%{public}@)", log: log, type: .info, reason)
+        os_log("ClearOffscreenTextures: begin (reason=%@)", log: log, type: .info, reason)
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             os_log("ClearOffscreenTextures: failed to make command buffer", log: log, type: .error)
             return
@@ -942,7 +956,7 @@ final class StarryMetalRenderer {
         
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
-        os_log("ClearOffscreenTextures: complete (reason=%{public}@)", log: log, type: .info, reason)
+        os_log("ClearOffscreenTextures: complete (reason=%@)", log: log, type: .info, reason)
     }
     
     private func clearTexture(_ texture: MTLTexture, commandBuffer: MTLCommandBuffer, label: String) {
@@ -996,7 +1010,7 @@ final class StarryMetalRenderer {
         grow(set: &targetSet.pointee, labelBase: "SpriteInstances-\(provenanceString(provenance))")
         guard let staging = targetSet.pointee.staging,
               let deviceBuf = targetSet.pointee.device else {
-            os_log("uploadSpriteInstances: allocation failed provenance=%{public}@ bytes=%{public}d",
+            os_log("uploadSpriteInstances: allocation failed provenance=%@ bytes=%d",
                    log: log, type: .fault, provenanceString(provenance), requiredBytes)
             return nil
         }
@@ -1033,7 +1047,7 @@ final class StarryMetalRenderer {
             (isSameTexture(target, layerTex.base) ||
              isSameTexture(target, layerTex.baseScratch) ||
              labelContains(target, "BaseLayer")) {
-            os_log("ALERT: Skipping additive draw into BaseLayer (provenance=%{public}@)", log: log, type: .fault, provenanceString(provenance))
+            os_log("ALERT: Skipping additive draw into BaseLayer (provenance=%@)", log: log, type: .fault, provenanceString(provenance))
             return
         }
         
@@ -1081,7 +1095,7 @@ final class StarryMetalRenderer {
         let keep = decayKeep(forHalfLife: halfLife, dt: dt)
         
         if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
-            os_log("Decay in-place %{public}@ keep=%{public}.4f (halfLife=%{public}.3f dt=%{public}.4f)",
+            os_log("Decay in-place %@ keep=%.4f (halfLife=%.3f dt=%.4f)",
                    log: log, type: .debug,
                    (which == .satellites ? "satellites" : "shooting"),
                    keep, halfLife, (dt ?? 0))
@@ -1089,7 +1103,7 @@ final class StarryMetalRenderer {
         
         let target: MTLTexture? = (which == .satellites) ? layerTex.satellites : layerTex.shooting
         guard let tex = target else {
-            os_log("applyDecay: missing target texture for %{public}@ layer", log: log, type: .error, which == .satellites ? "satellites" : "shooting")
+            os_log("applyDecay: missing target texture for %@ layer", log: log, type: .error, which == .satellites ? "satellites" : "shooting")
             return
         }
         
@@ -1226,14 +1240,14 @@ final class StarryMetalRenderer {
     
     private func savePNG(_ image: CGImage, to url: URL) {
         guard let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else {
-            os_log("PNG save: failed to create destination for %{public}@", log: log, type: .error, url.path)
+            os_log("PNG save: failed to create destination for %@", log: log, type: .error, url.path)
             return
         }
         CGImageDestinationAddImage(dest, image, nil)
         if CGImageDestinationFinalize(dest) {
-            os_log("PNG saved -> %{public}@", log: log, type: .info, url.path)
+            os_log("PNG saved -> %@", log: log, type: .info, url.path)
         } else {
-            os_log("PNG save failed -> %{public}@", log: log, type: .error, url.path)
+            os_log("PNG save failed -> %@", log: log, type: .error, url.path)
         }
     }
     
@@ -1263,7 +1277,7 @@ final class StarryMetalRenderer {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         } catch {
-            os_log("DumpLayers: failed to create directory %{public}@ (%{public}@)",
+            os_log("DumpLayers: failed to create directory %@ (%@)",
                    log: log, type: .error, dir.path, "\(error)")
         }
         commandBuffer.addCompletedHandler { [weak self] _ in
@@ -1279,7 +1293,7 @@ final class StarryMetalRenderer {
             write(satScratchSnap, name: "SatScratch")
             write(shootSnap, name: "Shoot")
             write(shootScratchSnap, name: "ShootScratch")
-            os_log("DumpLayers: completed -> %{public}@", log: self.log, type: .info, dir.path)
+            os_log("DumpLayers: completed -> %@", log: self.log, type: .info, dir.path)
         }
     }
     
@@ -1320,7 +1334,7 @@ final class StarryMetalRenderer {
         for i in 0..<min(3, satCount) {
             alphaSamples.append(drawData.satellitesSprites[i].colorPremul.w)
         }
-        os_log("%{public}@Frame #%{public}llu dt=%{public}.4f s | satSprites=%{public}d alphaSamples=%{public}@ shootSprites=%{public}d keep(sat)=%{public}.4f keep(shoot)=%{public}.4f",
+        os_log("%@Frame #%llu dt=%.4f s | satSprites=%d alphaSamples=%@ shootSprites=%d keep(sat)=%.4f keep(shoot)=%.4f",
                log: log, type: .debug,
                prefix, frameIndex, dtSec, satCount, alphaSamples.description, shootCount, keepSat, keepShoot)
     }

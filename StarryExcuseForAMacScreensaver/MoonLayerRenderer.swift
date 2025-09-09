@@ -3,21 +3,16 @@ import CoreGraphics
 import os
 import QuartzCore
 
-// Moon rendering algorithm (2025):
-// 1. (Normal mode) Always draw FULL dark textured disk (no dark-side extension).
-// 2. Compute illuminated region mask for the current phase.
-// 3. Draw bright texture EXACTLY ONCE clipped by that mask.
-// 4. (Debug mode showLightAreaTextureFillMask): Skip drawing the dark disk entirely;
-//    only draw the illuminated region (filled red) so mask artifacts are obvious.
+// Moon rendering algorithm (2025, Tier 3 smoothing):
+// - High resolution, subpixel motion (pixel snapping removed).
+// - Center optionally smoothed with EMA to suppress residual micro stutter after
+//   high-resolution progression (tunable alpha).
+// - Disk image (shading) still cached; only recomputed when phase / brightness / debug
+//   parameters change enough, not for mere positional shifts.
+// - Drawing every frame (cheap composite) if the center moves.
 //
-// Added optimization (2025-08):
-//    - renderMoon(into:) now returns Bool indicating whether the moon layer was
-//      actually redrawn. If the integer pixel center and cached shaded disk
-//      (phase, radius, brightness, debug flag) haven't changed enough to
-//      trigger a regeneration, we skip clearing and drawing the layer entirely.
-//      StarryEngine uses this to avoid unnecessary CGImage creation & compositing.
-//
-// Halo suppression and shading caching logic unchanged.
+// NOTE: The disk image is phase-dependent, not position-dependent; we only rebuild when
+// fraction changes beyond a threshold or brightness/debug/radius changes.
 final class MoonLayerRenderer {
     private let skyline: Skyline
     private let log: OSLog
@@ -25,7 +20,7 @@ final class MoonLayerRenderer {
     private let darkBrightness: CGFloat
     private let showLightAreaTextureFillMask: Bool
     
-    // Cached shaded disk image & metadata
+    // Cached shaded disk image & metadata (phase-based)
     private var cachedDiskImage: CGImage?
     private var cachedRadius: CGFloat = -1
     private var cachedPhaseFraction: CGFloat = -1
@@ -34,8 +29,9 @@ final class MoonLayerRenderer {
     private var cachedDark: CGFloat = -1
     private var lastShadingRenderTime: CFTimeInterval = 0
     
-    // Last drawn (pixel-aligned) center. If unchanged and no regenerate needed, skip redraw.
-    private var lastDrawnCenter: CGPoint?
+    // Smoothed center (EMA)
+    private var filteredCenter: CGPoint?
+    private let smoothingAlpha: CGFloat = 0.30  // higher -> tracks target faster
     
     // Instrumentation
     private var frameIndex: UInt64 = 0
@@ -52,13 +48,10 @@ final class MoonLayerRenderer {
         self.showLightAreaTextureFillMask = showLightAreaTextureFillMask
     }
     
-    @inline(__always)
-    private func pixelAlign(_ value: CGFloat) -> CGFloat { round(value) }
-    
-    // Returns true if the moon layer was (re)rendered.
+    // Returns true if the moon disk image was regenerated (not merely repositioned).
     func renderMoon(into context: CGContext) -> Bool {
         frameIndex &+= 1
-        let logThis = (frameIndex <= 5) || (frameIndex % 60 == 0)
+        let logThis = (frameIndex <= 5) || (frameIndex % 120 == 0)
         
         guard let moon = skyline.getMoon() else {
             if logThis { os_log("MoonLayerRenderer: no Moon available", log: log, type: .debug) }
@@ -69,20 +62,34 @@ final class MoonLayerRenderer {
             return false
         }
         
-        let rawCenter = moon.currentCenter()
+        // High-resolution (subpixel) target center
+        let targetCenter = moon.currentCenter()
+        
+        // Exponential smoothing to reduce micro jitter without introducing large lag.
+        if let prev = filteredCenter {
+            let nx = prev.x + smoothingAlpha * (targetCenter.x - prev.x)
+            let ny = prev.y + smoothingAlpha * (targetCenter.y - prev.y)
+            filteredCenter = CGPoint(x: nx, y: ny)
+        } else {
+            filteredCenter = targetCenter
+        }
+        guard let center = filteredCenter else { return false }
+        
         let r = CGFloat(moon.radius)
-        let center = CGPoint(x: pixelAlign(rawCenter.x), y: pixelAlign(rawCenter.y))
+        
+        // Dynamic illuminated fraction
         let fRaw = moon.illuminatedFraction
         let f = CGFloat(min(max(fRaw, 0.0), 1.0))
         
-        // Decide if we need to regenerate shaded disk
+        // Decide if we need to regenerate shaded disk (phase-based)
         let now = CACurrentMediaTime()
         let synodicSec = Moon.synodicMonthDays * 86400.0
         let timePerPixel = (r > 0) ? synodicSec / (4.0 * Double(r)) : 0
         let dt = now - lastShadingRenderTime
         
+        // Fractional change threshold; increase a bit because phase now updates smoothly each frame.
         let fracPerPixel = (r > 0) ? (1.0 / (4.0 * r)) : 1.0
-        let fractionDeltaThreshold = max(fracPerPixel / 8.0, 0.0005)
+        let fractionDeltaThreshold = max(fracPerPixel / 4.0, 0.0010)
         let fractionDelta = abs(f - cachedPhaseFraction)
         
         var needsRegenerate = false
@@ -93,16 +100,13 @@ final class MoonLayerRenderer {
         if fractionDelta >= fractionDeltaThreshold { needsRegenerate = true }
         if dt >= timePerPixel { needsRegenerate = true }
         
-        // If nothing changed (disk reused) AND center unchanged, skip redraw entirely.
-        if !needsRegenerate, let lastCenter = lastDrawnCenter, lastCenter == center {
-            if logThis { os_log("MoonLayerRenderer: skip redraw (cache reused, center unchanged)", log: log, type: .debug) }
-            return false
-        }
-        
         if needsRegenerate {
             if logThis {
-                os_log("MoonLayerRenderer: regenerating disk (r=%{public}.1f phase=%{public}.4f bright=%{public}.2f dark=%{public}.2f debug=%{public}@)",
-                       log: log, type: .info, Double(r), Double(f), Double(brightBrightness), Double(darkBrightness), showLightAreaTextureFillMask ? "on" : "off")
+                os_log("MoonLayerRenderer: regenerate disk r=%.1f illum=%.4f Δ=%.4f bright=%.2f dark=%.2f dbg=%@",
+                       log: log, type: .info,
+                       Double(r), Double(f), Double(fractionDelta),
+                       Double(brightBrightness), Double(darkBrightness),
+                       showLightAreaTextureFillMask ? "on" : "off")
             }
             cachedDiskImage = buildShadedDiskImage(texture: texture,
                                                    radius: r,
@@ -114,7 +118,7 @@ final class MoonLayerRenderer {
             cachedDark = darkBrightness
             lastShadingRenderTime = now
         } else if logThis {
-            os_log("MoonLayerRenderer: reusing cached disk (center changed)", log: log, type: .debug)
+            os_log("MoonLayerRenderer: reuse cached disk (phase stable)", log: log, type: .debug)
         }
         
         guard let diskImage = cachedDiskImage else {
@@ -122,21 +126,18 @@ final class MoonLayerRenderer {
             return false
         }
         
-        // Clear entire layer before drawing new moon (position or disk changed)
+        // Composite the (phase) disk at new center every frame (cheap).
         let fullRect = CGRect(x: 0, y: 0, width: context.width, height: context.height)
         context.clear(fullRect)
         let moonRect = CGRect(x: center.x - r, y: center.y - r, width: 2*r, height: 2*r)
         context.saveGState()
-        context.interpolationQuality = .none
+        context.interpolationQuality = .low     // allow mild filtering to reduce sparkle
         context.setShouldAntialias(true)
         context.setAllowsAntialiasing(true)
         context.draw(diskImage, in: moonRect)
         context.restoreGState()
-        lastDrawnCenter = center
-        if logThis {
-            os_log("MoonLayerRenderer: drew disk at center=(%{public}.1f,%{public}.1f) r=%{public}.1f", log: log, type: .info, Double(center.x), Double(center.y), Double(r))
-        }
-        return true
+        
+        return needsRegenerate
     }
     
     // Builds (or rebuilds) the shaded disk CGImage (size 2r x 2r) at origin.
@@ -144,12 +145,12 @@ final class MoonLayerRenderer {
                                       radius r: CGFloat,
                                       fraction f: CGFloat) -> CGImage? {
         if r <= 0 {
-            os_log("MoonLayerRenderer: invalid radius %{public}.3f", log: log, type: .error, Double(r))
+            os_log("MoonLayerRenderer: invalid radius %.3f", log: log, type: .error, Double(r))
             return nil
         }
         let size = Int(ceil(2*r))
         guard size > 0 else {
-            os_log("MoonLayerRenderer: invalid size computed %{public}d", log: log, type: .error, size)
+            os_log("MoonLayerRenderer: invalid size %d", log: log, type: .error, size)
             return nil
         }
         
@@ -163,7 +164,7 @@ final class MoonLayerRenderer {
             os_log("MoonLayerRenderer: failed to create disk context", log: log, type: .error)
             return nil
         }
-        diskCtx.interpolationQuality = .none
+        diskCtx.interpolationQuality = .none   // texture copied raw here; outer composite may smooth
         diskCtx.setShouldAntialias(true)
         diskCtx.setAllowsAntialiasing(true)
         
@@ -194,15 +195,13 @@ final class MoonLayerRenderer {
             return diskCtx.makeImage()
         }
         
-        // Normal mode:
-        // 1. Draw full dark textured disk
+        // Normal mode: dark disk then bright region overlay
         drawTexture(context: diskCtx,
                     image: texture,
                     in: moonRect,
                     brightness: darkBrightness,
                     clipToCircle: true)
         
-        // 2. Bright region logic
         if f <= newThreshold {
             return diskCtx.makeImage()
         }
@@ -235,7 +234,7 @@ final class MoonLayerRenderer {
         return diskCtx.makeImage()
     }
     
-    // MARK: - Mask Construction
+    // MARK: - Mask Construction (legacy crescent logic retained; could be replaced by analytic terminator)
     
     private func buildIlluminatedMask(radius r: CGFloat,
                                       fraction f: CGFloat,
@@ -243,7 +242,6 @@ final class MoonLayerRenderer {
         let size = Int(ceil(2*r))
         if size <= 0 { return nil }
         
-        // Grayscale 8-bit mask context
         let colorSpace = CGColorSpaceCreateDeviceGray()
         guard let maskCtx = CGContext(data: nil,
                                       width: size,
