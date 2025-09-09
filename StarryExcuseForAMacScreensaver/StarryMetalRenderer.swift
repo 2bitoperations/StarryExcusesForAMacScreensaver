@@ -144,6 +144,12 @@ final class StarryMetalRenderer {
     // One-shot layer dumps
     private var dumpLayersNextFrame: Bool = false
     
+    // Shared notification centers for consolidated observer registration
+    private let notificationCenters: [NotificationCenter] = [
+        NotificationCenter.default,
+        DistributedNotificationCenter.default()
+    ]
+    
     // MARK: - Init (onscreen)
     
     init?(layer: CAMetalLayer, log: OSLog) {
@@ -198,92 +204,115 @@ final class StarryMetalRenderer {
         DistributedNotificationCenter.default().removeObserver(self)
     }
     
-    // MARK: - Debug control observers
+    // MARK: - Observer installation / handlers
     
     private func installDebugObservers() {
         guard !debugObserversInstalled else { return }
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(handleCompositeModeNotification(_:)),
-                                               name: StarryMetalRenderer.debugCompositeModeNotification,
-                                               object: nil)
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(handleDiagnosticsNotification(_:)),
-                                               name: StarryMetalRenderer.diagnosticsNotification,
-                                               object: nil)
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(handleClearNotification(_:)),
-                                               name: StarryMetalRenderer.clearNotification,
-                                               object: nil)
-        DistributedNotificationCenter.default().addObserver(self,
-                                                            selector: #selector(handleCompositeModeNotification(_:)),
-                                                            name: StarryMetalRenderer.debugCompositeModeNotification,
-                                                            object: nil)
-        DistributedNotificationCenter.default().addObserver(self,
-                                                            selector: #selector(handleDiagnosticsNotification(_:)),
-                                                            name: StarryMetalRenderer.diagnosticsNotification,
-                                                            object: nil)
-        DistributedNotificationCenter.default().addObserver(self,
-                                                            selector: #selector(handleClearNotification(_:)),
-                                                            name: StarryMetalRenderer.clearNotification,
-                                                            object: nil)
+        addObserver(name: Self.debugCompositeModeNotification, selector: #selector(handleCompositeModeNotification(_:)))
+        addObserver(name: Self.diagnosticsNotification, selector: #selector(handleDiagnosticsNotification(_:)))
+        addObserver(name: Self.clearNotification, selector: #selector(handleClearNotification(_:)))
         debugObserversInstalled = true
     }
     
-    @objc private func handleCompositeModeNotification(_ note: Notification) {
-        if let raw = note.userInfo?["mode"] as? Int,
-           let mode = CompositeDebugMode(rawValue: raw) {
-            debugCompositeMode = mode
-            os_log("Debug: composite mode changed via notification to %{public}@",
-                   log: log, type: .info,
-                   mode == .normal ? "NORMAL" : (mode == .satellitesOnly ? "SATELLITES-ONLY" : "BASE-ONLY"))
+    private func addObserver(name: Notification.Name, selector: Selector) {
+        for center in notificationCenters {
+            center.addObserver(self, selector: selector, name: name, object: nil)
         }
     }
     
+    @objc private func handleCompositeModeNotification(_ note: Notification) {
+        processCompositeMode(userInfo: note.userInfo)
+    }
+    
     @objc private func handleDiagnosticsNotification(_ note: Notification) {
-        let ui = note.userInfo
+        processDiagnostics(userInfo: note.userInfo)
+    }
+    
+    @objc private func handleClearNotification(_ note: Notification) {
+        processClear(userInfo: note.userInfo)
+    }
+    
+    // MARK: - Notification processors (deduplicated logic)
+    
+    private func processCompositeMode(userInfo: [AnyHashable: Any]?) {
+        guard let raw = userInfo?["mode"] as? Int,
+              let mode = CompositeDebugMode(rawValue: raw) else {
+            os_log("CompositeMode notification: invalid or missing 'mode'", log: log, type: .error)
+            return
+        }
+        debugCompositeMode = mode
+        os_log("Debug: composite mode changed via notification to %{public}@",
+               log: log, type: .info,
+               mode == .normal ? "NORMAL" : (mode == .satellitesOnly ? "SATELLITES-ONLY" : "BASE-ONLY"))
+    }
+    
+    private func processDiagnostics(userInfo ui: [AnyHashable: Any]?) {
         var applied: [String] = []
+        var ignored: [String] = []
         
-        if let v: Bool = value("enabled", from: ui) {
+        // Supported keys (for reference – not strictly required but documents intent here)
+        // Mapping to property updates is explicit below.
+        struct Keys {
+            static let enabled = "enabled"
+            static let everyNFrames = "everyNFrames"
+            static let debugLogEveryN = "debugLogEveryN" // alias
+            static let skipSat = "skipSatellitesDraw"
+            static let overlay = "overlayEnabled"
+            static let satHalf = "satellitesHalfLifeSeconds"
+            static let shootHalf = "shootingHalfLifeSeconds"
+            static let dropBaseN = "dropBaseEveryN"
+            static let dumpLayers = "dumpLayersNextFrame"
+        }
+        
+        // Legacy / engine / removed keys we ignore
+        let legacyIgnoredKeys: [String] = [
+            "starsPerUpdate",
+            "buildingLightsPerUpdate",
+            "gpuCaptureStart",
+            "gpuCaptureStop",
+            "gpuCaptureFrames",
+            "gpuCapturePath"
+        ]
+        
+        if let v: Bool = value(Keys.enabled, from: ui) {
             diagnosticsEnabled = v
             applied.append("diagnosticsEnabled=\(v)")
         }
-        if let n: Int = value("everyNFrames", from: ui) ?? value("debugLogEveryN", from: ui) {
+        if let n: Int = value(Keys.everyNFrames, from: ui) ?? value(Keys.debugLogEveryN, from: ui) {
             diagnosticsEveryNFrames = max(1, n)
             applied.append("diagnosticsEveryNFrames=\(diagnosticsEveryNFrames)")
         }
-        if let v: Bool = value("skipSatellitesDraw", from: ui) {
+        if let v: Bool = value(Keys.skipSat, from: ui) {
             debugSkipSatellitesDraw = v
             applied.append("skipSatellitesDraw=\(v)")
         }
-        if let v: Bool = value("overlayEnabled", from: ui) {
+        if let v: Bool = value(Keys.overlay, from: ui) {
             debugOverlayEnabled = v
             applied.append("overlayEnabled=\(v)")
         }
-        if let d: Double = value("satellitesHalfLifeSeconds", from: ui) {
+        if let d: Double = value(Keys.satHalf, from: ui) {
             satellitesHalfLifeSeconds = max(1e-6, d)
             applied.append(String(format: "satellitesHalfLife=%.4f", satellitesHalfLifeSeconds))
         }
-        if let d: Double = value("shootingHalfLifeSeconds", from: ui) {
+        if let d: Double = value(Keys.shootHalf, from: ui) {
             shootingHalfLifeSeconds = max(1e-6, d)
             applied.append(String(format: "shootingHalfLife=%.4f", shootingHalfLifeSeconds))
         }
-        if let n: Int = value("dropBaseEveryN", from: ui) {
+        if let n: Int = value(Keys.dropBaseN, from: ui) {
             dropBaseEveryNFrames = max(0, n)
             applied.append("dropBaseEveryN=\(dropBaseEveryNFrames)")
         }
-        if let dump: Bool = value("dumpLayersNextFrame", from: ui), dump {
+        if let dump: Bool = value(Keys.dumpLayers, from: ui), dump {
             dumpLayersNextFrame = true
             applied.append("dumpLayersNextFrame")
         }
         
-        var ignored: [String] = []
-        if ui?["starsPerUpdate"] != nil { ignored.append("starsPerUpdate") }
-        if ui?["buildingLightsPerUpdate"] != nil { ignored.append("buildingLightsPerUpdate") }
-        // Legacy / removed keys (GPU capture) — ignore silently if present
-        if ui?["gpuCaptureStart"] != nil { ignored.append("gpuCaptureStart(removed)") }
-        if ui?["gpuCaptureStop"] != nil { ignored.append("gpuCaptureStop(removed)") }
-        if ui?["gpuCaptureFrames"] != nil { ignored.append("gpuCaptureFrames(removed)") }
-        if ui?["gpuCapturePath"] != nil { ignored.append("gpuCapturePath(removed)") }
+        // Collect ignored keys present
+        if let ui = ui {
+            for k in legacyIgnoredKeys where ui[k] != nil {
+                ignored.append(k)
+            }
+        }
         
         if !ignored.isEmpty {
             os_log("Diagnostics notification contained ignored keys: %{public}@",
@@ -297,8 +326,8 @@ final class StarryMetalRenderer {
         }
     }
     
-    @objc private func handleClearNotification(_ note: Notification) {
-        let target: String = (note.userInfo?["target"] as? String)?.lowercased() ?? "all"
+    private func processClear(userInfo ui: [AnyHashable: Any]?) {
+        let target: String = (ui?["target"] as? String)?.lowercased() ?? "all"
         if target == "all" {
             clearOffscreenTextures(reason: "Notification(all)")
             return
@@ -308,7 +337,7 @@ final class StarryMetalRenderer {
             return
         }
         func clr(_ t: MTLTexture?, label: String) {
-            guard let t = t else { return }
+            guard let t else { return }
             clearTexture(t, commandBuffer: cb, label: "Clear via notification: \(label)")
         }
         switch target {
@@ -532,68 +561,70 @@ final class StarryMetalRenderer {
     
     func setMoonAlbedo(image: CGImage) {
         let width = image.width
-        let height = image.height
-        guard width > 0, height > 0 else { return }
-        os_log("setMoonAlbedo: preparing upload via staging+blit (%{public}dx%{public}d)", log: log, type: .info, width, height)
-        
-        if moonAlbedoTexture == nil || moonAlbedoTexture!.width != width || moonAlbedoTexture!.height != height {
-            let dstDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
-                                                                   width: width,
-                                                                   height: height,
-                                                                   mipmapped: false)
-            dstDesc.usage = [.shaderRead]
-            dstDesc.storageMode = .private
-            moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
-            moonAlbedoTexture?.label = "MoonAlbedo (private)"
-            if moonAlbedoTexture == nil {
-                os_log("setMoonAlbedo: failed to create destination texture", log: log, type: .error)
+        theight: do {
+            let height = image.height
+            guard width > 0, height > 0 else { return }
+            os_log("setMoonAlbedo: preparing upload via staging+blit (%{public}dx%{public}d)", log: log, type: .info, width, height)
+            
+            if moonAlbedoTexture == nil || moonAlbedoTexture!.width != width || moonAlbedoTexture!.height != height {
+                let dstDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
+                                                                       width: width,
+                                                                       height: height,
+                                                                       mipmapped: false)
+                dstDesc.usage = [.shaderRead]
+                dstDesc.storageMode = .private
+                moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
+                moonAlbedoTexture?.label = "MoonAlbedo (private)"
+                if moonAlbedoTexture == nil {
+                    os_log("setMoonAlbedo: failed to create destination texture", log: log, type: .error)
+                    return
+                }
+            }
+            
+            let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
+                                                                       width: width,
+                                                                       height: height,
+                                                                       mipmapped: false)
+            stagingDesc.storageMode = .shared
+            stagingDesc.usage = []
+            guard let staging = device.makeTexture(descriptor: stagingDesc) else {
+                os_log("setMoonAlbedo: failed to create staging texture", log: log, type: .error)
                 return
             }
-        }
-        
-        let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
-                                                                   width: width,
-                                                                   height: height,
-                                                                   mipmapped: false)
-        stagingDesc.storageMode = .shared
-        stagingDesc.usage = []
-        guard let staging = device.makeTexture(descriptor: stagingDesc) else {
-            os_log("setMoonAlbedo: failed to create staging texture", log: log, type: .error)
-            return
-        }
-        staging.label = "MoonAlbedo (staging)"
-        
-        var bytesPerRow = width
-        var uploadBytes: [UInt8]
-        if let provider = image.dataProvider, let data = provider.data,
-           image.bitsPerPixel == 8,
-           image.colorSpace?.model == .monochrome,
-           image.bytesPerRow == width {
-            uploadBytes = [UInt8]((data as Data))
-        } else {
-            uploadBytes = [UInt8](repeating: 0, count: width * height)
-            let cs = CGColorSpaceCreateDeviceGray()
-            if let ctx = CGContext(data: &uploadBytes,
-                                   width: width,
-                                   height: height,
-                                   bitsPerComponent: 8,
-                                   bytesPerRow: width,
-                                   space: cs,
-                                   bitmapInfo: CGImageAlphaInfo.none.rawValue) {
-                ctx.interpolationQuality = .none
-                ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            staging.label = "MoonAlbedo (staging)"
+            
+            var bytesPerRow = width
+            var uploadBytes: [UInt8]
+            if let provider = image.dataProvider, let data = provider.data,
+               image.bitsPerPixel == 8,
+               image.colorSpace?.model == .monochrome,
+               image.bytesPerRow == width {
+                uploadBytes = [UInt8]((data as Data))
             } else {
-                os_log("setMoonAlbedo: failed to create grayscale CGContext for conversion", log: log, type: .error)
+                uploadBytes = [UInt8](repeating: 0, count: width * height)
+                let cs = CGColorSpaceCreateDeviceGray()
+                if let ctx = CGContext(data: &uploadBytes,
+                                       width: width,
+                                       height: height,
+                                       bitsPerComponent: 8,
+                                       bytesPerRow: width,
+                                       space: cs,
+                                       bitmapInfo: CGImageAlphaInfo.none.rawValue) {
+                    ctx.interpolationQuality = .none
+                    ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+                } else {
+                    os_log("setMoonAlbedo: failed to create grayscale CGContext for conversion", log: log, type: .error)
+                }
             }
+            staging.replace(region: MTLRegionMake2D(0, 0, width, height),
+                            mipmapLevel: 0,
+                            withBytes: uploadBytes,
+                            bytesPerRow: bytesPerRow)
+            
+            moonAlbedoStagingTexture = staging
+            moonAlbedoNeedsBlit = true
+            os_log("setMoonAlbedo: staged bytes; will blit to private on next command buffer", log: log, type: .info)
         }
-        staging.replace(region: MTLRegionMake2D(0, 0, width, height),
-                        mipmapLevel: 0,
-                        withBytes: uploadBytes,
-                        bytesPerRow: bytesPerRow)
-        
-        moonAlbedoStagingTexture = staging
-        moonAlbedoNeedsBlit = true
-        os_log("setMoonAlbedo: staged bytes; will blit to private on next command buffer", log: log, type: .info)
     }
     
     func render(drawData: StarryDrawData) {
@@ -1297,9 +1328,9 @@ final class StarryMetalRenderer {
                    log: log, type: .error, dir.path, "\(error)")
         }
         commandBuffer.addCompletedHandler { [weak self] _ in
-            guard let self = self else { return }
+            guard let self else { return }
             func write(_ tex: MTLTexture?, name: String) {
-                guard let tex = tex, let img = self.textureToImage(tex) else { return }
+                guard let tex, let img = self.textureToImage(tex) else { return }
                 let filename = "\(name)-\(tex.label ?? "tex")-\(self.ptrString(tex)).png"
                 let url = dir.appendingPathComponent(filename, isDirectory: false)
                 self.savePNG(img, to: url)
