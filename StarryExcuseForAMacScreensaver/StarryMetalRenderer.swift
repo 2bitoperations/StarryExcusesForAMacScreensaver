@@ -118,6 +118,8 @@ final class StarryMetalRenderer {
     private var overlayWidthPx: Int = 0
     private var overlayHeightPx: Int = 0
     private let overlayUpdateInterval: CFTimeInterval = 0.25  // seconds
+    private var lastOverlayDrawnFrame: UInt64 = 0
+    private var lastOverlayLogTime: CFTimeInterval = 0
     
     private let notificationCenters: [NotificationCenter] = [
         NotificationCenter.default,
@@ -479,6 +481,9 @@ final class StarryMetalRenderer {
     }
     
     func setDebugOverlayEnabled(_ enabled: Bool) {
+        if debugOverlayEnabled != enabled {
+            os_log("Renderer debug overlay now %{public}@", log: log, type: .info, enabled ? "ENABLED" : "disabled")
+        }
         debugOverlayEnabled = enabled
     }
     
@@ -602,7 +607,13 @@ final class StarryMetalRenderer {
             clearOffscreenTextures(reason: "UserClearAll")
         }
         
+        // Sync overlay flag from engine draw data
+        if debugOverlayEnabled != drawData.debugOverlayEnabled {
+            os_log("Renderer: debug overlay flag from engine now %{public}@", log: log, type: .info,
+                   drawData.debugOverlayEnabled ? "ENABLED" : "disabled")
+        }
         debugOverlayEnabled = drawData.debugOverlayEnabled
+        
         updateOverlayIfNeeded(drawData: drawData)
         
         let now = CACurrentMediaTime()
@@ -692,6 +703,10 @@ final class StarryMetalRenderer {
         ensureOffscreenComposite(size: drawData.size)
         guard let finalTarget = offscreenComposite else { return nil }
         
+        if debugOverlayEnabled != drawData.debugOverlayEnabled {
+            os_log("Renderer(headless): debug overlay flag from engine now %{public}@", log: log, type: .info,
+                   drawData.debugOverlayEnabled ? "ENABLED" : "disabled")
+        }
         debugOverlayEnabled = drawData.debugOverlayEnabled
         updateOverlayIfNeeded(drawData: drawData)
         
@@ -896,6 +911,14 @@ final class StarryMetalRenderer {
                                      length: MemoryLayout<SIMD4<Float>>.stride,
                                      index: FragmentBufferIndex.quadUniforms)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+            lastOverlayDrawnFrame = frameIndex
+            let now = CACurrentMediaTime()
+            if now - lastOverlayLogTime > 2.0 {
+                os_log("Overlay drawn (frame=%{public}llu size=%{public}dx%{public}d text=\"%{public}@\")",
+                       log: log, type: .debug,
+                       frameIndex, overlayTex.width, overlayTex.height, lastOverlayString)
+                lastOverlayLogTime = now
+            }
         }
         
         encoder.popDebugGroup()
@@ -1237,6 +1260,7 @@ final class StarryMetalRenderer {
             tex.replace(region: region, mipmapLevel: 0, withBytes: bytes, bytesPerRow: rowBytes)
         }
         
+        os_log("Overlay updated (size=%dx%d text=\"%{public}@\")", log: log, type: .debug, overlayWidthPx, overlayHeightPx, overlayStr)
         buildOverlayQuadIfNeeded(screenSize: drawData.size)
     }
     
@@ -1466,8 +1490,9 @@ final class StarryMetalRenderer {
         for i in 0..<min(3, satCount) {
             alphaSamples.append(drawData.satellitesSprites[i].colorPremul.w)
         }
-        os_log("%@Frame #%llu dt=%.4f s | satSprites=%d alphaSamples=%@ shootSprites=%d keep(sat)=%.4f keep(shoot)=%.4f",
+        os_log("%@Frame #%llu dt=%.4f s | satSprites=%d alphaSamples=%@ shootSprites=%d keep(sat)=%.4f keep(shoot)=%.4f overlay=%@",
                log: log, type: .debug,
-               prefix, frameIndex, dtSec, satCount, alphaSamples.description, shootCount, keepSat, keepShoot)
+               prefix, frameIndex, dtSec, satCount, alphaSamples.description, shootCount, keepSat, keepShoot,
+               (debugOverlayEnabled ? (overlayTexture != nil ? "ENABLED+TEX" : "ENABLED(noTex)") : "off"))
     }
 }

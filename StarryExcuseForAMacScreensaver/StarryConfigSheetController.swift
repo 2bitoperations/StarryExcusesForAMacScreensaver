@@ -45,7 +45,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // Debug toggle
     @IBOutlet weak var showLightAreaTextureFillMaskCheckbox: NSSwitch!
     
-    // Debug overlay toggle (NEW - no XIB update yet, thus optional)
+    // Debug overlay toggle
     @IBOutlet weak var debugOverlayEnabledCheckbox: NSSwitch?
     
     // Shooting Stars controls
@@ -56,25 +56,19 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var shootingStarsSpeedSlider: NSSlider!
     @IBOutlet weak var shootingStarsThicknessSlider: NSSlider!
     @IBOutlet weak var shootingStarsBrightnessSlider: NSSlider!
-    // Legacy IBOutlet name retained for XIB; use the HalfLife alias below in code.
     @IBOutlet weak var shootingStarsTrailDecaySlider: NSSlider!
-    // Aliases reflecting half-life semantics (use these throughout code)
     var shootingStarsTrailHalfLifeSlider: NSSlider { shootingStarsTrailDecaySlider }
     
     @IBOutlet weak var shootingStarsLengthPreview: NSTextField!
     @IBOutlet weak var shootingStarsSpeedPreview: NSTextField!
     @IBOutlet weak var shootingStarsThicknessPreview: NSTextField!
     @IBOutlet weak var shootingStarsBrightnessPreview: NSTextField!
-    // Legacy IBOutlet name retained for XIB; use the HalfLife alias below in code.
     @IBOutlet weak var shootingStarsTrailDecayPreview: NSTextField!
-    // Alias reflecting half-life semantics
     var shootingStarsTrailHalfLifePreview: NSTextField { shootingStarsTrailDecayPreview }
-    // Debug: show spawn bounds checkbox (missing IBOutlet added)
     @IBOutlet weak var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch!
     
-    // Satellites controls (NEW - optional until XIB updated)
+    // Satellites controls
     @IBOutlet weak var satellitesEnabledCheckbox: NSSwitch?
-    // Slider will represent satellites per minute (frequency). We convert to avg seconds.
     @IBOutlet weak var satellitesPerMinuteSlider: NSSlider?
     @IBOutlet weak var satellitesPerMinutePreview: NSTextField?
     @IBOutlet weak var satellitesSpeedSlider: NSSlider?
@@ -84,10 +78,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBOutlet weak var satellitesBrightnessSlider: NSSlider?
     @IBOutlet weak var satellitesBrightnessPreview: NSTextField?
     @IBOutlet weak var satellitesTrailingCheckbox: NSSwitch?
-    // Legacy IBOutlet names retained for XIB; use the HalfLife aliases below in code.
     @IBOutlet weak var satellitesTrailDecaySlider: NSSlider?
     @IBOutlet weak var satellitesTrailDecayPreview: NSTextField?
-    // Aliases reflecting half-life semantics
     var satellitesTrailHalfLifeSlider: NSSlider? { satellitesTrailDecaySlider }
     var satellitesTrailHalfLifePreview: NSTextField? { satellitesTrailDecayPreview }
     
@@ -105,7 +97,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var previewEngine: StarryEngine?
     private var previewTimer: Timer?
     
-    // Metal preview (same renderer as screensaver)
+    // Metal preview
     private var previewMetalLayer: CAMetalLayer?
     private var previewRenderer: StarryMetalRenderer?
     
@@ -113,7 +105,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var isManuallyPaused = false
     private var isAutoPaused = false
     
-    // Last-known values for change logging
+    // Last-known values
     private var lastStarsPerUpdate: Int = 0
     private var lastBuildingHeight: Double = 0
     private var lastSecsBetweenClears: Double = 0
@@ -135,21 +127,19 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastShootingStarsSpeed: Double = 0
     private var lastShootingStarsThickness: Double = 0
     private var lastShootingStarsBrightness: Double = 0
-    // Half-life seconds
     private var lastShootingStarsTrailHalfLifeSeconds: Double = 0
     private var lastShootingStarsDebugSpawnBounds: Bool = false
     
-    // Satellites last-known (NEW)
+    // Satellites last-known
     private var lastSatellitesEnabled: Bool = false
     private var lastSatellitesAvgSpawnSeconds: Double = 0
     private var lastSatellitesSpeed: Double = 0
     private var lastSatellitesSize: Double = 0
     private var lastSatellitesBrightness: Double = 0
     private var lastSatellitesTrailing: Bool = false
-    // Half-life seconds
     private var lastSatellitesTrailHalfLifeSeconds: Double = 0
     
-    // MARK: - UI Actions (sliders / controls)
+    // MARK: - UI Actions
     
     @IBAction func buildingHeightChanged(_ sender: Any) {
         let oldVal = lastBuildingHeight
@@ -264,6 +254,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                       newValue: newVal ? "true" : "false")
             lastDebugOverlayEnabled = newVal
         }
+        // Make sure renderer also immediately reflects new state (even before next engine frame)
+        previewRenderer?.setDebugOverlayEnabled(newVal)
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
     }
@@ -321,13 +313,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                       newValue: format(shootingStarsBrightnessSlider.doubleValue))
             lastShootingStarsBrightness = shootingStarsBrightnessSlider.doubleValue
         }
-        // Half-life seconds (0.01 .. 2.0)
         if shootingStarsTrailHalfLifeSlider.doubleValue != lastShootingStarsTrailHalfLifeSeconds {
             logChange(changedKey: "shootingStarsTrailHalfLifeSeconds",
                       oldValue: format(lastShootingStarsTrailHalfLifeSeconds),
                       newValue: format(shootingStarsTrailHalfLifeSlider.doubleValue))
             lastShootingStarsTrailHalfLifeSeconds = shootingStarsTrailHalfLifeSlider.doubleValue
-            updateRendererHalfLives() // propagate immediately
+            updateRendererHalfLives()
         }
         updatePreviewLabels()
         rebuildPreviewEngineIfNeeded()
@@ -358,7 +349,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         updatePreviewConfig()
     }
     
-    // MARK: - Satellites Actions (NEW)
+    // MARK: - Satellites Actions
     
     @IBAction func satellitesToggled(_ sender: Any) {
         guard let checkbox = satellitesEnabledCheckbox else { return }
@@ -376,7 +367,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     @IBAction func satellitesSliderChanged(_ sender: Any) {
-        // Satellites per minute slider -> avg spawn seconds
         if let perMinSlider = satellitesPerMinuteSlider {
             let perMinute = max(0.1, perMinSlider.doubleValue)
             let avgSeconds = 60.0 / perMinute
@@ -387,29 +377,23 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 lastSatellitesAvgSpawnSeconds = avgSeconds
             }
         }
-        if let speedSlider = satellitesSpeedSlider {
-            if speedSlider.doubleValue != lastSatellitesSpeed {
-                logChange(changedKey: "satellitesSpeed",
-                          oldValue: format(lastSatellitesSpeed),
-                          newValue: format(speedSlider.doubleValue))
-                lastSatellitesSpeed = speedSlider.doubleValue
-            }
+        if let speedSlider = satellitesSpeedSlider, speedSlider.doubleValue != lastSatellitesSpeed {
+            logChange(changedKey: "satellitesSpeed",
+                      oldValue: format(lastSatellitesSpeed),
+                      newValue: format(speedSlider.doubleValue))
+            lastSatellitesSpeed = speedSlider.doubleValue
         }
-        if let sizeSlider = satellitesSizeSlider {
-            if sizeSlider.doubleValue != lastSatellitesSize {
-                logChange(changedKey: "satellitesSize",
-                          oldValue: format(lastSatellitesSize),
-                          newValue: format(sizeSlider.doubleValue))
-                lastSatellitesSize = sizeSlider.doubleValue
-            }
+        if let sizeSlider = satellitesSizeSlider, sizeSlider.doubleValue != lastSatellitesSize {
+            logChange(changedKey: "satellitesSize",
+                      oldValue: format(lastSatellitesSize),
+                      newValue: format(sizeSlider.doubleValue))
+            lastSatellitesSize = sizeSlider.doubleValue
         }
-        if let brightnessSlider = satellitesBrightnessSlider {
-            if brightnessSlider.doubleValue != lastSatellitesBrightness {
-                logChange(changedKey: "satellitesBrightness",
-                          oldValue: format(lastSatellitesBrightness),
-                          newValue: format(brightnessSlider.doubleValue))
-                lastSatellitesBrightness = brightnessSlider.doubleValue
-            }
+        if let brightnessSlider = satellitesBrightnessSlider, brightnessSlider.doubleValue != lastSatellitesBrightness {
+            logChange(changedKey: "satellitesBrightness",
+                      oldValue: format(lastSatellitesBrightness),
+                      newValue: format(brightnessSlider.doubleValue))
+            lastSatellitesBrightness = brightnessSlider.doubleValue
         }
         if let trailHalfLifeSlider = satellitesTrailHalfLifeSlider {
             let secsHL = trailHalfLifeSlider.doubleValue
@@ -418,7 +402,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                           oldValue: format(lastSatellitesTrailHalfLifeSeconds),
                           newValue: format(secsHL))
                 lastSatellitesTrailHalfLifeSeconds = secsHL
-                updateRendererHalfLives() // propagate immediately
+                updateRendererHalfLives()
             }
         }
         updatePreviewLabels()
@@ -524,21 +508,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsSpeedSlider.doubleValue = defaultsManager.shootingStarsSpeed
         shootingStarsThicknessSlider.doubleValue = defaultsManager.shootingStarsThickness
         shootingStarsBrightnessSlider.doubleValue = defaultsManager.shootingStarsBrightness
-        // Half-life seconds, range 0.01 .. 2.0
         shootingStarsTrailHalfLifeSlider.minValue = 0.01
         shootingStarsTrailHalfLifeSlider.maxValue = 2.0
-        shootingStarsTrailHalfLifeSlider.allowsTickMarkValuesOnly = false
-        shootingStarsTrailHalfLifeSlider.numberOfTickMarks = 0
         shootingStarsTrailHalfLifeSlider.doubleValue = defaultsManager.shootingStarsTrailHalfLifeSeconds
-        
         shootingStarsDebugSpawnBoundsCheckbox.state = defaultsManager.shootingStarsDebugShowSpawnBounds ? .on : .off
         
         // Satellites
-        if let satEnabled = satellitesEnabledCheckbox {
-            satEnabled.state = defaultsManager.satellitesEnabled ? .on : .off
-        }
+        satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
         if let satPerMinSlider = satellitesPerMinuteSlider {
-            // Convert avg seconds to per minute
             let perMinute = 60.0 / defaultsManager.satellitesAvgSpawnSeconds
             satPerMinSlider.doubleValue = perMinute
         }
@@ -550,13 +527,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satellitesBrightnessSlider?.doubleValue = defaultsManager.satellitesBrightness
         satellitesBrightnessPreview?.stringValue = String(format: "%.2f", satellitesBrightnessSlider?.doubleValue ?? 0)
         satellitesTrailingCheckbox?.state = defaultsManager.satellitesTrailing ? .on : .off
-        
-        // Half-life seconds slider 0.01 .. 2.0
         if let trailSlider = satellitesTrailHalfLifeSlider {
             trailSlider.minValue = 0.01
             trailSlider.maxValue = 2.0
-            trailSlider.allowsTickMarkValuesOnly = false
-            trailSlider.numberOfTickMarks = 0
             trailSlider.doubleValue = defaultsManager.satellitesTrailHalfLifeSeconds
         }
         satellitesTrailHalfLifePreview?.stringValue = String(format: "%.3f s", satellitesTrailHalfLifeSlider?.doubleValue ?? defaultsManager.satellitesTrailHalfLifeSeconds)
@@ -566,12 +539,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonTraversalMinutes.isEditable = true
         moonTraversalMinutes.isSelectable = true
         moonTraversalMinutes.isEnabled = true
-        
         shootingStarsAvgSecondsField.isEditable = true
         shootingStarsAvgSecondsField.isSelectable = true
         shootingStarsAvgSecondsField.isEnabled = (shootingStarsEnabledCheckbox.state == .on)
         
-        // Snapshot last-known values
+        // Snapshot last-known
         lastStarsPerUpdate = starsPerUpdate.integerValue
         lastBuildingHeight = buildingHeightSlider.doubleValue
         lastSecsBetweenClears = secsBetweenClears.doubleValue
@@ -595,7 +567,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastShootingStarsTrailHalfLifeSeconds = shootingStarsTrailHalfLifeSlider.doubleValue
         lastShootingStarsDebugSpawnBounds = (shootingStarsDebugSpawnBoundsCheckbox.state == .on)
         
-        // Satellites last-known
         lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
         lastSatellitesAvgSpawnSeconds = defaultsManager.satellitesAvgSpawnSeconds
         lastSatellitesSpeed = defaultsManager.satellitesSpeed
@@ -627,6 +598,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         applyAccessibility()
         applyButtonKeyEquivalents()
         applySystemSymbolImages()
+        
+        // Ensure renderer overlay state matches checkbox right away
+        if let renderer = previewRenderer {
+            renderer.setDebugOverlayEnabled(lastDebugOverlayEnabled)
+        }
     }
     
     // MARK: - Styling / Accessibility
@@ -679,32 +655,16 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satellitesTrailHalfLifeSlider?.setAccessibilityLabel("Satellite trail half-life (0.01–2.0 s)")
     }
     
-    // MARK: - SF Symbols injection
+    // MARK: - SF Symbols
     
     private func applySystemSymbolImages() {
         guard #available(macOS 11.0, *) else { return }
         let symbolNames: Set<String> = [
-            "sparkles",
-            "arrow.clockwise",
-            "clock",
-            "building.2",
-            "building.2.fill",
-            "moonphase.new.moon",
-            "moonphase.full.moon",
-            "sun.min",
-            "sun.max",
-            "moon",
-            "circle.lefthalf.filled",
-            "timer",
-            "location.north.line",
-            "line.horizontal.3",
-            "line.horizontal.3.decrease",
-            "tortoise",
-            "hare",
-            "circle",
-            "circle.fill",
-            "cloud",
-            "cloud.rain"
+            "sparkles","arrow.clockwise","clock","building.2","building.2.fill",
+            "moonphase.new.moon","moonphase.full.moon","sun.min","sun.max","moon",
+            "circle.lefthalf.filled","timer","location.north.line","line.horizontal.3",
+            "line.horizontal.3.decrease","tortoise","hare","circle","circle.fill",
+            "cloud","cloud.rain"
         ]
         let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular, scale: .medium)
         if let root = window?.contentView {
@@ -735,10 +695,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // MARK: - Validation
     
-    private func inputsAreValid() -> Bool {
-        // For now all ranges enforced by slider min/max or property clamps.
-        return true
-    }
+    private func inputsAreValid() -> Bool { true }
     
     private func validateInputs() {
         let valid = inputsAreValid()
@@ -807,19 +764,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         }
     }
     
-    // MARK: - Preview Engine Management (Metal)
+    // MARK: - Preview Engine Management
     
     private func setupPreviewEngine() {
         guard let log = log else { return }
         let size = moonPreviewView.bounds.size
         guard size.width > 0, size.height > 0 else { return }
         
-        // Ensure Metal layer attached to the preview container
         if previewMetalLayer == nil {
             moonPreviewView.wantsLayer = true
             let mLayer = CAMetalLayer()
             mLayer.frame = moonPreviewView.bounds
-            // Set scale immediately to avoid invalid 0 drawable sizes
             let scale = moonPreviewView.window?.screen?.backingScaleFactor
                 ?? moonPreviewView.window?.backingScaleFactor
                 ?? NSScreen.main?.backingScaleFactor
@@ -829,24 +784,18 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             previewMetalLayer = mLayer
         }
         
-        // Ensure renderer
         if previewRenderer == nil, let mLayer = previewMetalLayer {
             previewRenderer = StarryMetalRenderer(layer: mLayer, log: log)
-            // Initialize drawable size if valid
             let scale = moonPreviewView.window?.screen?.backingScaleFactor
                 ?? moonPreviewView.window?.backingScaleFactor
                 ?? NSScreen.main?.backingScaleFactor
                 ?? 2.0
-            let wPx = Int(round(size.width * scale))
-            let hPx = Int(round(size.height * scale))
-            if wPx > 0, hPx > 0 {
-                previewRenderer?.updateDrawableSize(size: size, scale: scale)
-            }
-            // Propagate current half-life settings to the renderer
+            previewRenderer?.updateDrawableSize(size: size, scale: scale)
             updateRendererHalfLives()
+            // Sync overlay state immediately
+            previewRenderer?.setDebugOverlayEnabled(lastDebugOverlayEnabled)
         }
         
-        // Ensure engine
         previewEngine = StarryEngine(size: size,
                                      log: log,
                                      config: currentPreviewRuntimeConfig())
@@ -905,26 +854,22 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
               let renderer = previewRenderer,
               let mLayer = previewMetalLayer else { return }
         
-        // Keep Metal layer in sync with view size
         let size = moonPreviewView.bounds.size
         guard size.width >= 1, size.height >= 1 else { return }
         engine.resizeIfNeeded(newSize: size)
         mLayer.frame = moonPreviewView.bounds
         
-        // Use window's backingScaleFactor for crisp rendering
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         let wPx = Int(round(size.width * scale))
         let hPx = Int(round(size.height * scale))
         guard wPx > 0, hPx > 0 else { return }
         renderer.updateDrawableSize(size: size, scale: scale)
         
-        // Drive GPU path with the same engine as screensaver
         let drawData = engine.advanceFrameGPU()
         renderer.render(drawData: drawData)
     }
     
     private func currentPreviewRuntimeConfig() -> StarryRuntimeConfig {
-        // Derive satellitesAvgSpawnSeconds from slider (per minute) if slider exists.
         var satellitesAvg: Double = defaultsManager.satellitesAvgSpawnSeconds
         if let slider = satellitesPerMinuteSlider {
             let perMinute = max(0.1, slider.doubleValue)
@@ -952,7 +897,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             shootingStarsThickness: shootingStarsThicknessSlider.doubleValue,
             shootingStarsBrightness: shootingStarsBrightnessSlider.doubleValue,
             shootingStarsDebugShowSpawnBounds: (shootingStarsDebugSpawnBoundsCheckbox.state == .on),
-            // Use optional map to preserve defaults when control not present.
             satellitesEnabled: satellitesEnabledCheckbox.map { $0.state == .on } ?? defaultsManager.satellitesEnabled,
             satellitesAvgSpawnSeconds: satellitesAvg,
             satellitesSpeed: satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed,
@@ -966,6 +910,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func updatePreviewConfig() {
         previewEngine?.updateConfig(currentPreviewRuntimeConfig())
         updateRendererHalfLives()
+        if let renderer = previewRenderer {
+            renderer.setDebugOverlayEnabled(lastDebugOverlayEnabled)
+        }
     }
     
     private func updateRendererHalfLives() {
@@ -986,7 +933,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsSpeedPreview?.stringValue = "\(Int(shootingStarsSpeedSlider.doubleValue))"
         shootingStarsThicknessPreview?.stringValue = String(format: "%.0f", shootingStarsThicknessSlider.doubleValue)
         shootingStarsBrightnessPreview?.stringValue = String(format: "%.2f", shootingStarsBrightnessSlider.doubleValue)
-        // Show half-life seconds
         shootingStarsTrailHalfLifePreview.stringValue = String(format: "HL: %.3f s", shootingStarsTrailHalfLifeSlider.doubleValue)
         
         if let satPerMinSlider = satellitesPerMinuteSlider {
@@ -1006,13 +952,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         }
     }
     
-    private func effectivePaused() -> Bool {
-        return previewTimer == nil
-    }
+    private func effectivePaused() -> Bool { previewTimer == nil }
     
     private func updatePauseToggleTitle() {
-        let title = effectivePaused() ? "Resume" : "Pause"
-        pauseToggleButton?.title = title
+        pauseToggleButton?.title = effectivePaused() ? "Resume" : "Pause"
     }
     
     private func updatePhaseOverrideUIEnabled() {
@@ -1091,7 +1034,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             defaultsManager.debugOverlayEnabled = (debugCB.state == .on)
         }
         
-        // Shooting stars
         defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         defaultsManager.shootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
         defaultsManager.shootingStarsDirectionMode = shootingStarsDirectionPopup.indexOfSelectedItem
@@ -1102,7 +1044,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.shootingStarsTrailHalfLifeSeconds = shootingStarsTrailHalfLifeSlider.doubleValue
         defaultsManager.shootingStarsDebugShowSpawnBounds = (shootingStarsDebugSpawnBoundsCheckbox.state == .on)
         
-        // Satellites
         if let cb = satellitesEnabledCheckbox {
             defaultsManager.satellitesEnabled = (cb.state == .on)
         }
@@ -1110,21 +1051,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             let perMinute = max(0.1, perMinSlider.doubleValue)
             defaultsManager.satellitesAvgSpawnSeconds = 60.0 / perMinute
         }
-        if let speedSlider = satellitesSpeedSlider {
-            defaultsManager.satellitesSpeed = speedSlider.doubleValue
-        }
-        if let sizeSlider = satellitesSizeSlider {
-            defaultsManager.satellitesSize = sizeSlider.doubleValue
-        }
-        if let brightnessSlider = satellitesBrightnessSlider {
-            defaultsManager.satellitesBrightness = brightnessSlider.doubleValue
-        }
-        if let trailingCheckbox = satellitesTrailingCheckbox {
-            defaultsManager.satellitesTrailing = (trailingCheckbox.state == .on)
-        }
-        if let trailHalfLifeSlider = satellitesTrailHalfLifeSlider {
-            defaultsManager.satellitesTrailHalfLifeSeconds = trailHalfLifeSlider.doubleValue
-        }
+        if let speedSlider = satellitesSpeedSlider { defaultsManager.satellitesSpeed = speedSlider.doubleValue }
+        if let sizeSlider = satellitesSizeSlider { defaultsManager.satellitesSize = sizeSlider.doubleValue }
+        if let brightnessSlider = satellitesBrightnessSlider { defaultsManager.satellitesBrightness = brightnessSlider.doubleValue }
+        if let trailingCheckbox = satellitesTrailingCheckbox { defaultsManager.satellitesTrailing = (trailingCheckbox.state == .on) }
+        if let trailHalfLifeSlider = satellitesTrailHalfLifeSlider { defaultsManager.satellitesTrailHalfLifeSeconds = trailHalfLifeSlider.doubleValue }
         
         view?.settingsChanged()
         
@@ -1155,7 +1086,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                stateSummaryString())
     }
     
-    // Refactored to avoid huge single expression that caused type-check slowdown.
     private func stateSummaryString() -> String {
         var parts: [String] = []
         parts.append("starsPerUpdate=\(starsPerUpdate.integerValue)")
@@ -1169,13 +1099,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         parts.append("moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox.state == .on)")
         parts.append("moonPhaseOverrideValue=\(format(moonPhaseSlider.doubleValue))")
         parts.append("showLightAreaTextureFillMask=\(showLightAreaTextureFillMaskCheckbox.state == .on)")
-        let debugEnabled: Bool = {
-            if let cb = debugOverlayEnabledCheckbox {
-                return cb.state == .on
-            } else {
-                return defaultsManager.debugOverlayEnabled
-            }
-        }()
+        let debugEnabled: Bool = debugOverlayEnabledCheckbox?.state == .on
         parts.append("debugOverlayEnabled=\(debugEnabled)")
         parts.append("shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)")
         parts.append("shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))")
@@ -1200,11 +1124,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         return parts.joined(separator: ", ")
     }
     
-    private func format(_ d: Double) -> String {
-        String(format: "%.3f", d)
-    }
-    
-    private func formatPhase(_ d: Double) -> String {
-        String(format: "%.3f", d)
-    }
+    private func format(_ d: Double) -> String { String(format: "%.3f", d) }
+    private func formatPhase(_ d: Double) -> String { String(format: "%.3f", d) }
 }
