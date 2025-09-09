@@ -541,7 +541,10 @@ final class StarryEngine {
             shootingSprites: shootingSprites,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
-            showLightAreaTextureFillMask: config.showLightAreaTextureFillMask
+            showLightAreaTextureFillMask: config.showLightAreaTextureFillMask,
+            debugOverlayEnabled: config.debugOverlayEnabled,
+            debugFPS: Float(currentFPS),
+            debugCPUPercent: Float(currentCPUPercent)
         )
         if moonAlbedoDirty && logThisFrame {
             os_log("advanceFrameGPU: moon albedo image attached for upload", log: log, type: .info)
@@ -651,7 +654,10 @@ final class StarryEngine {
             shootingSprites: shootingSprites,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
-            showLightAreaTextureFillMask: config.showLightAreaTextureFillMask
+            showLightAreaTextureFillMask: config.showLightAreaTextureFillMask,
+            debugOverlayEnabled: config.debugOverlayEnabled,
+            debugFPS: Float(currentFPS),
+            debugCPUPercent: Float(currentCPUPercent)
         )
         if moonAlbedoDirty && logThisFrame {
             os_log("advanceFrame(headless): moon albedo image attached for upload", log: log, type: .info)

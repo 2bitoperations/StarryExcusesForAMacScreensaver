@@ -91,9 +91,7 @@ public struct StarryDrawData {
     public var clearAll: Bool
     
     public var baseSprites: [SpriteInstance]          // Stars, building lights, flasher circles (persistent base)
-    
     public var satellitesSprites: [SpriteInstance]    // rendered into satellites trail texture
-    
     public var shootingSprites: [SpriteInstance]      // rendered into shooting-star trail texture
     
     public var moon: MoonParams?                      // draw on top (directly to final drawable)
@@ -102,6 +100,12 @@ public struct StarryDrawData {
     // Debug: show the illuminated region mask (in red) instead of bright texture
     public var showLightAreaTextureFillMask: Bool
     
+    // Debug overlay data
+    public var debugOverlayEnabled: Bool
+    public var debugFPS: Float
+    public var debugCPUPercent: Float
+    
+    // Full initializer (new)
     public init(size: CGSize,
                 clearAll: Bool,
                 baseSprites: [SpriteInstance],
@@ -109,7 +113,10 @@ public struct StarryDrawData {
                 shootingSprites: [SpriteInstance],
                 moon: MoonParams?,
                 moonAlbedoImage: CGImage?,
-                showLightAreaTextureFillMask: Bool) {
+                showLightAreaTextureFillMask: Bool,
+                debugOverlayEnabled: Bool,
+                debugFPS: Float,
+                debugCPUPercent: Float) {
         self.size = size
         self.clearAll = clearAll
         self.baseSprites = baseSprites
@@ -118,5 +125,30 @@ public struct StarryDrawData {
         self.moon = moon
         self.moonAlbedoImage = moonAlbedoImage
         self.showLightAreaTextureFillMask = showLightAreaTextureFillMask
+        self.debugOverlayEnabled = debugOverlayEnabled
+        self.debugFPS = debugFPS
+        self.debugCPUPercent = debugCPUPercent
+    }
+    
+    // Backward-compatible convenience initializer (legacy signature)
+    public init(size: CGSize,
+                clearAll: Bool,
+                baseSprites: [SpriteInstance],
+                satellitesSprites: [SpriteInstance],
+                shootingSprites: [SpriteInstance],
+                moon: MoonParams?,
+                moonAlbedoImage: CGImage?,
+                showLightAreaTextureFillMask: Bool) {
+        self.init(size: size,
+                  clearAll: clearAll,
+                  baseSprites: baseSprites,
+                  satellitesSprites: satellitesSprites,
+                  shootingSprites: shootingSprites,
+                  moon: moon,
+                  moonAlbedoImage: moonAlbedoImage,
+                  showLightAreaTextureFillMask: showLightAreaTextureFillMask,
+                  debugOverlayEnabled: false,
+                  debugFPS: 0,
+                  debugCPUPercent: 0)
     }
 }

@@ -5,6 +5,7 @@ import CoreGraphics
 import ImageIO
 import os
 import simd
+import AppKit   // For font & text drawing of debug overlay (macOS only)
 
 final class StarryMetalRenderer {
     
@@ -108,6 +109,15 @@ final class StarryMetalRenderer {
     
     private var debugObserversInstalled: Bool = false
     private var dumpLayersNextFrame: Bool = false
+    
+    // --- Debug Overlay State ---
+    private var overlayTexture: MTLTexture?
+    private var overlayQuadVertexBuffer: MTLBuffer?
+    private var lastOverlayString: String = ""
+    private var lastOverlayUpdateTime: CFTimeInterval = 0
+    private var overlayWidthPx: Int = 0
+    private var overlayHeightPx: Int = 0
+    private let overlayUpdateInterval: CFTimeInterval = 0.25  // seconds
     
     private let notificationCenters: [NotificationCenter] = [
         NotificationCenter.default,
@@ -515,7 +525,6 @@ final class StarryMetalRenderer {
             guard width > 0, height > 0 else { return }
             os_log("setMoonAlbedo: preparing upload (%dx%d) mipmapped", log: log, type: .info, width, height)
             
-            // Destination (private, mipmapped)
             if moonAlbedoTexture == nil ||
                 moonAlbedoTexture!.width != width ||
                 moonAlbedoTexture!.height != height ||
@@ -524,7 +533,7 @@ final class StarryMetalRenderer {
                                                                        width: width,
                                                                        height: height,
                                                                        mipmapped: true)
-                dstDesc.usage = [.shaderRead]  // removed invalid .blit usage flag
+                dstDesc.usage = [.shaderRead]
                 dstDesc.storageMode = .private
                 moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
                 moonAlbedoTexture?.label = "MoonAlbedo (private,mips)"
@@ -535,13 +544,12 @@ final class StarryMetalRenderer {
                 }
             }
             
-            // Staging (shared, single level) — generate mipmaps after blit.
             let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
                                                                        width: width,
                                                                        height: height,
                                                                        mipmapped: false)
             stagingDesc.storageMode = .shared
-            stagingDesc.usage = [] // removed invalid .blit usage flag
+            stagingDesc.usage = []
             guard let staging = device.makeTexture(descriptor: stagingDesc) else {
                 os_log("setMoonAlbedo: failed to create staging texture", log: log, type: .error)
                 return
@@ -594,6 +602,9 @@ final class StarryMetalRenderer {
             clearOffscreenTextures(reason: "UserClearAll")
         }
         
+        debugOverlayEnabled = drawData.debugOverlayEnabled
+        updateOverlayIfNeeded(drawData: drawData)
+        
         let now = CACurrentMediaTime()
         let dt: CFTimeInterval? = lastRenderTime.map { now - $0 }
         lastRenderTime = now
@@ -605,7 +616,8 @@ final class StarryMetalRenderer {
             drawData.shootingSprites.isEmpty &&
             drawData.moon == nil &&
             !willDecay &&
-            drawData.clearAll == false
+            drawData.clearAll == false &&
+            !(debugOverlayEnabled && overlayTexture != nil)
         if nothingToDraw {
             return
         }
@@ -679,6 +691,9 @@ final class StarryMetalRenderer {
         }
         ensureOffscreenComposite(size: drawData.size)
         guard let finalTarget = offscreenComposite else { return nil }
+        
+        debugOverlayEnabled = drawData.debugOverlayEnabled
+        updateOverlayIfNeeded(drawData: drawData)
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return nil }
         commandBuffer.label = "Starry Headless CommandBuffer"
@@ -820,7 +835,7 @@ final class StarryMetalRenderer {
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: rpd) else {
             return
         }
-        encoder.pushDebugGroup(headless ? "Headless Composite+Moon" : "Composite+Moon")
+        encoder.pushDebugGroup(headless ? "Headless Composite+Moon+Overlay" : "Composite+Moon+Overlay")
         
         let vp = MTLViewport(originX: 0, originY: 0,
                              width: Double(target.width),
@@ -872,6 +887,17 @@ final class StarryMetalRenderer {
             }
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         }
+        
+        if debugOverlayEnabled, let overlayTex = overlayTexture, let overlayVB = overlayQuadVertexBuffer {
+            encoder.setRenderPipelineState(compositePipeline)
+            encoder.setVertexBuffer(overlayVB, offset: 0, index: 0)
+            encoder.setFragmentTexture(overlayTex, index: 0)
+            encoder.setFragmentBytes(&whiteTint,
+                                     length: MemoryLayout<SIMD4<Float>>.stride,
+                                     index: FragmentBufferIndex.quadUniforms)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+        }
+        
         encoder.popDebugGroup()
         encoder.endEncoding()
     }
@@ -1145,6 +1171,112 @@ final class StarryMetalRenderer {
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
         encoder.endEncoding()
+    }
+    
+    // MARK: - Debug Overlay (text -> texture)
+    
+    private func updateOverlayIfNeeded(drawData: StarryDrawData) {
+        guard drawData.debugOverlayEnabled else { return }
+        let now = CACurrentMediaTime()
+        let fps = drawData.debugFPS
+        let cpu = drawData.debugCPUPercent
+        let overlayStr = String(format: "FPS: %.1f  CPU: %.1f%%", fps, cpu)
+        let changed = (overlayStr != lastOverlayString)
+        if !changed && (now - lastOverlayUpdateTime) < overlayUpdateInterval {
+            return
+        }
+        lastOverlayString = overlayStr
+        lastOverlayUpdateTime = now
+        
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor(white: 1.0, alpha: 1.0)
+        ]
+        let textSize = (overlayStr as NSString).size(withAttributes: attributes)
+        let padH: CGFloat = 8
+        let padV: CGFloat = 4
+        let texWidth = Int(ceil(textSize.width + padH * 2))
+        let texHeight = Int(ceil(textSize.height + padV * 2))
+        
+        let maxW = 1024
+        let maxH = 256
+        overlayWidthPx = min(texWidth, maxW)
+        overlayHeightPx = min(texHeight, maxH)
+        let rowBytes = overlayWidthPx * 4
+        var bytes = [UInt8](repeating: 0, count: rowBytes * overlayHeightPx)
+        
+        if let ctx = CGContext(data: &bytes,
+                               width: overlayWidthPx,
+                               height: overlayHeightPx,
+                               bitsPerComponent: 8,
+                               bytesPerRow: rowBytes,
+                               space: CGColorSpaceCreateDeviceRGB(),
+                               bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
+            ctx.clear(CGRect(x: 0, y: 0, width: overlayWidthPx, height: overlayHeightPx))
+            ctx.setFillColor(NSColor(calibratedWhite: 0.0, alpha: 0.35).cgColor)
+            ctx.fill(CGRect(x: 0, y: 0, width: overlayWidthPx, height: overlayHeightPx))
+            let textOrigin = CGPoint(x: padH, y: padV)
+            (overlayStr as NSString).draw(at: textOrigin, withAttributes: attributes)
+        }
+        
+        if overlayTexture == nil ||
+            overlayTexture!.width != overlayWidthPx ||
+            overlayTexture!.height != overlayHeightPx {
+            let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                                                                width: overlayWidthPx,
+                                                                height: overlayHeightPx,
+                                                                mipmapped: false)
+            desc.usage = [.shaderRead]
+            desc.storageMode = .shared
+            overlayTexture = device.makeTexture(descriptor: desc)
+            overlayTexture?.label = "DebugOverlay"
+        }
+        if let tex = overlayTexture {
+            let region = MTLRegionMake2D(0, 0, overlayWidthPx, overlayHeightPx)
+            tex.replace(region: region, mipmapLevel: 0, withBytes: bytes, bytesPerRow: rowBytes)
+        }
+        
+        buildOverlayQuadIfNeeded(screenSize: drawData.size)
+    }
+    
+    private func buildOverlayQuadIfNeeded(screenSize: CGSize) {
+        guard overlayWidthPx > 0, overlayHeightPx > 0 else { return }
+        let margin: CGFloat = 8
+        let W = screenSize.width
+        let H = screenSize.height
+        guard W > 0 && H > 0 else { return }
+        let x0: CGFloat = margin
+        let y0: CGFloat = margin
+        let x1: CGFloat = min(x0 + CGFloat(overlayWidthPx), W)
+        let y1: CGFloat = min(y0 + CGFloat(overlayHeightPx), H)
+        
+        func toClipX(_ x: CGFloat) -> Float { return Float((x / W) * 2.0 - 1.0) }
+        func toClipY(_ y: CGFloat) -> Float { return Float(1.0 - (y / H) * 2.0) }
+        
+        let tl = SIMD2<Float>(toClipX(x0), toClipY(y0))
+        let tr = SIMD2<Float>(toClipX(x1), toClipY(y0))
+        let bl = SIMD2<Float>(toClipX(x0), toClipY(y1))
+        let br = SIMD2<Float>(toClipX(x1), toClipY(y1))
+        
+        struct V { var p: SIMD2<Float>; var t: SIMD2<Float> }
+        let verts: [V] = [
+            V(p: bl, t: [0, 1]),
+            V(p: br, t: [1, 1]),
+            V(p: tl, t: [0, 0]),
+            V(p: tl, t: [0, 0]),
+            V(p: br, t: [1, 1]),
+            V(p: tr, t: [1, 0])
+        ]
+        if overlayQuadVertexBuffer == nil ||
+            overlayQuadVertexBuffer!.length < MemoryLayout<V>.stride * verts.count {
+            overlayQuadVertexBuffer = device.makeBuffer(bytes: verts,
+                                                        length: MemoryLayout<V>.stride * verts.count,
+                                                        options: .storageModeShared)
+            overlayQuadVertexBuffer?.label = "OverlayQuad"
+        } else {
+            memcpy(overlayQuadVertexBuffer!.contents(), verts, MemoryLayout<V>.stride * verts.count)
+        }
     }
     
     private func ptrString(_ t: MTLTexture) -> String {
