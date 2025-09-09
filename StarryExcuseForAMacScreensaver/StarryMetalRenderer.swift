@@ -524,7 +524,7 @@ final class StarryMetalRenderer {
                                                                        width: width,
                                                                        height: height,
                                                                        mipmapped: true)
-                dstDesc.usage = [.shaderRead, .blit]
+                dstDesc.usage = [.shaderRead]  // removed invalid .blit usage flag
                 dstDesc.storageMode = .private
                 moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
                 moonAlbedoTexture?.label = "MoonAlbedo (private,mips)"
@@ -535,13 +535,13 @@ final class StarryMetalRenderer {
                 }
             }
             
-            // Staging (shared, single level) — we will generate mipmaps after blit
+            // Staging (shared, single level) — generate mipmaps after blit.
             let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
                                                                        width: width,
                                                                        height: height,
                                                                        mipmapped: false)
             stagingDesc.storageMode = .shared
-            stagingDesc.usage = [.blit]
+            stagingDesc.usage = [] // removed invalid .blit usage flag
             guard let staging = device.makeTexture(descriptor: stagingDesc) else {
                 os_log("setMoonAlbedo: failed to create staging texture", log: log, type: .error)
                 return
