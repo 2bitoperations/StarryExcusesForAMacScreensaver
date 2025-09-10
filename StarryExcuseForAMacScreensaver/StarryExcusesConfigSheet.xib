@@ -287,14 +287,14 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="DBG-LIGHTMASK-STK">
-                                <rect key="frame" x="0.0" y="760" width="171" height="71"/>
+                                <rect key="frame" x="0.0" y="792" width="171" height="39"/>
                                 <subviews>
                                     <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="DBG-LIGHTMASK-LBL">
-                                        <rect key="frame" x="-2" y="29" width="129" height="14"/>
+                                        <rect key="frame" x="-2" y="13" width="129" height="14"/>
                                         <textFieldCell key="cell" title="Show light mask debug" id="DBG-LIGHTMASK-LBL-CELL"/>
                                     </textField>
                                     <switch ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="DBG-LIGHTMASK-CHK">
-                                        <rect key="frame" x="131" y="23" width="42" height="25"/>
+                                        <rect key="frame" x="131" y="7" width="42" height="25"/>
                                         <connections>
                                             <action selector="showLightAreaTextureFillMaskToggled:" target="-2" id="DBG-LIGHTMASK-ACT"/>
                                         </connections>
@@ -310,13 +310,13 @@
                                 </customSpacing>
                             </stackView>
                             <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-MOON-LBL">
-                                <rect key="frame" x="-2" y="732" width="40" height="16"/>
+                                <rect key="frame" x="-2" y="764" width="40" height="16"/>
                                 <textFieldCell key="cell" title="Moon" id="SEC-MOON-LBL-CELL">
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="mtR-vr-xyz">
-                                <rect key="frame" x="0.0" y="701" width="209" height="19"/>
+                                <rect key="frame" x="0.0" y="733" width="209" height="19"/>
                                 <subviews>
                                     <imageView identifier="clock" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-TRAV-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -347,7 +347,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="4" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-STK">
-                                <rect key="frame" x="0.0" y="669" width="305" height="20"/>
+                                <rect key="frame" x="0.0" y="701" width="305" height="20"/>
                                 <subviews>
                                     <imageView identifier="moonphase.new.moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-L-ICON">
                                         <rect key="frame" x="0.0" y="2" width="16" height="16"/>
@@ -397,7 +397,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BRIGHT-STK">
-                                <rect key="frame" x="0.0" y="637" width="273" height="20"/>
+                                <rect key="frame" x="0.0" y="669" width="273" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="BRI-TXT">
                                         <rect key="frame" x="-2" y="3" width="95" height="14"/>
@@ -427,7 +427,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-DARK-STK">
-                                <rect key="frame" x="0.0" y="605" width="267" height="20"/>
+                                <rect key="frame" x="0.0" y="637" width="267" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="DRK-TXT">
                                         <rect key="frame" x="-2" y="3" width="89" height="14"/>
@@ -457,7 +457,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-PH-OVR-STK">
-                                <rect key="frame" x="0.0" y="571" width="254" height="22"/>
+                                <rect key="frame" x="0.0" y="603" width="254" height="22"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-PH-OVR-LBL">
                                         <rect key="frame" x="-2" y="4" width="99" height="14"/>
@@ -495,13 +495,13 @@
                                 </customSpacing>
                             </stackView>
                             <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-SHOOT-LBL">
-                                <rect key="frame" x="-2" y="543" width="100" height="16"/>
+                                <rect key="frame" x="-2" y="575" width="100" height="16"/>
                                 <textFieldCell key="cell" title="Shooting Stars" id="SEC-SHOOT-LBL-CELL">
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-EN-STK">
-                                <rect key="frame" x="0.0" y="509" width="84" height="22"/>
+                                <rect key="frame" x="0.0" y="541" width="84" height="22"/>
                                 <subviews>
                                     <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-EN-LBL">
                                         <rect key="frame" x="-2" y="4" width="42" height="14"/>
@@ -524,7 +524,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-STK">
-                                <rect key="frame" x="0.0" y="478" width="219" height="19"/>
+                                <rect key="frame" x="0.0" y="510" width="219" height="19"/>
                                 <subviews>
                                     <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-LBL">
                                         <rect key="frame" x="-2" y="3" width="117" height="14"/>
@@ -545,7 +545,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-DIR-STK">
-                                <rect key="frame" x="0.0" y="446" width="153" height="20"/>
+                                <rect key="frame" x="0.0" y="478" width="153" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-DIR-LBL">
                                         <rect key="frame" x="-2" y="3" width="52" height="14"/>
@@ -580,7 +580,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-LEN-STK">
-                                <rect key="frame" x="0.0" y="414" width="246" height="20"/>
+                                <rect key="frame" x="0.0" y="446" width="246" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-LEN-TXT">
                                         <rect key="frame" x="-2" y="3" width="41" height="14"/>
@@ -610,7 +610,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-SPD-STK">
-                                <rect key="frame" x="0.0" y="382" width="244" height="20"/>
+                                <rect key="frame" x="0.0" y="414" width="244" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-SPD-TXT">
                                         <rect key="frame" x="-2" y="3" width="39" height="14"/>
@@ -640,7 +640,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-THK-STK">
-                                <rect key="frame" x="0.0" y="350" width="250" height="20"/>
+                                <rect key="frame" x="0.0" y="382" width="250" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-THK-TXT">
                                         <rect key="frame" x="-2" y="3" width="59" height="14"/>
@@ -670,7 +670,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BRI-STK">
-                                <rect key="frame" x="0.0" y="318" width="269" height="20"/>
+                                <rect key="frame" x="0.0" y="350" width="269" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BRI-TXT">
                                         <rect key="frame" x="-2" y="3" width="61" height="14"/>
@@ -700,7 +700,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-HL-STK">
-                                <rect key="frame" x="0.0" y="286" width="292" height="20"/>
+                                <rect key="frame" x="0.0" y="318" width="292" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-HL-TXT">
                                         <rect key="frame" x="-2" y="3" width="63" height="14"/>
@@ -730,7 +730,7 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-DBG-STK">
-                                <rect key="frame" x="0.0" y="252" width="157" height="22"/>
+                                <rect key="frame" x="0.0" y="284" width="157" height="22"/>
                                 <subviews>
                                     <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-DBG-LBL">
                                         <rect key="frame" x="-2" y="4" width="115" height="14"/>
@@ -753,13 +753,13 @@
                                 </customSpacing>
                             </stackView>
                             <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SEC-SAT-LBL">
-                                <rect key="frame" x="-2" y="224" width="65" height="16"/>
+                                <rect key="frame" x="-2" y="256" width="65" height="16"/>
                                 <textFieldCell key="cell" title="Satellites" id="SEC-SAT-LBL-CELL">
                                     <font key="font" metaFont="systemBold"/>
                                 </textFieldCell>
                             </textField>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-STK">
-                                <rect key="frame" x="0.0" y="190" width="84" height="22"/>
+                                <rect key="frame" x="0.0" y="222" width="84" height="22"/>
                                 <subviews>
                                     <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-LBL">
                                         <rect key="frame" x="-2" y="4" width="42" height="14"/>
@@ -781,8 +781,8 @@
                                     <real value="3.4028234663852886e+38"/>
                                 </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-PM-STK">
-                                <rect key="frame" x="0.0" y="158" width="258" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-PM-STK">
+                                <rect key="frame" x="0.0" y="190" width="258" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-PM-TXT">
                                         <rect key="frame" x="-2" y="3" width="63" height="14"/>
@@ -811,8 +811,8 @@
                                     <real value="3.4028234663852886e+38"/>
                                 </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-STK">
-                                <rect key="frame" x="0.0" y="126" width="237" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-STK">
+                                <rect key="frame" x="0.0" y="158" width="237" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SPD-TXT">
                                         <rect key="frame" x="-2" y="3" width="39" height="14"/>
@@ -841,8 +841,8 @@
                                     <real value="3.4028234663852886e+38"/>
                                 </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-STK">
-                                <rect key="frame" x="0.0" y="94" width="229" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-STK">
+                                <rect key="frame" x="0.0" y="126" width="229" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-SIZE-TXT">
                                         <rect key="frame" x="-2" y="3" width="28" height="14"/>
@@ -871,8 +871,8 @@
                                     <real value="3.4028234663852886e+38"/>
                                 </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-STK">
-                                <rect key="frame" x="0.0" y="62" width="269" height="20"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-STK">
+                                <rect key="frame" x="0.0" y="94" width="269" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BRI-TXT">
                                         <rect key="frame" x="-2" y="3" width="61" height="14"/>
@@ -901,14 +901,14 @@
                                     <real value="3.4028234663852886e+38"/>
                                 </customSpacing>
                             </stackView>
-                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-STK">
-                                <rect key="frame" x="0.0" y="28" width="122" height="22"/>
+                            <stackView distribution="fill" orientation="horizontal" alignment="centerY" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-STK">
+                                <rect key="frame" x="0.0" y="60" width="118" height="22"/>
                                 <subviews>
-                                    <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-LBL">
+                                    <textField focusRingType="none" ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-LBL">
                                         <rect key="frame" x="-2" y="4" width="76" height="14"/>
                                         <textFieldCell key="cell" title="Trailing effect" id="SAT-TRAIL-LBL-CELL"/>
                                     </textField>
-                                    <switch translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-CHK">
+                                    <switch ambiguous="YES" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-TRAIL-CHK">
                                         <rect key="frame" x="78" y="-2" width="42" height="25"/>
                                         <connections>
                                             <action selector="satellitesTrailingToggled:" target="-2" id="SAT-TRAIL-ACT"/>
@@ -925,21 +925,21 @@
                                 </customSpacing>
                             </stackView>
                             <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-HL-STK">
-                                <rect key="frame" x="0.0" y="14" width="285" height="20"/>
+                                <rect key="frame" x="0.0" y="28" width="292" height="20"/>
                                 <subviews>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-HL-TXT">
-                                        <rect key="frame" x="-2" y="3" width="68" height="14"/>
+                                        <rect key="frame" x="-2" y="3" width="63" height="14"/>
                                         <textFieldCell key="cell" title="Trail HL (s)" id="SAT-HL-TXT-CELL"/>
                                     </textField>
                                     <slider translatesAutoresizingMaskIntoConstraints="NO" id="SAT-HL-SL">
-                                        <rect key="frame" x="66" y="-6" width="170" height="28"/>
+                                        <rect key="frame" x="63" y="-6" width="170" height="28"/>
                                         <sliderCell key="cell" minValue="0.01" maxValue="2" doubleValue="0.17999999999999999" tickMarkPosition="below" sliderType="linear" id="SAT-HL-SL-CELL"/>
                                         <connections>
                                             <action selector="satellitesSliderChanged:" target="-2" id="SAT-HL-ACT"/>
                                         </connections>
                                     </slider>
                                     <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-HL-LBL">
-                                        <rect key="frame" x="240" y="3" width="59" height="14"/>
+                                        <rect key="frame" x="235" y="3" width="59" height="14"/>
                                         <textFieldCell key="cell" title="HL: 0.18 s" id="SAT-HL-LBL-CELL"/>
                                     </textField>
                                 </subviews>
@@ -1030,8 +1030,11 @@
                             <integer value="1000"/>
                             <integer value="1000"/>
                             <integer value="1000"/>
+                            <integer value="1000"/>
                         </visibilityPriorities>
                         <customSpacing>
+                            <real value="3.4028234663852886e+38"/>
+                            <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
                             <real value="3.4028234663852886e+38"/>
