@@ -43,7 +43,6 @@
                                             <rect key="frame" x="0.0" y="0.0" width="288" height="958"/>
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                             <subviews>
-                                                <!-- General Section -->
                                                 <box ambiguous="YES" borderType="line" title="General" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
                                                     <rect key="frame" x="5" y="830" width="278" height="120"/>
                                                     <view key="contentView" id="GEN-BOX-CONTENT">
@@ -112,22 +111,20 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Moon Section -->
-                                                <box borderType="line" title="Moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BOX">
+                                                <box ambiguous="YES" borderType="line" title="Moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BOX">
                                                     <rect key="frame" x="5" y="698" width="278" height="120"/>
                                                     <view key="contentView" id="MOON-BOX-CONTENT">
                                                         <rect key="frame" x="4" y="5" width="270" height="100"/>
                                                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                                         <subviews>
-                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-STK">
-                                                                <rect key="frame" x="12" y="12" width="246" height="76"/>
+                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-STK">
+                                                                <rect key="frame" x="12" y="12" width="246" height="43"/>
                                                                 <subviews>
-                                                                    <!-- Label row with preview -->
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-LABEL-ROW">
-                                                                        <rect key="frame" x="0.0" y="56" width="246" height="20"/>
+                                                                        <rect key="frame" x="0.0" y="27" width="180" height="16"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-LABEL">
-                                                                                <rect key="frame" x="-2" y="2" width="152" height="16"/>
+                                                                                <rect key="frame" x="-2" y="0.0" width="144" height="16"/>
                                                                                 <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Moon size (% of width)" id="MOON-SIZE-LABEL-CELL">
                                                                                     <font key="font" metaFont="system"/>
                                                                                     <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
@@ -135,7 +132,7 @@
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                             <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-PREV">
-                                                                                <rect key="frame" x="154" y="2" width="92" height="14"/>
+                                                                                <rect key="frame" x="144" y="0.0" width="38" height="14"/>
                                                                                 <textFieldCell key="cell" controlSize="small" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="0.00%" id="MOON-SIZE-PREV-CELL">
                                                                                     <font key="font" metaFont="smallSystem"/>
                                                                                     <color key="textColor" name="secondaryLabelColor" catalog="System" colorSpace="catalog"/>
@@ -143,42 +140,63 @@
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                         </subviews>
+                                                                        <visibilityPriorities>
+                                                                            <integer value="1000"/>
+                                                                            <integer value="1000"/>
+                                                                        </visibilityPriorities>
+                                                                        <customSpacing>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                        </customSpacing>
                                                                     </stackView>
-                                                                    <!-- Slider row -->
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SLIDER-ROW">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="246" height="48"/>
+                                                                        <rect key="frame" x="0.0" y="0.0" width="246" height="19"/>
                                                                         <subviews>
                                                                             <slider verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-SLIDER">
-                                                                                <rect key="frame" x="-2" y="15" width="250" height="19"/>
+                                                                                <rect key="frame" x="-2" y="-6" width="250" height="27"/>
                                                                                 <constraints>
                                                                                     <constraint firstAttribute="height" constant="19" id="MOON-SIZE-SLIDER-HEIGHT"/>
                                                                                 </constraints>
-                                                                                <sliderCell key="cell" state="on" alignment="left" minValue="0.001" maxValue="0.25" doubleValue="0.02" tickMarkPosition="below" numberOfTickMarks="0" sliderType="linear" id="MOON-SIZE-SLIDER-CELL"/>
+                                                                                <sliderCell key="cell" state="on" alignment="left" minValue="0.001" maxValue="0.25" doubleValue="0.02" tickMarkPosition="below" sliderType="linear" id="MOON-SIZE-SLIDER-CELL"/>
                                                                                 <connections>
                                                                                     <action selector="moonSliderChanged:" target="-2" id="MOON-SLIDER-ACT"/>
                                                                                 </connections>
                                                                             </slider>
                                                                         </subviews>
+                                                                        <visibilityPriorities>
+                                                                            <integer value="1000"/>
+                                                                        </visibilityPriorities>
+                                                                        <customSpacing>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                        </customSpacing>
                                                                     </stackView>
                                                                 </subviews>
+                                                                <visibilityPriorities>
+                                                                    <integer value="1000"/>
+                                                                    <integer value="1000"/>
+                                                                </visibilityPriorities>
+                                                                <customSpacing>
+                                                                    <real value="3.4028234663852886e+38"/>
+                                                                    <real value="3.4028234663852886e+38"/>
+                                                                </customSpacing>
                                                             </stackView>
                                                         </subviews>
                                                         <constraints>
+                                                            <constraint firstAttribute="bottom" secondItem="MOON-STK" secondAttribute="bottom" constant="12" id="MOON-STK-BOT"/>
+                                                            <constraint firstItem="MOON-STK" firstAttribute="leading" secondItem="MOON-BOX-CONTENT" secondAttribute="leading" constant="12" id="MOON-STK-LEAD"/>
                                                             <constraint firstItem="MOON-STK" firstAttribute="top" secondItem="MOON-BOX-CONTENT" secondAttribute="top" constant="12" id="MOON-STK-TOP"/>
                                                             <constraint firstAttribute="trailing" secondItem="MOON-STK" secondAttribute="trailing" constant="12" id="MOON-STK-TRAIL"/>
-                                                            <constraint firstItem="MOON-STK" firstAttribute="leading" secondItem="MOON-BOX-CONTENT" secondAttribute="leading" constant="12" id="MOON-STK-LEAD"/>
-                                                            <constraint firstAttribute="bottom" secondItem="MOON-STK" secondAttribute="bottom" constant="12" id="MOON-STK-BOT"/>
                                                         </constraints>
                                                     </view>
                                                 </box>
                                             </subviews>
                                             <constraints>
-                                                <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="MOON-BOX" secondAttribute="bottom" constant="8" id="MOON-BOX-BOTTOM-GE"/>
-                                                <constraint firstItem="MOON-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="MOON-BOX-LEAD"/>
-                                                <constraint firstAttribute="trailing" secondItem="MOON-BOX" secondAttribute="trailing" constant="8" id="MOON-BOX-TRAIL"/>
                                                 <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="GEN-BOX" secondAttribute="bottom" constant="8" id="GEN-BOX-BOTTOM-GE"/>
                                                 <constraint firstItem="GEN-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="GEN-BOX-LEAD"/>
                                                 <constraint firstAttribute="trailing" secondItem="GEN-BOX" secondAttribute="trailing" constant="8" id="GEN-BOX-TRAIL"/>
+                                                <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="MOON-BOX" secondAttribute="bottom" constant="8" id="MOON-BOX-BOTTOM-GE"/>
+                                                <constraint firstItem="MOON-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="MOON-BOX-LEAD"/>
+                                                <constraint firstAttribute="trailing" secondItem="MOON-BOX" secondAttribute="trailing" constant="8" id="MOON-BOX-TRAIL"/>
                                             </constraints>
                                         </view>
                                     </subviews>
