@@ -14,6 +14,7 @@ class StarryDefaultsManager {
     
     // Default fallback constants (single source of truth)
     private let defaultStarsPerUpdate = 80
+    private let defaultStarsPerSecond = 0          // 0 = disabled / use per-update spawning
     // Legacy per-update building lights (used to derive per-second if not explicitly set)
     private let defaultBuildingLightsPerUpdate = 15
     // Target visual density originally: 15 / update @ 10 FPS => 150 lights / second
@@ -173,6 +174,22 @@ class StarryDefaultsManager {
         get {
             let v = defaults.integer(forKey: "StarsPerUpdate")
             return v > 0 ? v : defaultStarsPerUpdate
+        }
+    }
+    
+    // New (optional) per-second star spawning. 0 or absent means engine may fall back to per-update.
+    var starsPerSecond: Int {
+        set {
+            let clamped = max(0, newValue)
+            defaults.set(clamped, forKey: "StarsPerSecond")
+            defaults.synchronize()
+        }
+        get {
+            if defaults.object(forKey: "StarsPerSecond") == nil {
+                return defaultStarsPerSecond
+            }
+            let v = defaults.integer(forKey: "StarsPerSecond")
+            return v >= 0 ? v : defaultStarsPerSecond
         }
     }
     
