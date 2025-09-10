@@ -12,12 +12,12 @@
                 <outlet property="moonSizePercentPreview" destination="MOON-SIZE-PREV" id="OUT-MOON-PREV"/>
                 <outlet property="moonSizePercentSlider" destination="MOON-SIZE-SLIDER" id="OUT-MOON-SLIDER"/>
                 <outlet property="pauseToggleButton" destination="PAUSE-BTN" id="OUT-PAUSE-BTN"/>
+                <outlet property="satellitesAvgSecondsField" destination="SAT-AVG-FIELD" id="OUT-SAT-AVG"/>
+                <outlet property="satellitesEnabledCheckbox" destination="SAT-EN-CB" id="OUT-SAT-EN"/>
                 <outlet property="saveCloseButton" destination="SAVE-BTN" id="OUT-SAVE-BTN"/>
                 <outlet property="shootingStarsAvgSecondsField" destination="SHOOT-AVG-FIELD" id="OUT-SHOOT-AVG"/>
                 <outlet property="shootingStarsEnabledCheckbox" destination="SHOOT-EN-CB" id="OUT-SHOOT-EN"/>
                 <outlet property="starsPerSecond" destination="STARSPERSEC-FIELD" id="OUT-SPERSEC"/>
-                <outlet property="satellitesEnabledCheckbox" destination="SAT-EN-CB" id="OUT-SAT-EN"/>
-                <outlet property="satellitesAvgSecondsField" destination="SAT-AVG-FIELD" id="OUT-SAT-AVG"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
             </connections>
         </customObject>
@@ -47,7 +47,6 @@
                                             <rect key="frame" x="0.0" y="0.0" width="288" height="958"/>
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                             <subviews>
-                                                <!-- General Section -->
                                                 <box ambiguous="YES" borderType="line" title="General" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
                                                     <rect key="frame" x="5" y="830" width="278" height="120"/>
                                                     <view key="contentView" id="GEN-BOX-CONTENT">
@@ -116,7 +115,6 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Moon Section -->
                                                 <box ambiguous="YES" borderType="line" title="Moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BOX">
                                                     <rect key="frame" x="5" y="698" width="278" height="120"/>
                                                     <view key="contentView" id="MOON-BOX-CONTENT">
@@ -146,6 +144,14 @@
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                         </subviews>
+                                                                        <visibilityPriorities>
+                                                                            <integer value="1000"/>
+                                                                            <integer value="1000"/>
+                                                                        </visibilityPriorities>
+                                                                        <customSpacing>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                        </customSpacing>
                                                                     </stackView>
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SLIDER-ROW">
                                                                         <rect key="frame" x="0.0" y="0.0" width="246" height="19"/>
@@ -187,7 +193,6 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Shooting Stars Section -->
                                                 <box ambiguous="YES" borderType="line" title="Shooting Stars" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BOX">
                                                     <rect key="frame" x="5" y="566" width="278" height="120"/>
                                                     <view key="contentView" id="SHOOT-BOX-CONTENT">
@@ -278,28 +283,26 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Satellites Section -->
-                                                <box borderType="line" title="Satellites" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BOX">
+                                                <box ambiguous="YES" borderType="line" title="Satellites" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BOX">
                                                     <rect key="frame" x="5" y="434" width="278" height="120"/>
                                                     <view key="contentView" id="SAT-BOX-CONTENT">
                                                         <rect key="frame" x="4" y="5" width="270" height="100"/>
                                                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                                         <subviews>
-                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-STK">
-                                                                <rect key="frame" x="12" y="12" width="246" height="76"/>
+                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-STK">
+                                                                <rect key="frame" x="12" y="12" width="246" height="50"/>
                                                                 <subviews>
-                                                                    <!-- Enable satellites -->
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-ROW0">
-                                                                        <rect key="frame" x="0.0" y="56" width="156" height="20"/>
+                                                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-ROW0">
+                                                                        <rect key="frame" x="0.0" y="28" width="145" height="22"/>
                                                                         <subviews>
                                                                             <switch translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-CB">
-                                                                                <rect key="frame" x="-3" y="-2" width="42" height="25"/>
+                                                                                <rect key="frame" x="-2" y="-2" width="42" height="25"/>
                                                                                 <connections>
                                                                                     <action selector="satellitesToggled:" target="-2" id="SAT-EN-ACT"/>
                                                                                 </connections>
                                                                             </switch>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-LBL">
-                                                                                <rect key="frame" x="43" y="2" width="115" height="16"/>
+                                                                                <rect key="frame" x="44" y="3" width="103" height="16"/>
                                                                                 <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Enable satellites" id="SAT-EN-LBL-CELL">
                                                                                     <font key="font" metaFont="system"/>
                                                                                     <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
@@ -307,13 +310,20 @@
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                         </subviews>
+                                                                        <visibilityPriorities>
+                                                                            <integer value="1000"/>
+                                                                            <integer value="1000"/>
+                                                                        </visibilityPriorities>
+                                                                        <customSpacing>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                        </customSpacing>
                                                                     </stackView>
-                                                                    <!-- Seconds between satellites -->
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-ROW1">
-                                                                        <rect key="frame" x="0.0" y="27" width="246" height="21"/>
+                                                                        <rect key="frame" x="0.0" y="0.0" width="197" height="20"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-AVG-LBL">
-                                                                                <rect key="frame" x="-2" y="3" width="152" height="16"/>
+                                                                                <rect key="frame" x="-2" y="2" width="145" height="16"/>
                                                                                 <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Seconds between sats:" id="SAT-AVG-LBL-CELL">
                                                                                     <font key="font" metaFont="system"/>
                                                                                     <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
@@ -321,7 +331,7 @@
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                             <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-AVG-FIELD">
-                                                                                <rect key="frame" x="154" y="0.0" width="50" height="21"/>
+                                                                                <rect key="frame" x="147" y="0.0" width="50" height="20"/>
                                                                                 <constraints>
                                                                                     <constraint firstAttribute="width" constant="50" id="SAT-AVG-WIDTH"/>
                                                                                 </constraints>
@@ -345,6 +355,14 @@
                                                                         </customSpacing>
                                                                     </stackView>
                                                                 </subviews>
+                                                                <visibilityPriorities>
+                                                                    <integer value="1000"/>
+                                                                    <integer value="1000"/>
+                                                                </visibilityPriorities>
+                                                                <customSpacing>
+                                                                    <real value="3.4028234663852886e+38"/>
+                                                                    <real value="3.4028234663852886e+38"/>
+                                                                </customSpacing>
                                                             </stackView>
                                                         </subviews>
                                                         <constraints>
@@ -363,12 +381,12 @@
                                                 <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="MOON-BOX" secondAttribute="bottom" constant="8" id="MOON-BOX-BOTTOM-GE"/>
                                                 <constraint firstItem="MOON-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="MOON-BOX-LEAD"/>
                                                 <constraint firstAttribute="trailing" secondItem="MOON-BOX" secondAttribute="trailing" constant="8" id="MOON-BOX-TRAIL"/>
-                                                <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="SHOOT-BOX" secondAttribute="bottom" constant="8" id="SHOOT-BOX-BOTTOM-GE"/>
-                                                <constraint firstItem="SHOOT-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="SHOOT-BOX-LEAD"/>
-                                                <constraint firstAttribute="trailing" secondItem="SHOOT-BOX" secondAttribute="trailing" constant="8" id="SHOOT-BOX-TRAIL"/>
                                                 <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="SAT-BOX" secondAttribute="bottom" constant="8" id="SAT-BOX-BOTTOM-GE"/>
                                                 <constraint firstItem="SAT-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="SAT-BOX-LEAD"/>
                                                 <constraint firstAttribute="trailing" secondItem="SAT-BOX" secondAttribute="trailing" constant="8" id="SAT-BOX-TRAIL"/>
+                                                <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="SHOOT-BOX" secondAttribute="bottom" constant="8" id="SHOOT-BOX-BOTTOM-GE"/>
+                                                <constraint firstItem="SHOOT-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="SHOOT-BOX-LEAD"/>
+                                                <constraint firstAttribute="trailing" secondItem="SHOOT-BOX" secondAttribute="trailing" constant="8" id="SHOOT-BOX-TRAIL"/>
                                             </constraints>
                                         </view>
                                     </subviews>
