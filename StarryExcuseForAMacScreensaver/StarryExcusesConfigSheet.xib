@@ -13,6 +13,8 @@
                 <outlet property="moonSizePercentSlider" destination="MOON-SIZE-SLIDER" id="OUT-MOON-SLIDER"/>
                 <outlet property="pauseToggleButton" destination="PAUSE-BTN" id="OUT-PAUSE-BTN"/>
                 <outlet property="saveCloseButton" destination="SAVE-BTN" id="OUT-SAVE-BTN"/>
+                <outlet property="shootingStarsAvgSecondsField" destination="SHOOT-AVG-FIELD" id="OUT-SHOOT-AVG"/>
+                <outlet property="shootingStarsEnabledCheckbox" destination="SHOOT-EN-CB" id="OUT-SHOOT-EN"/>
                 <outlet property="starsPerSecond" destination="STARSPERSEC-FIELD" id="OUT-SPERSEC"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
             </connections>
@@ -43,6 +45,7 @@
                                             <rect key="frame" x="0.0" y="0.0" width="288" height="958"/>
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                             <subviews>
+                                                <!-- General Section -->
                                                 <box ambiguous="YES" borderType="line" title="General" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
                                                     <rect key="frame" x="5" y="830" width="278" height="120"/>
                                                     <view key="contentView" id="GEN-BOX-CONTENT">
@@ -111,6 +114,7 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
+                                                <!-- Moon Section -->
                                                 <box ambiguous="YES" borderType="line" title="Moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BOX">
                                                     <rect key="frame" x="5" y="698" width="278" height="120"/>
                                                     <view key="contentView" id="MOON-BOX-CONTENT">
@@ -189,6 +193,76 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
+                                                <!-- Shooting Stars Section -->
+                                                <box borderType="line" title="Shooting Stars" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BOX">
+                                                    <rect key="frame" x="5" y="566" width="278" height="120"/>
+                                                    <view key="contentView" id="SHOOT-BOX-CONTENT">
+                                                        <rect key="frame" x="4" y="5" width="270" height="100"/>
+                                                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                                                        <subviews>
+                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-STK">
+                                                                <rect key="frame" x="12" y="12" width="246" height="76"/>
+                                                                <subviews>
+                                                                    <!-- Enable checkbox -->
+                                                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-ROW0">
+                                                                        <rect key="frame" x="0.0" y="56" width="166" height="20"/>
+                                                                        <subviews>
+                                                                            <switch translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-EN-CB">
+                                                                                <rect key="frame" x="-3" y="1" width="32" height="18"/>
+                                                                                <connections>
+                                                                                    <action selector="shootingStarsToggled:" target="-2" id="SHOOT-EN-ACT"/>
+                                                                                </connections>
+                                                                            </switch>
+                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-EN-LBL">
+                                                                                <rect key="frame" x="35" y="2" width="131" height="16"/>
+                                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Enable shooting stars" id="SHOOT-EN-LBL-CELL">
+                                                                                    <font key="font" metaFont="system"/>
+                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                                                                </textFieldCell>
+                                                                            </textField>
+                                                                        </subviews>
+                                                                    </stackView>
+                                                                    <!-- Seconds between stars -->
+                                                                    <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-ROW1">
+                                                                        <rect key="frame" x="0.0" y="27" width="246" height="21"/>
+                                                                        <subviews>
+                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-LBL">
+                                                                                <rect key="frame" x="-2" y="3" width="145" height="16"/>
+                                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Seconds between stars:" id="SHOOT-AVG-LBL-CELL">
+                                                                                    <font key="font" metaFont="system"/>
+                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                                                                </textFieldCell>
+                                                                            </textField>
+                                                                            <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-FIELD">
+                                                                                <rect key="frame" x="147" y="0.0" width="50" height="21"/>
+                                                                                <constraints>
+                                                                                    <constraint firstAttribute="width" constant="50" id="SHOOT-AVG-WIDTH"/>
+                                                                                </constraints>
+                                                                                <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="SHOOT-AVG-FIELD-CELL">
+                                                                                    <font key="font" metaFont="cellTitle"/>
+                                                                                    <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                                                                </textFieldCell>
+                                                                                <connections>
+                                                                                    <action selector="shootingStarsAvgSecondsChanged:" target="-2" id="SHOOT-AVG-ACT"/>
+                                                                                </connections>
+                                                                            </textField>
+                                                                        </subviews>
+                                                                    </stackView>
+                                                                    <!-- (Optional hint row could be added later) -->
+                                                                </subviews>
+                                                            </stackView>
+                                                        </subviews>
+                                                        <constraints>
+                                                            <constraint firstAttribute="bottom" secondItem="SHOOT-STK" secondAttribute="bottom" constant="12" id="SHOOT-STK-BOT"/>
+                                                            <constraint firstItem="SHOOT-STK" firstAttribute="leading" secondItem="SHOOT-BOX-CONTENT" secondAttribute="leading" constant="12" id="SHOOT-STK-LEAD"/>
+                                                            <constraint firstItem="SHOOT-STK" firstAttribute="top" secondItem="SHOOT-BOX-CONTENT" secondAttribute="top" constant="12" id="SHOOT-STK-TOP"/>
+                                                            <constraint firstAttribute="trailing" secondItem="SHOOT-STK" secondAttribute="trailing" constant="12" id="SHOOT-STK-TRAIL"/>
+                                                        </constraints>
+                                                    </view>
+                                                </box>
                                             </subviews>
                                             <constraints>
                                                 <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="GEN-BOX" secondAttribute="bottom" constant="8" id="GEN-BOX-BOTTOM-GE"/>
@@ -197,6 +271,9 @@
                                                 <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="MOON-BOX" secondAttribute="bottom" constant="8" id="MOON-BOX-BOTTOM-GE"/>
                                                 <constraint firstItem="MOON-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="MOON-BOX-LEAD"/>
                                                 <constraint firstAttribute="trailing" secondItem="MOON-BOX" secondAttribute="trailing" constant="8" id="MOON-BOX-TRAIL"/>
+                                                <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="SHOOT-BOX" secondAttribute="bottom" constant="8" id="SHOOT-BOX-BOTTOM-GE"/>
+                                                <constraint firstItem="SHOOT-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="SHOOT-BOX-LEAD"/>
+                                                <constraint firstAttribute="trailing" secondItem="SHOOT-BOX" secondAttribute="trailing" constant="8" id="SHOOT-BOX-TRAIL"/>
                                             </constraints>
                                         </view>
                                     </subviews>
