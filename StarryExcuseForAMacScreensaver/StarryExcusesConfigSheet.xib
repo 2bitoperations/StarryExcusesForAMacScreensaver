@@ -45,7 +45,6 @@
                                             <rect key="frame" x="0.0" y="0.0" width="288" height="958"/>
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                             <subviews>
-                                                <!-- General Section -->
                                                 <box ambiguous="YES" borderType="line" title="General" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
                                                     <rect key="frame" x="5" y="830" width="278" height="120"/>
                                                     <view key="contentView" id="GEN-BOX-CONTENT">
@@ -114,7 +113,6 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Moon Section -->
                                                 <box ambiguous="YES" borderType="line" title="Moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BOX">
                                                     <rect key="frame" x="5" y="698" width="278" height="120"/>
                                                     <view key="contentView" id="MOON-BOX-CONTENT">
@@ -193,28 +191,26 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Shooting Stars Section -->
-                                                <box borderType="line" title="Shooting Stars" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BOX">
+                                                <box ambiguous="YES" borderType="line" title="Shooting Stars" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BOX">
                                                     <rect key="frame" x="5" y="566" width="278" height="120"/>
                                                     <view key="contentView" id="SHOOT-BOX-CONTENT">
                                                         <rect key="frame" x="4" y="5" width="270" height="100"/>
                                                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                                         <subviews>
-                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-STK">
-                                                                <rect key="frame" x="12" y="12" width="246" height="76"/>
+                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-STK">
+                                                                <rect key="frame" x="12" y="12" width="246" height="50"/>
                                                                 <subviews>
-                                                                    <!-- Enable checkbox -->
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-ROW0">
-                                                                        <rect key="frame" x="0.0" y="56" width="166" height="20"/>
+                                                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-ROW0">
+                                                                        <rect key="frame" x="0.0" y="28" width="177" height="22"/>
                                                                         <subviews>
                                                                             <switch translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-EN-CB">
-                                                                                <rect key="frame" x="-3" y="1" width="32" height="18"/>
+                                                                                <rect key="frame" x="-2" y="-2" width="42" height="25"/>
                                                                                 <connections>
                                                                                     <action selector="shootingStarsToggled:" target="-2" id="SHOOT-EN-ACT"/>
                                                                                 </connections>
                                                                             </switch>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-EN-LBL">
-                                                                                <rect key="frame" x="35" y="2" width="131" height="16"/>
+                                                                                <rect key="frame" x="44" y="3" width="135" height="16"/>
                                                                                 <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Enable shooting stars" id="SHOOT-EN-LBL-CELL">
                                                                                     <font key="font" metaFont="system"/>
                                                                                     <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
@@ -222,13 +218,20 @@
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                         </subviews>
+                                                                        <visibilityPriorities>
+                                                                            <integer value="1000"/>
+                                                                            <integer value="1000"/>
+                                                                        </visibilityPriorities>
+                                                                        <customSpacing>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                        </customSpacing>
                                                                     </stackView>
-                                                                    <!-- Seconds between stars -->
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-ROW1">
-                                                                        <rect key="frame" x="0.0" y="27" width="246" height="21"/>
+                                                                        <rect key="frame" x="0.0" y="0.0" width="202" height="20"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-LBL">
-                                                                                <rect key="frame" x="-2" y="3" width="145" height="16"/>
+                                                                                <rect key="frame" x="-2" y="2" width="150" height="16"/>
                                                                                 <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Seconds between stars:" id="SHOOT-AVG-LBL-CELL">
                                                                                     <font key="font" metaFont="system"/>
                                                                                     <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
@@ -236,7 +239,7 @@
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                             <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-FIELD">
-                                                                                <rect key="frame" x="147" y="0.0" width="50" height="21"/>
+                                                                                <rect key="frame" x="152" y="0.0" width="50" height="20"/>
                                                                                 <constraints>
                                                                                     <constraint firstAttribute="width" constant="50" id="SHOOT-AVG-WIDTH"/>
                                                                                 </constraints>
@@ -250,9 +253,24 @@
                                                                                 </connections>
                                                                             </textField>
                                                                         </subviews>
+                                                                        <visibilityPriorities>
+                                                                            <integer value="1000"/>
+                                                                            <integer value="1000"/>
+                                                                        </visibilityPriorities>
+                                                                        <customSpacing>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                        </customSpacing>
                                                                     </stackView>
-                                                                    <!-- (Optional hint row could be added later) -->
                                                                 </subviews>
+                                                                <visibilityPriorities>
+                                                                    <integer value="1000"/>
+                                                                    <integer value="1000"/>
+                                                                </visibilityPriorities>
+                                                                <customSpacing>
+                                                                    <real value="3.4028234663852886e+38"/>
+                                                                    <real value="3.4028234663852886e+38"/>
+                                                                </customSpacing>
                                                             </stackView>
                                                         </subviews>
                                                         <constraints>
