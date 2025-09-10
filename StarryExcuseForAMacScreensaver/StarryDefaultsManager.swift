@@ -14,6 +14,11 @@ class StarryDefaultsManager {
     
     // Default fallback constants (single source of truth)
     private let defaultStarsPerUpdate = 80
+    // Legacy per-update building lights (used to derive per-second if not explicitly set)
+    private let defaultBuildingLightsPerUpdate = 15
+    // Target visual density originally: 15 / update @ 10 FPS => 150 lights / second
+    private let defaultBuildingLightsPerSecond = 150.0
+    
     private let defaultBuildingHeight = 0.35
     private let defaultSecsBetweenClears = 120.0
     private let defaultMoonTraversalMinutes = 60
@@ -146,6 +151,19 @@ class StarryDefaultsManager {
             }
             defaults.synchronize()
         }
+        
+        // NEW (2025): building lights per second. If absent but legacy per-update key exists, derive.
+        if defaults.object(forKey: "BuildingLightsPerSecond") == nil {
+            if defaults.object(forKey: "BuildingLightsPerUpdate") != nil {
+                let legacy = max(0, defaults.integer(forKey: "BuildingLightsPerUpdate"))
+                // Legacy assumed 10 FPS
+                defaults.set(Double(legacy) * 10.0, forKey: "BuildingLightsPerSecond")
+            } else {
+                // Provide default density (15/update *10fps)
+                defaults.set(defaultBuildingLightsPerSecond, forKey: "BuildingLightsPerSecond")
+            }
+            defaults.synchronize()
+        }
     }
     
     // MARK: - Stored properties (with range enforcement)
@@ -155,6 +173,36 @@ class StarryDefaultsManager {
         get {
             let v = defaults.integer(forKey: "StarsPerUpdate")
             return v > 0 ? v : defaultStarsPerUpdate
+        }
+    }
+    
+    // Legacy: building lights per update (kept for backward compatibility / conversion)
+    var buildingLightsPerUpdate: Int {
+        set { defaults.set(newValue, forKey: "BuildingLightsPerUpdate"); defaults.synchronize() }
+        get {
+            if defaults.object(forKey: "BuildingLightsPerUpdate") == nil {
+                return defaultBuildingLightsPerUpdate
+            }
+            let v = defaults.integer(forKey: "BuildingLightsPerUpdate")
+            return v > 0 ? v : defaultBuildingLightsPerUpdate
+        }
+    }
+    
+    // Preferred new setting: building lights per second (time-based spawning).
+    // If user has never set it, derive from legacy per-update * 10 FPS.
+    var buildingLightsPerSecond: Double {
+        set {
+            let clamped = max(0.0, newValue)
+            defaults.set(clamped, forKey: "BuildingLightsPerSecond")
+            defaults.synchronize()
+        }
+        get {
+            if defaults.object(forKey: "BuildingLightsPerSecond") == nil {
+                // Derive from legacy per-update count
+                return Double(buildingLightsPerUpdate) * 10.0
+            }
+            let v = defaults.double(forKey: "BuildingLightsPerSecond")
+            return v > 0 ? v : defaultBuildingLightsPerSecond
         }
     }
     

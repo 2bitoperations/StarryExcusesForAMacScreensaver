@@ -19,6 +19,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // Existing controls
     @IBOutlet weak var starsPerUpdate: NSTextField!
+    @IBOutlet weak var buildingLightsPerSecond: NSTextField!        // NEW: building lights / second
     @IBOutlet weak var buildingHeightSlider: NSSlider!
     @IBOutlet weak var buildingHeightPreview: NSTextField!
     @IBOutlet weak var secsBetweenClears: NSTextField!
@@ -107,6 +108,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // Last-known values
     private var lastStarsPerUpdate: Int = 0
+    private var lastBuildingLightsPerSecond: Double = 0
     private var lastBuildingHeight: Double = 0
     private var lastSecsBetweenClears: Double = 0
     private var lastMoonTraversalMinutes: Int = 0
@@ -477,6 +479,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         // Load defaults into UI
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
+        buildingLightsPerSecond.doubleValue = defaultsManager.buildingLightsPerSecond
         buildingHeightSlider.doubleValue = defaultsManager.buildingHeight
         buildingHeightPreview.stringValue = String(format: "%.3f", defaultsManager.buildingHeight)
         secsBetweenClears.doubleValue = defaultsManager.secsBetweenClears
@@ -545,6 +548,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         // Snapshot last-known
         lastStarsPerUpdate = starsPerUpdate.integerValue
+        lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         lastBuildingHeight = buildingHeightSlider.doubleValue
         lastSecsBetweenClears = secsBetweenClears.doubleValue
         lastMoonTraversalMinutes = moonTraversalMinutes.integerValue
@@ -577,6 +581,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         // Delegates
         starsPerUpdate.delegate = self
+        buildingLightsPerSecond.delegate = self
         secsBetweenClears.delegate = self
         moonTraversalMinutes.delegate = self
         shootingStarsAvgSecondsField.delegate = self
@@ -625,6 +630,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func applyAccessibility() {
         starsPerUpdate.setAccessibilityLabel("Stars per update")
+        buildingLightsPerSecond.setAccessibilityLabel("Building lights per second")
         buildingHeightSlider.setAccessibilityLabel("Maximum building height")
         buildingFrequencySlider.setAccessibilityLabel("Building frequency")
         secsBetweenClears.setAccessibilityLabel("Seconds between clears")
@@ -718,6 +724,16 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                           oldValue: "\(lastStarsPerUpdate)",
                           newValue: "\(newVal)")
                 lastStarsPerUpdate = newVal
+                rebuildPreviewEngineIfNeeded()
+                updatePreviewConfig()
+            }
+        } else if field == buildingLightsPerSecond {
+            let newVal = field.doubleValue
+            if newVal != lastBuildingLightsPerSecond {
+                logChange(changedKey: "buildingLightsPerSecond",
+                          oldValue: format(lastBuildingLightsPerSecond),
+                          newValue: format(newVal))
+                lastBuildingLightsPerSecond = newVal
                 rebuildPreviewEngineIfNeeded()
                 updatePreviewConfig()
             }
@@ -827,7 +843,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func startPreviewTimer() {
         previewTimer?.invalidate()
-        previewTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        // Faster preview to visualize time-based spawning (60fps attempt)
+        previewTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.advancePreviewFrame()
         }
     }
@@ -903,7 +920,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             satellitesSize: satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize,
             satellitesBrightness: satellitesBrightnessSlider?.doubleValue ?? defaultsManager.satellitesBrightness,
             satellitesTrailing: satellitesTrailingCheckbox.map { $0.state == .on } ?? defaultsManager.satellitesTrailing,
-            debugOverlayEnabled: debugOverlayEnabledCheckbox.map { $0.state == .on } ?? defaultsManager.debugOverlayEnabled
+            debugOverlayEnabled: debugOverlayEnabledCheckbox.map { $0.state == .on } ?? defaultsManager.debugOverlayEnabled,
+            debugDropBaseEveryNFrames: 0,
+            debugForceClearEveryNFrames: 0,
+            debugLogEveryFrame: false,
+            buildingLightsPerUpdate: defaultsManager.buildingLightsPerUpdate,
+            disableFlasherOnBase: false,
+            starsPerSecond: 0, // use legacy derivation for stars (UI not yet migrated)
+            buildingLightsPerSecond: buildingLightsPerSecond.doubleValue
         )
     }
     
@@ -1020,6 +1044,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         os_log("hit saveClose", log: self.log!, type: .info)
         
         defaultsManager.starsPerUpdate = starsPerUpdate.integerValue
+        defaultsManager.buildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
         defaultsManager.secsBetweenClears = secsBetweenClears.doubleValue
         defaultsManager.moonTraversalMinutes = moonTraversalMinutes.integerValue
@@ -1089,6 +1114,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func stateSummaryString() -> String {
         var parts: [String] = []
         parts.append("starsPerUpdate=\(starsPerUpdate.integerValue)")
+        parts.append("buildingLightsPerSecond=\(format(buildingLightsPerSecond.doubleValue))")
         parts.append("buildingHeight=\(format(buildingHeightSlider.doubleValue))")
         parts.append("buildingFrequency=\(format(buildingFrequencySlider.doubleValue))")
         parts.append("secsBetweenClears=\(format(secsBetweenClears.doubleValue))")
