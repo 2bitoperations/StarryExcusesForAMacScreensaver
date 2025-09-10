@@ -100,10 +100,10 @@
                                                                         </customSpacing>
                                                                     </stackView>
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-ROW2">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="229" height="20"/>
+                                                                        <rect key="frame" x="0.0" y="0.0" width="181" height="20"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="LBL-BLSPERSEC">
-                                                                                <rect key="frame" x="-2" y="2" width="135" height="16"/>
+                                                                                <rect key="frame" x="-2" y="2" width="119" height="16"/>
                                                                                 <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Building lights/sec:" id="LBL-BLSPERSEC-CELL">
                                                                                     <font key="font" metaFont="system"/>
                                                                                     <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
@@ -111,7 +111,7 @@
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                             <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="BLSPERSEC-FIELD">
-                                                                                <rect key="frame" x="137" y="0.0" width="60" height="20"/>
+                                                                                <rect key="frame" x="121" y="0.0" width="60" height="20"/>
                                                                                 <constraints>
                                                                                     <constraint firstAttribute="width" constant="60" id="BLSPERSEC-WIDTH"/>
                                                                                 </constraints>
