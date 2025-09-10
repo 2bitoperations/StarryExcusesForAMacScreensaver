@@ -13,7 +13,8 @@ class StarryDefaultsManager {
     var defaults: UserDefaults
     
     // Default fallback constants (single source of truth)
-    private let defaultStarsPerUpdate = 80
+    private let defaultStarsPerUpdate = 80                // legacy
+    private let defaultStarsPerSecond = 800.0             // new authoritative (≈ 80 * 10fps legacy assumption)
     // Legacy per-update building lights (used to derive per-second if not explicitly set)
     private let defaultBuildingLightsPerUpdate = 15
     // Target visual density originally: 15 / update @ 10 FPS => 150 lights / second
@@ -91,23 +92,18 @@ class StarryDefaultsManager {
         }
         
         // MIGRATION: Shooting stars legacy factor (per-frame keep 0.85..0.99) -> half-life seconds.
-        // New key: "ShootingStarsTrailHalfLifeSeconds"
         if defaults.object(forKey: "ShootingStarsTrailHalfLifeSeconds") == nil {
             if let _ = defaults.object(forKey: "ShootingStarsTrailDecay") {
                 let factor = defaults.double(forKey: "ShootingStarsTrailDecay")
-                // Assume 60 FPS to estimate half-life from per-frame keep factor:
-                // f^(fps * h) = 0.5 => h = ln(0.5) / (fps * ln(f))
                 let fps = 60.0
                 let f = max(0.0001, min(0.9999, factor))
                 let hl = max(0.01, min(2.0, log(0.5) / (fps * log(f))))
                 defaults.set(hl, forKey: "ShootingStarsTrailHalfLifeSeconds")
             } else {
-                // No legacy value; use default
                 defaults.set(defaultShootingStarsTrailHalfLifeSeconds, forKey: "ShootingStarsTrailHalfLifeSeconds")
             }
             defaults.synchronize()
         } else {
-            // Clamp any out-of-range existing value
             let hl = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
             let clamped = max(0.01, min(2.0, hl))
             if clamped != hl {
@@ -116,34 +112,26 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         
-        // MIGRATION: Satellites legacy "trail decay seconds to ~1% residual" -> half-life seconds.
-        // Old key: "SatellitesTrailDecay" (value could have been migrated already to seconds).
-        // New key: "SatellitesTrailHalfLifeSeconds"
+        // MIGRATION: Satellites legacy conversions -> half-life
         if defaults.object(forKey: "SatellitesTrailHalfLifeSeconds") == nil {
             if let _ = defaults.object(forKey: "SatellitesTrailDecay") {
                 let v = defaults.double(forKey: "SatellitesTrailDecay")
                 var hl: Double
                 if v > 0.0 && v <= 1.0 {
-                    // Extremely old factor value (should be rare). Convert to seconds @60fps to half-life.
-                    // First get half-life seconds from factor per frame as above.
                     let fps = 60.0
                     let f = max(0.0001, min(0.9999, v))
                     hl = max(0.01, min(2.0, log(0.5) / (fps * log(f))))
                 } else {
-                    // Value is seconds for 1% residual (0.1 .. 3.0). Convert to half-life:
-                    // 0.5^(t / hl) = 0.01 => hl = t * ln(2) / ln(100)
                     let t = max(0.01, min(120.0, v))
                     hl = t * log(2.0) / log(100.0)
                     hl = max(0.01, min(2.0, hl))
                 }
                 defaults.set(hl, forKey: "SatellitesTrailHalfLifeSeconds")
             } else {
-                // No legacy value; use default
                 defaults.set(defaultSatellitesTrailHalfLifeSeconds, forKey: "SatellitesTrailHalfLifeSeconds")
             }
             defaults.synchronize()
         } else {
-            // Clamp any out-of-range existing value
             let hl = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
             let clamped = max(0.01, min(2.0, hl))
             if clamped != hl {
@@ -152,14 +140,24 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         
-        // NEW (2025): building lights per second. If absent but legacy per-update key exists, derive.
+        // MIGRATION (2025): introduce StarsPerSecond (authoritative)
+        if defaults.object(forKey: "StarsPerSecond") == nil {
+            if defaults.object(forKey: "StarsPerUpdate") != nil {
+                let legacy = max(0, defaults.integer(forKey: "StarsPerUpdate"))
+                // Legacy assumed 10 FPS
+                defaults.set(Double(legacy) * 10.0, forKey: "StarsPerSecond")
+            } else {
+                defaults.set(defaultStarsPerSecond, forKey: "StarsPerSecond")
+            }
+            defaults.synchronize()
+        }
+        
+        // NEW (2025): building lights per second (already handled previously)
         if defaults.object(forKey: "BuildingLightsPerSecond") == nil {
             if defaults.object(forKey: "BuildingLightsPerUpdate") != nil {
                 let legacy = max(0, defaults.integer(forKey: "BuildingLightsPerUpdate"))
-                // Legacy assumed 10 FPS
                 defaults.set(Double(legacy) * 10.0, forKey: "BuildingLightsPerSecond")
             } else {
-                // Provide default density (15/update *10fps)
                 defaults.set(defaultBuildingLightsPerSecond, forKey: "BuildingLightsPerSecond")
             }
             defaults.synchronize()
@@ -168,11 +166,47 @@ class StarryDefaultsManager {
     
     // MARK: - Stored properties (with range enforcement)
     
-    var starsPerUpdate: Int {
-        set { defaults.set(newValue, forKey: "StarsPerUpdate"); defaults.synchronize() }
+    // NEW authoritative stars-per-second configuration.
+    var starsPerSecond: Double {
+        set {
+            let clamped = max(0.0, newValue)
+            defaults.set(clamped, forKey: "StarsPerSecond")
+            // Keep legacy key loosely synchronized (divide by assumed 10 FPS) for any old code still reading it.
+            defaults.set(Int(round(clamped / 10.0)), forKey: "StarsPerUpdate")
+            defaults.synchronize()
+        }
         get {
+            if defaults.object(forKey: "StarsPerSecond") == nil {
+                // Derive a default if migration somehow failed
+                if defaults.object(forKey: "StarsPerUpdate") != nil {
+                    let legacy = max(0, defaults.integer(forKey: "StarsPerUpdate"))
+                    return Double(legacy) * 10.0
+                }
+                return defaultStarsPerSecond
+            }
+            let v = defaults.double(forKey: "StarsPerSecond")
+            return v >= 0 ? v : defaultStarsPerSecond
+        }
+    }
+    
+    // LEGACY (deprecated): stars per update. Derived from starsPerSecond / assumed 10 FPS.
+    // Retained for backward compatibility with older runtime components.
+    var starsPerUpdate: Int {
+        set {
+            let val = max(0, newValue)
+            defaults.set(val, forKey: "StarsPerUpdate")
+            // Keep new key aligned (multiply by 10 legacy FPS assumption) only if user has not explicitly
+            // set StarsPerSecond separately; we overwrite anyway for simplicity.
+            defaults.set(Double(val) * 10.0, forKey: "StarsPerSecond")
+            defaults.synchronize()
+        }
+        get {
+            if defaults.object(forKey: "StarsPerUpdate") == nil {
+                // Derive from starsPerSecond
+                return Int(max(0, round(starsPerSecond / 10.0)))
+            }
             let v = defaults.integer(forKey: "StarsPerUpdate")
-            return v > 0 ? v : defaultStarsPerUpdate
+            return v > 0 ? v : Int(max(0, round(starsPerSecond / 10.0)))
         }
     }
     
@@ -189,7 +223,6 @@ class StarryDefaultsManager {
     }
     
     // Preferred new setting: building lights per second (time-based spawning).
-    // If user has never set it, derive from legacy per-update * 10 FPS.
     var buildingLightsPerSecond: Double {
         set {
             let clamped = max(0.0, newValue)
@@ -198,7 +231,6 @@ class StarryDefaultsManager {
         }
         get {
             if defaults.object(forKey: "BuildingLightsPerSecond") == nil {
-                // Derive from legacy per-update count
                 return Double(buildingLightsPerUpdate) * 10.0
             }
             let v = defaults.double(forKey: "BuildingLightsPerSecond")
@@ -235,8 +267,7 @@ class StarryDefaultsManager {
         }
     }
     
-    // Building frequency (buildings per pixel width, used to derive count).
-    // Practical range: >0 – about 0.2 (very dense). Clamp to 0.001 ... 1.0 for sanity.
+    // Building frequency
     var buildingFrequency: Double {
         set {
             let clamped = max(0.001, min(1.0, newValue))
@@ -251,7 +282,6 @@ class StarryDefaultsManager {
     }
     
     // Unified moon size: diameter as % of screen width.
-    // Clamp 0.001 (0.1%) .. 0.25 (25%).
     var moonDiameterScreenWidthPercent: Double {
         set {
             let clamped = max(0.001, min(0.25, newValue))
@@ -267,7 +297,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Bright (illuminated) texture brightness factor. 0.2 .. 1.2
     var moonBrightBrightness: Double {
         set {
             let clamped = max(0.2, min(1.2, newValue))
@@ -280,7 +309,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Dark (shadow) texture brightness factor. 0.0 .. 0.9
     var moonDarkBrightness: Double {
         set {
             let clamped = max(0.0, min(0.9, newValue))
@@ -293,7 +321,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Phase override enabled
     var moonPhaseOverrideEnabled: Bool {
         set {
             defaults.set(newValue, forKey: "MoonPhaseOverrideEnabled")
@@ -307,7 +334,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Phase override value (0.0 .. 1.0)
     var moonPhaseOverrideValue: Double {
         set {
             let clamped = max(0.0, min(1.0, newValue))
@@ -323,7 +349,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Debug: show illuminated mask (instead of bright texture)
     var showLightAreaTextureFillMask: Bool {
         set {
             defaults.set(newValue, forKey: "ShowLightAreaTextureFillMask")
@@ -337,7 +362,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Debug overlay (FPS / CPU / time) toggle
     var debugOverlayEnabled: Bool {
         set {
             defaults.set(newValue, forKey: "DebugOverlayEnabled")
@@ -435,7 +459,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // NEW: shooting stars trail half-life in seconds (0.01 .. 2.0)
     var shootingStarsTrailHalfLifeSeconds: Double {
         set {
             let clamped = max(0.01, min(2.0, newValue))
@@ -476,7 +499,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Average seconds between spawns (0.2 (very frequent) ... 120 (rare))
     var satellitesAvgSpawnSeconds: Double {
         set {
             let clamped = max(0.2, min(120.0, newValue))
@@ -492,7 +514,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Pixels per second
     var satellitesSpeed: Double {
         set {
             let clamped = max(10.0, min(600.0, newValue))
@@ -505,7 +526,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Pixel size (dot diameter)
     var satellitesSize: Double {
         set {
             let clamped = max(1.0, min(6.0, newValue))
@@ -518,7 +538,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Brightness multiplier 0.2 .. 1.2
     var satellitesBrightness: Double {
         set {
             let clamped = max(0.2, min(1.2, newValue))
@@ -531,7 +550,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Trailing effect enabled
     var satellitesTrailing: Bool {
         set { defaults.set(newValue, forKey: "SatellitesTrailing"); defaults.synchronize() }
         get {
@@ -542,7 +560,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // NEW: satellites trail half-life in seconds (0.01 .. 2.0)
     var satellitesTrailHalfLifeSeconds: Double {
         set {
             let clamped = max(0.01, min(2.0, newValue))
@@ -562,7 +579,6 @@ class StarryDefaultsManager {
     func validateAndCorrectMoonSettings(log: OSLog) {
         var corrected = false
         
-        // 1. Brightness ordering
         if moonBrightBrightness < moonDarkBrightness {
             os_log("Invalid moon brightness settings (bright %.3f < dark %.3f). Reverting to defaults (bright %.2f, dark %.2f).",
                    log: log, type: .error,
@@ -573,7 +589,6 @@ class StarryDefaultsManager {
             corrected = true
         }
         
-        // 2. Phase override sanity
         let phaseOverride = defaults.double(forKey: "MoonPhaseOverrideValue")
         if phaseOverride.isNaN || phaseOverride < 0.0 || phaseOverride > 1.0 {
             os_log("Out-of-range MoonPhaseOverrideValue %.3f detected. Resetting to %.3f.",
@@ -582,7 +597,6 @@ class StarryDefaultsManager {
             corrected = true
         }
         
-        // 3. Percent sanity
         let percent = defaults.double(forKey: "MoonDiameterScreenWidthPercent")
         if percent.isNaN || percent < 0.001 || percent > 0.25 {
             os_log("Out-of-range MoonDiameterScreenWidthPercent %.5f detected. Resetting to default %.5f.",

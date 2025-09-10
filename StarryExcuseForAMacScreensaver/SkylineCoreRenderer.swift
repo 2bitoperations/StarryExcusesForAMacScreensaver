@@ -5,7 +5,8 @@ import simd
 
 // Renders ONLY the evolving star field, building lights, and flasher.
 // Now emits GPU sprite instances instead of drawing into a CGContext.
-// Updated to support time-based spawning (per-second rates with fractional accumulation).
+// Refactored (2025): star spawning is purely time-based using starsPerSecond.
+// Legacy "per update / per frame" star counts are no longer consulted.
 class SkylineCoreRenderer {
     let skyline: Skyline
     let log: OSLog
@@ -23,7 +24,9 @@ class SkylineCoreRenderer {
     private var buildingLightsPerSecond: Double
     private var starAccumulator: Double = 0
     private var buildingLightAccumulator: Double = 0
-    private let legacyFallbackFPS: Double = 10.0
+    
+    // Default density if caller passes <=0 (no legacy per-update fallback any more).
+    private let defaultStarsPerSecond: Double = 800.0
     
     init(skyline: Skyline,
          log: OSLog,
@@ -36,35 +39,46 @@ class SkylineCoreRenderer {
         self.traceEnabled = traceEnabled
         self.disableFlasherOnBase = disableFlasherOnBase
         
-        // If caller passed 0 (unspecified), derive from legacy per-update values (assuming past 10 FPS cap).
-        if starsPerSecond <= 0 {
-            self.starsPerSecond = Double(skyline.starsPerUpdate) * legacyFallbackFPS
+        // Stars: pure per-second model. Provide a reasonable default if unspecified.
+        if starsPerSecond > 0 {
+            self.starsPerSecond = starsPerSecond
         } else {
-            self.starsPerSecond = max(0, starsPerSecond)
-        }
-        if buildingLightsPerSecond <= 0 {
-            self.buildingLightsPerSecond = Double(skyline.buildingLightsPerUpdate) * legacyFallbackFPS
-        } else {
-            self.buildingLightsPerSecond = max(0, buildingLightsPerSecond)
+            self.starsPerSecond = defaultStarsPerSecond
         }
         
-        os_log("SkylineCoreRenderer init: starsPerSecond=%.2f buildingLightsPerSecond=%.2f (legacy perUpdate stars=%d lights=%d)",
-               log: log, type: .info,
-               self.starsPerSecond, self.buildingLightsPerSecond,
-               skyline.starsPerUpdate, skyline.buildingLightsPerUpdate)
+        // Building lights still support explicit per-second (existing optional legacy fallback preserved here).
+        if buildingLightsPerSecond > 0 {
+            self.buildingLightsPerSecond = buildingLightsPerSecond
+        } else {
+            // Keep legacy density heuristic for lights (derive from legacy per-update * assumed 10 FPS)
+            self.buildingLightsPerSecond = Double(skyline.buildingLightsPerUpdate) * 10.0
+        }
+        
+        if starsPerSecond <= 0 {
+            os_log("SkylineCoreRenderer init: starsPerSecond unspecified -> default %.2f", log: log, type: .info, self.starsPerSecond)
+        } else {
+            os_log("SkylineCoreRenderer init: starsPerSecond=%.2f", log: log, type: .info, self.starsPerSecond)
+        }
+        os_log("SkylineCoreRenderer init: buildingLightsPerSecond=%.2f (legacy perUpdate=%d)",
+               log: log, type: .info, self.buildingLightsPerSecond, skyline.buildingLightsPerUpdate)
     }
     
+    // Update per-second rates. Passing <=0 leaves existing value unchanged (no reversion to any per-update logic).
     func updateRates(starsPerSecond: Double, buildingLightsPerSecond: Double) {
-        let newStars = starsPerSecond > 0 ? starsPerSecond : Double(skyline.starsPerUpdate) * legacyFallbackFPS
-        let newLights = buildingLightsPerSecond > 0 ? buildingLightsPerSecond : Double(skyline.buildingLightsPerUpdate) * legacyFallbackFPS
-        if self.starsPerSecond != newStars || self.buildingLightsPerSecond != newLights {
-            os_log("SkylineCoreRenderer rate update: stars %.2f -> %.2f | lights %.2f -> %.2f",
-                   log: log, type: .info,
-                   self.starsPerSecond, newStars,
-                   self.buildingLightsPerSecond, newLights)
+        var changed = false
+        if starsPerSecond > 0 && self.starsPerSecond != starsPerSecond {
+            os_log("SkylineCoreRenderer rate update: stars %.2f -> %.2f", log: log, type: .info, self.starsPerSecond, starsPerSecond)
+            self.starsPerSecond = starsPerSecond
+            changed = true
         }
-        self.starsPerSecond = max(0, newStars)
-        self.buildingLightsPerSecond = max(0, newLights)
+        if buildingLightsPerSecond > 0 && self.buildingLightsPerSecond != buildingLightsPerSecond {
+            os_log("SkylineCoreRenderer rate update: building lights %.2f -> %.2f", log: log, type: .info, self.buildingLightsPerSecond, buildingLightsPerSecond)
+            self.buildingLightsPerSecond = buildingLightsPerSecond
+            changed = true
+        }
+        if changed {
+            // (Optionally) reset accumulators to avoid burst; here we keep remainder for smoothness.
+        }
     }
     
     func resetFrameCounter() { frameCounter = 0 }

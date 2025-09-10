@@ -14,10 +14,13 @@ enum StateError: Error {
 }
 
 class Skyline {
+    // LEGACY (deprecated): starsPerUpdate is retained only for backward compatibility.
+    // New code should use a stars-per-second rate (plumbed separately through runtime config
+    // and SkylineCoreRenderer). This value is no longer consulted for spawning logic.
+    let starsPerUpdate: Int
     let buildings: [Building]
     let width: Int
     let height: Int
-    let starsPerUpdate: Int
     let buildingLightsPerUpdate: Int
     let buildingMaxHeight: Int
     let buildingColor: Color
@@ -46,6 +49,7 @@ class Skyline {
          buildingWidthMin: Int = 40,
          buildingWidthMax: Int = 300,
          buildingFrequency: Double = 0.033, // ~100 buildings on a 3000px wide screen
+         // DEPRECATED: starsPerUpdate kept only for legacy code paths. New logic uses starsPerSecond.
          starsPerUpdate: Int = 50,
          buildingLightsPerUpdate: Int = 15,
          buildingColor: Color = Color(red: 0.972, green: 0.945, blue: 0.012),
