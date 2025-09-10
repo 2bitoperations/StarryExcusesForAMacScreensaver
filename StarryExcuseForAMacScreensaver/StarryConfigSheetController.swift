@@ -17,6 +17,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     weak var view: StarryExcuseForAView?
     private var log: OSLog?
     
+    // General section
+    @IBOutlet weak var starsPerSecond: NSTextField!              // NEW: stars per second (time-based)
+    
     // Existing controls
     @IBOutlet weak var starsPerUpdate: NSTextField!
     @IBOutlet weak var buildingLightsPerSecond: NSTextField!        // NEW: building lights / second
@@ -107,6 +110,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var isAutoPaused = false
     
     // Last-known values
+    private var lastStarsPerSecond: Int = 0
     private var lastStarsPerUpdate: Int = 0
     private var lastBuildingLightsPerSecond: Double = 0
     private var lastBuildingHeight: Double = 0
@@ -256,7 +260,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                       newValue: newVal ? "true" : "false")
             lastDebugOverlayEnabled = newVal
         }
-        // Make sure renderer also immediately reflects new state (even before next engine frame)
         previewRenderer?.setDebugOverlayEnabled(newVal)
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
@@ -478,6 +481,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         styleWindow()
         
         // Load defaults into UI
+        // Stars per second: derived initial (legacy approximation). Historically starsPerUpdate assumed ~10fps.
+        let derivedStarsPerSecond = defaultsManager.starsPerUpdate * 10
+        starsPerSecond.integerValue = derivedStarsPerSecond
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
         buildingLightsPerSecond.doubleValue = defaultsManager.buildingLightsPerSecond
         buildingHeightSlider.doubleValue = defaultsManager.buildingHeight
@@ -545,8 +551,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsAvgSecondsField.isEditable = true
         shootingStarsAvgSecondsField.isSelectable = true
         shootingStarsAvgSecondsField.isEnabled = (shootingStarsEnabledCheckbox.state == .on)
+        starsPerSecond.isEditable = true
+        starsPerSecond.isSelectable = true
+        starsPerSecond.isEnabled = true
         
         // Snapshot last-known
+        lastStarsPerSecond = starsPerSecond.integerValue
         lastStarsPerUpdate = starsPerUpdate.integerValue
         lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         lastBuildingHeight = buildingHeightSlider.doubleValue
@@ -580,6 +590,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastSatellitesTrailHalfLifeSeconds = satellitesTrailHalfLifeSlider?.doubleValue ?? defaultsManager.satellitesTrailHalfLifeSeconds
         
         // Delegates
+        starsPerSecond.delegate = self
         starsPerUpdate.delegate = self
         buildingLightsPerSecond.delegate = self
         secsBetweenClears.delegate = self
@@ -604,7 +615,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         applyButtonKeyEquivalents()
         applySystemSymbolImages()
         
-        // Ensure renderer overlay state matches checkbox right away
         if let renderer = previewRenderer {
             renderer.setDebugOverlayEnabled(lastDebugOverlayEnabled)
         }
@@ -629,6 +639,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func applyAccessibility() {
+        starsPerSecond.setAccessibilityLabel("Stars per second")
         starsPerUpdate.setAccessibilityLabel("Stars per update")
         buildingLightsPerSecond.setAccessibilityLabel("Building lights per second")
         buildingHeightSlider.setAccessibilityLabel("Maximum building height")
@@ -717,7 +728,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func handleTextFieldChange(_ field: NSTextField) {
-        if field == starsPerUpdate {
+        if field == starsPerSecond {
+            let newVal = max(0, field.integerValue)
+            if newVal != lastStarsPerSecond {
+                logChange(changedKey: "starsPerSecond",
+                          oldValue: "\(lastStarsPerSecond)",
+                          newValue: "\(newVal)")
+                lastStarsPerSecond = newVal
+                rebuildPreviewEngineIfNeeded()
+                updatePreviewConfig()
+            }
+        } else if field == starsPerUpdate {
             let newVal = field.integerValue
             if newVal != lastStarsPerUpdate {
                 logChange(changedKey: "starsPerUpdate",
@@ -808,7 +829,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 ?? 2.0
             previewRenderer?.updateDrawableSize(size: size, scale: scale)
             updateRendererHalfLives()
-            // Sync overlay state immediately
             previewRenderer?.setDebugOverlayEnabled(lastDebugOverlayEnabled)
         }
         
@@ -843,7 +863,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func startPreviewTimer() {
         previewTimer?.invalidate()
-        // Faster preview to visualize time-based spawning (60fps attempt)
         previewTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.advancePreviewFrame()
         }
@@ -926,7 +945,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             debugLogEveryFrame: false,
             buildingLightsPerUpdate: defaultsManager.buildingLightsPerUpdate,
             disableFlasherOnBase: false,
-            starsPerSecond: 0, // use legacy derivation for stars (UI not yet migrated)
+            starsPerSecond: starsPerSecond.integerValue,
             buildingLightsPerSecond: buildingLightsPerSecond.doubleValue
         )
     }
@@ -1043,6 +1062,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         os_log("hit saveClose", log: self.log!, type: .info)
         
+        // NOTE: starsPerSecond not yet persisted (defaults manager has no key). Only starsPerUpdate saved.
         defaultsManager.starsPerUpdate = starsPerUpdate.integerValue
         defaultsManager.buildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
@@ -1113,6 +1133,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func stateSummaryString() -> String {
         var parts: [String] = []
+        parts.append("starsPerSecond=\(starsPerSecond.integerValue)")
         parts.append("starsPerUpdate=\(starsPerUpdate.integerValue)")
         parts.append("buildingLightsPerSecond=\(format(buildingLightsPerSecond.doubleValue))")
         parts.append("buildingHeight=\(format(buildingHeightSlider.doubleValue))")

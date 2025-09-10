@@ -11,6 +11,7 @@
                 <outlet property="moonPreviewView" destination="PREVIEW-VIEW" id="PREVIEW-VIEW-ID"/>
                 <outlet property="pauseToggleButton" destination="PAUSE-BTN" id="OUT-PAUSE-BTN"/>
                 <outlet property="saveCloseButton" destination="SAVE-BTN" id="OUT-SAVE-BTN"/>
+                <outlet property="starsPerSecond" destination="STARSPERSEC-FIELD" id="OUT-SPERSEC"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
             </connections>
         </customObject>
@@ -39,6 +40,66 @@
                                         <view id="0ew-vm-fck">
                                             <rect key="frame" x="0.0" y="0.0" width="288" height="958"/>
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                                            <subviews>
+                                                <!-- General Section -->
+                                                <box boxType="primary" borderType="line" title="General" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
+                                                    <rect key="frame" x="8" y="830" width="272" height="120"/>
+                                                    <view key="contentView" id="GEN-BOX-CONTENT">
+                                                        <rect key="frame" x="1" y="1" width="270" height="102"/>
+                                                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                                                        <subviews>
+                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-STK">
+                                                                <rect key="frame" x="12" y="12" width="246" height="78"/>
+                                                                <subviews>
+                                                                    <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-ROW1">
+                                                                        <rect key="frame" x="0.0" y="42" width="246" height="36"/>
+                                                                        <subviews>
+                                                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="LBL-SPERSEC">
+                                                                                <rect key="frame" x="0.0" y="14" width="104" height="14"/>
+                                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Stars per second:" id="LBL-SPERSEC-CELL">
+                                                                                    <font key="font" metaFont="system"/>
+                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                                                                </textFieldCell>
+                                                                            </textField>
+                                                                            <textField verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="STARSPERSEC-FIELD">
+                                                                                <rect key="frame" x="110" y="8" width="60" height="22"/>
+                                                                                <constraints>
+                                                                                    <constraint firstAttribute="width" constant="60" id="STARSPERSEC-WIDTH"/>
+                                                                                </constraints>
+                                                                                <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="STARSPERSEC-FIELD-CELL">
+                                                                                    <font key="font" metaFont="system" size="12"/>
+                                                                                    <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                                                                </textFieldCell>
+                                                                            </textField>
+                                                                            <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="LBL-SPERSEC-HINT">
+                                                                                <rect key="frame" x="176" y="14" width="70" height="14"/>
+                                                                                <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="(preview)" id="LBL-SPERSEC-HINT-CELL">
+                                                                                    <font key="font" metaFont="system" size="11"/>
+                                                                                    <color key="textColor" name="secondaryLabelColor" catalog="System" colorSpace="catalog"/>
+                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                                                                </textFieldCell>
+                                                                            </textField>
+                                                                        </subviews>
+                                                                    </stackView>
+                                                                </subviews>
+                                                            </stackView>
+                                                        </subviews>
+                                                        <constraints>
+                                                            <constraint firstItem="GEN-STK" firstAttribute="leading" secondItem="GEN-BOX-CONTENT" secondAttribute="leading" constant="12" id="GEN-STK-LEAD"/>
+                                                            <constraint firstAttribute="bottom" secondItem="GEN-STK" secondAttribute="bottom" constant="12" id="GEN-STK-BOT"/>
+                                                            <constraint firstAttribute="trailing" secondItem="GEN-STK" secondAttribute="trailing" constant="12" id="GEN-STK-TRAIL"/>
+                                                            <constraint firstItem="GEN-STK" firstAttribute="top" secondItem="GEN-BOX-CONTENT" secondAttribute="top" constant="12" id="GEN-STK-TOP"/>
+                                                        </constraints>
+                                                    </view>
+                                                </box>
+                                            </subviews>
+                                            <constraints>
+                                                <constraint firstItem="GEN-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="GEN-BOX-LEAD"/>
+                                                <constraint firstAttribute="trailing" secondItem="GEN-BOX" secondAttribute="trailing" constant="8" id="GEN-BOX-TRAIL"/>
+                                                <constraint firstAttribute="bottom" secondItem="GEN-BOX" secondAttribute="bottom" relation="greaterThanOrEqual" constant="8" id="GEN-BOX-BOTTOM-GE"/>
+                                            </constraints>
                                         </view>
                                     </subviews>
                                 </clipView>
