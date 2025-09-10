@@ -1270,8 +1270,16 @@ final class StarryMetalRenderer {
             // Dark semi-transparent background
             ctx.setFillColor(NSColor(calibratedRed: 0.05, green: 0.0, blue: 0.08, alpha: 0.55).cgColor)
             ctx.fill(CGRect(x: 0, y: 0, width: overlayWidthPx, height: overlayHeightPx))
+            
+            // IMPORTANT: AppKit text drawing APIs require an NSGraphicsContext bound to the CGContext.
+            // Without this, the previous implementation produced only the background rectangle (no text).
+            let nsGC = NSGraphicsContext(cgContext: ctx, flipped: false)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = nsGC
+            // Draw text
             let textOrigin = CGPoint(x: padH, y: padV)
             (overlayStr as NSString).draw(at: textOrigin, withAttributes: attributes)
+            NSGraphicsContext.restoreGraphicsState()
         }
         
         if overlayTexture == nil ||
@@ -1457,6 +1465,7 @@ final class StarryMetalRenderer {
         }
         let baseSnap = snapshot(layerTex.base)
         let satSnap = snapshot(layerTex.satellites)
+        theight: do { _ = snapshot(layerTex.satellitesScratch) }
         let satScratchSnap = snapshot(layerTex.satellitesScratch)
         let shootSnap = snapshot(layerTex.shooting)
         let shootScratchSnap = snapshot(layerTex.shootingScratch)
