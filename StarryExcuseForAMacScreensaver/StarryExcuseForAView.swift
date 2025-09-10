@@ -44,8 +44,9 @@ class StarryExcuseForAView: ScreenSaverView {
                log: log!, type: .info, isPreview ? "true" : "false", NSStringFromRect(bounds))
         
         defaultsManager.validateAndCorrectMoonSettings(log: log!)
-        os_log("Animation interval set to %{public}.3f s", log: log!, type: .info, animationTimeInterval)
-        animationTimeInterval = 0.1
+        // Set target ~60 FPS
+        animationTimeInterval = 1.0 / 60.0
+        os_log("Animation interval set to %{public}.4f s (~%{public}.1f FPS)", log: log!, type: .info, animationTimeInterval, 1.0 / animationTimeInterval)
         registerListeners()
     }
     
