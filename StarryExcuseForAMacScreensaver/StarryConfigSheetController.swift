@@ -73,6 +73,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // Satellites controls
     @IBOutlet weak var satellitesEnabledCheckbox: NSSwitch?
+    // New seconds-between-satellites field
+    @IBOutlet weak var satellitesAvgSecondsField: NSTextField?
     @IBOutlet weak var satellitesPerMinuteSlider: NSSlider?
     @IBOutlet weak var satellitesPerMinutePreview: NSTextField?
     @IBOutlet weak var satellitesSpeedSlider: NSSlider?
@@ -429,6 +431,19 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         maybeClearAndRestartPreview(reason: "satellitesTrailingToggled")
     }
     
+    @IBAction func satellitesAvgSecondsChanged(_ sender: Any) {
+        guard let field = satellitesAvgSecondsField else { return }
+        let val = field.doubleValue
+        if val != lastSatellitesAvgSpawnSeconds {
+            logChange(changedKey: "satellitesAvgSpawnSeconds",
+                      oldValue: format(lastSatellitesAvgSpawnSeconds),
+                      newValue: format(val))
+            lastSatellitesAvgSpawnSeconds = val
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+    
     // MARK: - Preview Control Buttons
     
     @IBAction func previewTogglePause(_ sender: Any) {
@@ -481,7 +496,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         styleWindow()
         
         // Load defaults into UI
-        // Stars per second: derived initial (legacy approximation). Historically starsPerUpdate assumed ~10fps.
         let derivedStarsPerSecond = defaultsManager.starsPerUpdate * 10
         starsPerSecond.integerValue = derivedStarsPerSecond
         starsPerUpdate.integerValue = defaultsManager.starsPerUpdate
@@ -524,6 +538,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         // Satellites
         satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
+        satellitesAvgSecondsField?.doubleValue = defaultsManager.satellitesAvgSpawnSeconds
         if let satPerMinSlider = satellitesPerMinuteSlider {
             let perMinute = 60.0 / defaultsManager.satellitesAvgSpawnSeconds
             satPerMinSlider.doubleValue = perMinute
@@ -554,6 +569,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         starsPerSecond.isEditable = true
         starsPerSecond.isSelectable = true
         starsPerSecond.isEnabled = true
+        satellitesAvgSecondsField?.isEditable = true
+        satellitesAvgSecondsField?.isSelectable = true
+        satellitesAvgSecondsField?.isEnabled = satellitesEnabledCheckbox?.state == .on
         
         // Snapshot last-known
         lastStarsPerSecond = starsPerSecond.integerValue
@@ -596,6 +614,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         secsBetweenClears.delegate = self
         moonTraversalMinutes.delegate = self
         shootingStarsAvgSecondsField.delegate = self
+        satellitesAvgSecondsField?.delegate = self
         
         updatePreviewLabels()
         updateShootingStarsUIEnabled()
@@ -664,6 +683,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsDebugSpawnBoundsCheckbox.setAccessibilityLabel("Debug: show spawn bounds")
         pauseToggleButton.setAccessibilityLabel("Pause or resume preview")
         satellitesEnabledCheckbox?.setAccessibilityLabel("Enable satellites layer")
+        satellitesAvgSecondsField?.setAccessibilityLabel("Average seconds between satellites")
         satellitesPerMinuteSlider?.setAccessibilityLabel("Satellites per minute")
         satellitesSpeedSlider?.setAccessibilityLabel("Satellite speed")
         satellitesSizeSlider?.setAccessibilityLabel("Satellite size")
@@ -780,6 +800,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             }
         } else if field == shootingStarsAvgSecondsField {
             shootingStarsAvgSecondsChanged(field)
+        } else if field == satellitesAvgSecondsField {
+            satellitesAvgSecondsChanged(field)
         }
         validateInputs()
         maybeClearAndRestartPreview(reason: "textFieldChanged")
@@ -906,10 +928,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func currentPreviewRuntimeConfig() -> StarryRuntimeConfig {
-        var satellitesAvg: Double = defaultsManager.satellitesAvgSpawnSeconds
-        if let slider = satellitesPerMinuteSlider {
+        // Prefer explicit seconds field if present; fallback to existing slider logic
+        var satellitesAvg: Double
+        if let secsField = satellitesAvgSecondsField {
+            satellitesAvg = secsField.doubleValue
+        } else if let slider = satellitesPerMinuteSlider {
             let perMinute = max(0.1, slider.doubleValue)
             satellitesAvg = 60.0 / perMinute
+        } else {
+            satellitesAvg = defaultsManager.satellitesAvgSpawnSeconds
         }
         
         return StarryRuntimeConfig(
@@ -1033,6 +1060,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         guard let enabledCheckbox = satellitesEnabledCheckbox else { return }
         let enabled = enabledCheckbox.state == .on
         let alpha: CGFloat = enabled ? 1.0 : 0.4
+        satellitesAvgSecondsField?.isEnabled = enabled
+        satellitesAvgSecondsField?.alphaValue = alpha
         satellitesPerMinuteSlider?.isEnabled = enabled
         satellitesSpeedSlider?.isEnabled = enabled
         satellitesSizeSlider?.isEnabled = enabled
@@ -1062,7 +1091,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         os_log("hit saveClose", log: self.log!, type: .info)
         
-        // NOTE: starsPerSecond not yet persisted (defaults manager has no key). Only starsPerUpdate saved.
         defaultsManager.starsPerUpdate = starsPerUpdate.integerValue
         defaultsManager.buildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         defaultsManager.buildingHeight = buildingHeightSlider.doubleValue
@@ -1092,7 +1120,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let cb = satellitesEnabledCheckbox {
             defaultsManager.satellitesEnabled = (cb.state == .on)
         }
-        if let perMinSlider = satellitesPerMinuteSlider {
+        if let secsField = satellitesAvgSecondsField {
+            defaultsManager.satellitesAvgSpawnSeconds = secsField.doubleValue
+        } else if let perMinSlider = satellitesPerMinuteSlider {
             let perMinute = max(0.1, perMinSlider.doubleValue)
             defaultsManager.satellitesAvgSpawnSeconds = 60.0 / perMinute
         }
