@@ -225,7 +225,15 @@ class StarryExcuseForAView: ScreenSaverView {
             satellitesSize: defaultsManager.satellitesSize,
             satellitesBrightness: defaultsManager.satellitesBrightness,
             satellitesTrailing: defaultsManager.satellitesTrailing,
-            debugOverlayEnabled: defaultsManager.debugOverlayEnabled
+            debugOverlayEnabled: defaultsManager.debugOverlayEnabled,
+            debugDropBaseEveryNFrames: 0,
+            debugForceClearEveryNFrames: 0,
+            debugLogEveryFrame: false,
+            buildingLightsPerUpdate: defaultsManager.buildingLightsPerUpdate,
+            disableFlasherOnBase: false,
+            // New per-second rates (0 => derive from legacy per-update * 10 FPS)
+            starsPerSecond: 0,
+            buildingLightsPerSecond: 0
         )
     }
     

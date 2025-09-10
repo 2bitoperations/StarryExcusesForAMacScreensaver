@@ -5,7 +5,7 @@ import QuartzCore   // For CACurrentMediaTime()
 import Darwin       // For task_info CPU sampling
 import simd
 
-// (File content unchanged until MoonParams construction points; only those sections updated to include waxingSign)
+// (File content changed: added per-second spawning support & dt-aware skyline renderer interaction.)
 
 struct StarryRuntimeConfig {
     var starsPerUpdate: Int
@@ -44,6 +44,10 @@ struct StarryRuntimeConfig {
     var debugLogEveryFrame: Bool = false
     var buildingLightsPerUpdate: Int = 15
     var disableFlasherOnBase: Bool = false
+    
+    // New time-based spawning (0 => derive from legacy * 10 FPS)
+    var starsPerSecond: Double = 0
+    var buildingLightsPerSecond: Double = 0
 }
 
 extension StarryRuntimeConfig: CustomStringConvertible {
@@ -81,7 +85,9 @@ StarryRuntimeConfig(
   debugForceClearEveryNFrames: \(debugForceClearEveryNFrames),
   debugLogEveryFrame: \(debugLogEveryFrame),
   buildingLightsPerUpdate: \(buildingLightsPerUpdate),
-  disableFlasherOnBase: \(disableFlasherOnBase)
+  disableFlasherOnBase: \(disableFlasherOnBase),
+  starsPerSecond: \(starsPerSecond),
+  buildingLightsPerSecond: \(buildingLightsPerSecond)
 )
 """
     }
@@ -122,6 +128,9 @@ final class StarryEngine {
     private var observersInstalled: Bool = false
     private let diagnosticsNotification = Notification.Name("StarryDiagnostics")
     private let clearNotification = Notification.Name("StarryClear")
+    
+    // Legacy fallback FPS constant for converting per-update -> per-second when needed.
+    private let legacyPerUpdateFPS: Double = 10.0
 
     init(size: CGSize,
          log: OSLog,
@@ -180,6 +189,16 @@ final class StarryEngine {
         if let n: Int = value("buildingLightsPerUpdate", from: ui), n != config.buildingLightsPerUpdate {
             cfg.buildingLightsPerUpdate = max(0, n)
             applied.append("buildingLightsPerUpdate=\(cfg.buildingLightsPerUpdate)")
+            cfgChanged = true
+        }
+        if let d: Double = value("starsPerSecond", from: ui), d >= 0, d != config.starsPerSecond {
+            cfg.starsPerSecond = d
+            applied.append(String(format: "starsPerSecond=%.2f", d))
+            cfgChanged = true
+        }
+        if let d: Double = value("buildingLightsPerSecond", from: ui), d >= 0, d != config.buildingLightsPerSecond {
+            cfg.buildingLightsPerSecond = d
+            applied.append(String(format: "buildingLightsPerSecond=%.2f", d))
             cfgChanged = true
         }
         if let n: Int = value("dropBaseEveryN", from: ui), n != config.debugDropBaseEveryNFrames {
@@ -275,7 +294,9 @@ final class StarryEngine {
             config.moonPhaseOverrideEnabled != newConfig.moonPhaseOverrideEnabled ||
             config.moonPhaseOverrideValue != newConfig.moonPhaseOverrideValue ||
             config.showLightAreaTextureFillMask != newConfig.showLightAreaTextureFillMask ||
-            config.buildingLightsPerUpdate != newConfig.buildingLightsPerUpdate
+            config.buildingLightsPerUpdate != newConfig.buildingLightsPerUpdate ||
+            config.starsPerSecond != newConfig.starsPerSecond ||
+            config.buildingLightsPerSecond != newConfig.buildingLightsPerSecond
 
         if skylineAffecting {
             os_log("Config changed (skyline affecting) — resetting skyline, renderers, and moon albedo", log: log, type: .info)
@@ -338,12 +359,24 @@ final class StarryEngine {
 
         if let sr = skylineRenderer {
             sr.setDisableFlasherOnBase(config.disableFlasherOnBase)
+            // Update per-second rates on existing renderer (will convert if zeros present)
+            sr.updateRates(starsPerSecond: effectiveStarsPerSecond(), buildingLightsPerSecond: effectiveBuildingLightsPerSecond())
         }
 
         if skylineAffecting || shootingStarsAffecting || satellitesAffecting {
             forceClearOnNextFrame = true
             os_log("Config change will force full clear on next frame", log: log, type: .info)
         }
+    }
+    
+    private func effectiveStarsPerSecond() -> Double {
+        if config.starsPerSecond > 0 { return config.starsPerSecond }
+        return Double(config.starsPerUpdate) * legacyPerUpdateFPS
+    }
+    
+    private func effectiveBuildingLightsPerSecond() -> Double {
+        if config.buildingLightsPerSecond > 0 { return config.buildingLightsPerSecond }
+        return Double(config.buildingLightsPerUpdate) * legacyPerUpdateFPS
     }
 
     private func ensureSkyline() {
@@ -376,12 +409,18 @@ final class StarryEngine {
                                   moonPhaseOverrideEnabled: config.moonPhaseOverrideEnabled,
                                   moonPhaseOverrideValue: config.moonPhaseOverrideValue)
             if let skyline = skyline {
-                os_log("Skyline created. Stars/update=%{public}d, buildingLights/update=%{public}d, clearAfter=%{public}.1fs",
-                       log: log, type: .info, config.starsPerUpdate, config.buildingLightsPerUpdate, config.secsBetweenClears)
+                os_log("Skyline created. Legacy stars/update=%{public}d lights/update=%{public}d (will use per-second rates stars=%.2f lights=%.2f)",
+                       log: log, type: .info,
+                       config.starsPerUpdate,
+                       config.buildingLightsPerUpdate,
+                       effectiveStarsPerSecond(),
+                       effectiveBuildingLightsPerSecond())
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
                                                       traceEnabled: config.traceEnabled,
-                                                      disableFlasherOnBase: config.disableFlasherOnBase)
+                                                      disableFlasherOnBase: config.disableFlasherOnBase,
+                                                      starsPerSecond: effectiveStarsPerSecond(),
+                                                      buildingLightsPerSecond: effectiveBuildingLightsPerSecond())
                 os_log("SkylineCoreRenderer created (disableFlasherOnBase=%{public}@)", log: log, type: .info, config.disableFlasherOnBase ? "true" : "false")
                 if let tex = skyline.getMoon()?.textureImage {
                     moonAlbedoImage = tex
@@ -481,7 +520,7 @@ final class StarryEngine {
                 ensureSkyline()
             }
 
-            baseSprites = skylineRenderer.generateSprites()
+            baseSprites = skylineRenderer.generateSprites(dtSeconds: dt)
             if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
                 os_log("advanceFrameGPU: DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
                 baseSprites.removeAll()
@@ -526,11 +565,14 @@ final class StarryEngine {
         }
 
         if logThisFrame {
-            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@",
+            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
                    moonParams != nil ? "yes" : "no",
-                   clearAll ? "yes" : "no")
+                   clearAll ? "yes" : "no",
+                   dt,
+                   effectiveStarsPerSecond(),
+                   effectiveBuildingLightsPerSecond())
         }
 
         let drawData = StarryDrawData(
@@ -599,7 +641,7 @@ final class StarryEngine {
                 ensureSkyline()
             }
 
-            baseSprites = skylineRenderer.generateSprites()
+            baseSprites = skylineRenderer.generateSprites(dtSeconds: dt)
             if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
                 os_log("advanceFrame(headless): DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
                 baseSprites.removeAll()
@@ -639,11 +681,14 @@ final class StarryEngine {
         }
 
         if logThisFrame {
-            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@",
+            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
                    moonParams != nil ? "yes" : "no",
-                   clearAll ? "yes" : "no")
+                   clearAll ? "yes" : "no",
+                   dt,
+                   effectiveStarsPerSecond(),
+                   effectiveBuildingLightsPerSecond())
         }
 
         let drawData = StarryDrawData(
