@@ -7,6 +7,7 @@
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="StarryConfigSheetController" customModule="StarryExcuseForAMacScreensaver" customModuleProvider="target">
             <connections>
+                <outlet property="buildingLightsPerSecond" destination="BLSPERSEC-FIELD" id="OUT-BLSPERSEC"/>
                 <outlet property="cancelButton" destination="CANCEL-BTN" id="OUT-CANCEL-BTN"/>
                 <outlet property="moonPreviewView" destination="PREVIEW-VIEW" id="PREVIEW-VIEW-ID"/>
                 <outlet property="moonSizePercentPreview" destination="MOON-SIZE-PREV" id="OUT-MOON-PREV"/>
@@ -48,16 +49,16 @@
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                             <subviews>
                                                 <box ambiguous="YES" borderType="line" title="General" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
-                                                    <rect key="frame" x="5" y="830" width="278" height="120"/>
+                                                    <rect key="frame" x="5" y="830" width="278" height="140"/>
                                                     <view key="contentView" id="GEN-BOX-CONTENT">
-                                                        <rect key="frame" x="4" y="5" width="270" height="100"/>
+                                                        <rect key="frame" x="4" y="5" width="270" height="120"/>
                                                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                                         <subviews>
-                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-STK">
-                                                                <rect key="frame" x="12" y="12" width="246" height="20"/>
+                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-STK">
+                                                                <rect key="frame" x="12" y="12" width="246" height="44"/>
                                                                 <subviews>
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-ROW1">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="229" height="20"/>
+                                                                        <rect key="frame" x="0.0" y="24" width="229" height="20"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="LBL-SPERSEC">
                                                                                 <rect key="frame" x="-2" y="2" width="111" height="16"/>
@@ -98,11 +99,45 @@
                                                                             <real value="3.4028234663852886e+38"/>
                                                                         </customSpacing>
                                                                     </stackView>
+                                                                    <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-ROW2">
+                                                                        <rect key="frame" x="0.0" y="0.0" width="229" height="20"/>
+                                                                        <subviews>
+                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="LBL-BLSPERSEC">
+                                                                                <rect key="frame" x="-2" y="2" width="135" height="16"/>
+                                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Building lights/sec:" id="LBL-BLSPERSEC-CELL">
+                                                                                    <font key="font" metaFont="system"/>
+                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                                                                </textFieldCell>
+                                                                            </textField>
+                                                                            <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="BLSPERSEC-FIELD">
+                                                                                <rect key="frame" x="137" y="0.0" width="60" height="20"/>
+                                                                                <constraints>
+                                                                                    <constraint firstAttribute="width" constant="60" id="BLSPERSEC-WIDTH"/>
+                                                                                </constraints>
+                                                                                <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="BLSPERSEC-FIELD-CELL">
+                                                                                    <font key="font" metaFont="cellTitle"/>
+                                                                                    <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                                                                </textFieldCell>
+                                                                            </textField>
+                                                                        </subviews>
+                                                                        <visibilityPriorities>
+                                                                            <integer value="1000"/>
+                                                                            <integer value="1000"/>
+                                                                        </visibilityPriorities>
+                                                                        <customSpacing>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                            <real value="3.4028234663852886e+38"/>
+                                                                        </customSpacing>
+                                                                    </stackView>
                                                                 </subviews>
                                                                 <visibilityPriorities>
                                                                     <integer value="1000"/>
+                                                                    <integer value="1000"/>
                                                                 </visibilityPriorities>
                                                                 <customSpacing>
+                                                                    <real value="3.4028234663852886e+38"/>
                                                                     <real value="3.4028234663852886e+38"/>
                                                                 </customSpacing>
                                                             </stackView>
