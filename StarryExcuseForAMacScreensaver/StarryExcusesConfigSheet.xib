@@ -48,7 +48,6 @@
                                             <rect key="frame" x="0.0" y="0.0" width="288" height="958"/>
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                             <subviews>
-                                                <!-- General Box -->
                                                 <box ambiguous="YES" borderType="line" title="General" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
                                                     <rect key="frame" x="5" y="830" width="278" height="140"/>
                                                     <view key="contentView" id="GEN-BOX-CONTENT">
@@ -58,20 +57,19 @@
                                                             <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-STK">
                                                                 <rect key="frame" x="12" y="12" width="246" height="44"/>
                                                                 <subviews>
-                                                                    <!-- Stars per second row (removed hint label, widened numeric field) -->
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-ROW1">
-                                                                        <rect key="frame" x="0.0" y="24" width="181" height="20"/>
+                                                                        <rect key="frame" x="0.0" y="24" width="160" height="20"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="LBL-SPERSEC">
-                                                                                <rect key="frame" x="-2" y="2" width="111" height="16"/>
-                                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Stars per second:" id="LBL-SPERSEC-CELL">
+                                                                                <rect key="frame" x="-2" y="2" width="88" height="16"/>
+                                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Stars/second:" id="LBL-SPERSEC-CELL">
                                                                                     <font key="font" metaFont="system"/>
                                                                                     <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
                                                                                     <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                             <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="STARSPERSEC-FIELD">
-                                                                                <rect key="frame" x="113" y="0.0" width="70" height="20"/>
+                                                                                <rect key="frame" x="90" y="0.0" width="70" height="20"/>
                                                                                 <constraints>
                                                                                     <constraint firstAttribute="width" constant="70" id="STARSPERSEC-WIDTH"/>
                                                                                 </constraints>
@@ -91,20 +89,19 @@
                                                                             <real value="3.4028234663852886e+38"/>
                                                                         </customSpacing>
                                                                     </stackView>
-                                                                    <!-- Building lights per second row -->
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-ROW2">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="205" height="20"/>
+                                                                        <rect key="frame" x="0.0" y="0.0" width="214" height="20"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="LBL-BLSPERSEC">
-                                                                                <rect key="frame" x="-2" y="2" width="119" height="16"/>
-                                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Building lights/sec:" id="LBL-BLSPERSEC-CELL">
+                                                                                <rect key="frame" x="-2" y="2" width="142" height="16"/>
+                                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Building lights/second:" id="LBL-BLSPERSEC-CELL">
                                                                                     <font key="font" metaFont="system"/>
                                                                                     <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
                                                                                     <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                                                                                 </textFieldCell>
                                                                             </textField>
                                                                             <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="BLSPERSEC-FIELD">
-                                                                                <rect key="frame" x="121" y="0.0" width="70" height="20"/>
+                                                                                <rect key="frame" x="144" y="0.0" width="70" height="20"/>
                                                                                 <constraints>
                                                                                     <constraint firstAttribute="width" constant="70" id="BLSPERSEC-WIDTH"/>
                                                                                 </constraints>
@@ -143,7 +140,6 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Moon Box -->
                                                 <box ambiguous="YES" borderType="line" title="Moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BOX">
                                                     <rect key="frame" x="5" y="698" width="278" height="120"/>
                                                     <view key="contentView" id="MOON-BOX-CONTENT">
@@ -222,7 +218,6 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Shooting Stars Box -->
                                                 <box ambiguous="YES" borderType="line" title="Shooting Stars" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BOX">
                                                     <rect key="frame" x="5" y="566" width="278" height="120"/>
                                                     <view key="contentView" id="SHOOT-BOX-CONTENT">
@@ -260,7 +255,7 @@
                                                                         </customSpacing>
                                                                     </stackView>
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-ROW1">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="226" height="20"/>
+                                                                        <rect key="frame" x="0.0" y="0.0" width="222" height="20"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-LBL">
                                                                                 <rect key="frame" x="-2" y="2" width="150" height="16"/>
@@ -313,7 +308,6 @@
                                                         </constraints>
                                                     </view>
                                                 </box>
-                                                <!-- Satellites Box -->
                                                 <box ambiguous="YES" borderType="line" title="Satellites" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BOX">
                                                     <rect key="frame" x="5" y="434" width="278" height="120"/>
                                                     <view key="contentView" id="SAT-BOX-CONTENT">
@@ -351,7 +345,7 @@
                                                                         </customSpacing>
                                                                     </stackView>
                                                                     <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-ROW1">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="221" height="20"/>
+                                                                        <rect key="frame" x="0.0" y="0.0" width="217" height="20"/>
                                                                         <subviews>
                                                                             <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-AVG-LBL">
                                                                                 <rect key="frame" x="-2" y="2" width="145" height="16"/>
