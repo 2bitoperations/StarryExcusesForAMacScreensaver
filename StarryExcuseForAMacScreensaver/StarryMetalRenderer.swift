@@ -1240,9 +1240,11 @@ final class StarryMetalRenderer {
         lastOverlayUpdateTime = now
         
         let font = NSFont.monospacedDigitSystemFont(ofSize: 14, weight: .regular)
+        // Fuchsia text color (bright magenta) for visibility testing
+        let fuchsia = NSColor(calibratedRed: 1.0, green: 0.0, blue: 1.0, alpha: 1.0)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor(white: 1.0, alpha: 1.0)
+            .foregroundColor: fuchsia
         ]
         let textSize = (overlayStr as NSString).size(withAttributes: attributes)
         let padH: CGFloat = 8
@@ -1265,7 +1267,8 @@ final class StarryMetalRenderer {
                                space: CGColorSpaceCreateDeviceRGB(),
                                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
             ctx.clear(CGRect(x: 0, y: 0, width: overlayWidthPx, height: overlayHeightPx))
-            ctx.setFillColor(NSColor(calibratedWhite: 0.0, alpha: 0.35).cgColor)
+            // Dark semi-transparent background
+            ctx.setFillColor(NSColor(calibratedRed: 0.05, green: 0.0, blue: 0.08, alpha: 0.55).cgColor)
             ctx.fill(CGRect(x: 0, y: 0, width: overlayWidthPx, height: overlayHeightPx))
             let textOrigin = CGPoint(x: padH, y: padV)
             (overlayStr as NSString).draw(at: textOrigin, withAttributes: attributes)
@@ -1288,7 +1291,7 @@ final class StarryMetalRenderer {
             tex.replace(region: region, mipmapLevel: 0, withBytes: bytes, bytesPerRow: rowBytes)
         }
         
-        os_log("Overlay updated (size=%dx%d text=\"%{public}@\" eff=%{public}@ engine=%{public}@ user=%{public}@)",
+        os_log("Overlay updated (size=%dx%d text=\"%{public}@\" eff=%{public}@ engine=%{public}@ user=%{public}@ color=fuchsia)",
                log: log, type: .info, overlayWidthPx, overlayHeightPx, overlayStr,
                effectiveOverlayEnabled ? "ON" : "off",
                engineOverlayEnabled ? "ON" : "off",
