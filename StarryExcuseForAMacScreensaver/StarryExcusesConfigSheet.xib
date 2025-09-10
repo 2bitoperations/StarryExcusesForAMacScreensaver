@@ -11,8 +11,6 @@
                 <outlet property="moonPreviewView" destination="PREVIEW-VIEW" id="PREVIEW-VIEW-ID"/>
                 <outlet property="pauseToggleButton" destination="PAUSE-BTN" id="OUT-PAUSE-BTN"/>
                 <outlet property="saveCloseButton" destination="SAVE-BTN" id="OUT-SAVE-BTN"/>
-                <outlet property="starsPerSecond" destination="STARS-SEC-FIELD" id="OUT-STARS-SEC"/>
-                <outlet property="starsPerUpdate" destination="STARS-UPD-FIELD" id="OUT-STARS-UPD"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="1GN-qi-iad"/>
             </connections>
         </customObject>
@@ -41,61 +39,6 @@
                                         <view id="0ew-vm-fck">
                                             <rect key="frame" x="0.0" y="0.0" width="288" height="958"/>
                                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                                            <subviews>
-                                                <!-- General Section Container -->
-                                                <box boxType="custom" borderType="line" titlePosition="noTitle" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
-                                                    <rect key="frame" x="10" y="818" width="268" height="130"/>
-                                                    <view key="contentView" id="GEN-BOX-CONTENT">
-                                                        <rect key="frame" x="0.0" y="0.0" width="268" height="130"/>
-                                                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
-                                                        <subviews>
-                                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="GEN-LABEL">
-                                                                <rect key="frame" x="12" y="96" width="120" height="24"/>
-                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="General" id="GEN-LABEL-CELL">
-                                                                    <font key="font" metaFont="systemBold"/>
-                                                                </textFieldCell>
-                                                            </textField>
-                                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="STARS-UPD-LABEL">
-                                                                <rect key="frame" x="16" y="63" width="110" height="17"/>
-                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Stars / Update:" id="STARS-UPD-LABEL-CELL">
-                                                                    <font key="font" metaFont="system"/>
-                                                                </textFieldCell>
-                                                            </textField>
-                                                            <textField verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="STARS-UPD-FIELD">
-                                                                <rect key="frame" x="148" y="60" width="96" height="22"/>
-                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="STARS-UPD-FIELD-CELL"/>
-                                                            </textField>
-                                                            <textField translatesAutoresizingMaskIntoConstraints="NO" id="STARS-SEC-LABEL">
-                                                                <rect key="frame" x="16" y="31" width="117" height="17"/>
-                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Stars / Second:" id="STARS-SEC-LABEL-CELL">
-                                                                    <font key="font" metaFont="system"/>
-                                                                </textFieldCell>
-                                                            </textField>
-                                                            <textField verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="STARS-SEC-FIELD">
-                                                                <rect key="frame" x="148" y="28" width="96" height="22"/>
-                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="STARS-SEC-FIELD-CELL"/>
-                                                            </textField>
-                                                        </subviews>
-                                                        <constraints>
-                                                            <constraint firstItem="GEN-LABEL" firstAttribute="leading" secondItem="GEN-BOX-CONTENT" secondAttribute="leading" constant="12" id="GEN-LABEL-LEAD"/>
-                                                            <constraint firstItem="GEN-LABEL" firstAttribute="top" secondItem="GEN-BOX-CONTENT" secondAttribute="top" constant="10" id="GEN-LABEL-TOP"/>
-                                                            <constraint firstItem="STARS-UPD-LABEL" firstAttribute="leading" secondItem="GEN-BOX-CONTENT" secondAttribute="leading" constant="16" id="SUPD-LABEL-LEAD"/>
-                                                            <constraint firstItem="STARS-UPD-FIELD" firstAttribute="centerY" secondItem="STARS-UPD-LABEL" secondAttribute="centerY" id="SUPD-FIELD-CENTER"/>
-                                                            <constraint firstItem="STARS-UPD-FIELD" firstAttribute="leading" secondItem="STARS-UPD-LABEL" secondAttribute="trailing" constant="22" id="SUPD-FIELD-LEAD"/>
-                                                            <constraint firstItem="STARS-SEC-LABEL" firstAttribute="leading" secondItem="GEN-BOX-CONTENT" secondAttribute="leading" constant="16" id="SSEC-LABEL-LEAD"/>
-                                                            <constraint firstItem="STARS-SEC-FIELD" firstAttribute="centerY" secondItem="STARS-SEC-LABEL" secondAttribute="centerY" id="SSEC-FIELD-CENTER"/>
-                                                            <constraint firstItem="STARS-SEC-FIELD" firstAttribute="leading" secondItem="STARS-SEC-LABEL" secondAttribute="trailing" constant="15" id="SSEC-FIELD-LEAD"/>
-                                                            <constraint firstItem="STARS-UPD-LABEL" firstAttribute="top" secondItem="GEN-LABEL" secondAttribute="bottom" constant="16" id="SUPD-LABEL-TOP"/>
-                                                            <constraint firstItem="STARS-SEC-LABEL" firstAttribute="top" secondItem="STARS-UPD-LABEL" secondAttribute="bottom" constant="15" id="SSEC-LABEL-TOP"/>
-                                                        </constraints>
-                                                    </view>
-                                                </box>
-                                            </subviews>
-                                            <constraints>
-                                                <constraint firstAttribute="trailing" secondItem="GEN-BOX" secondAttribute="trailing" constant="10" id="GEN-BOX-TRAIL"/>
-                                                <constraint firstItem="GEN-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="10" id="GEN-BOX-LEAD"/>
-                                                <constraint firstAttribute="bottom" secondItem="GEN-BOX" secondAttribute="bottom" constant="10" id="GEN-BOX-BOTTOM"/>
-                                            </constraints>
                                         </view>
                                     </subviews>
                                 </clipView>
