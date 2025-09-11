@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="23727" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="23727" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES">
     <dependencies>
         <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="23727"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
@@ -52,7 +52,7 @@
                                             <rect key="frame" x="0.0" y="0.0" width="318" height="900"/>
                                             <subviews>
                                                 <!-- Master vertical stack of section boxes -->
-                                                <stackView id="SECTIONS-STK" distribution="gravityAreas" orientation="vertical" alignment="leading" spacing="16" translatesAutoresizingMaskIntoConstraints="NO">
+                                                <stackView id="SECTIONS-STK" distribution="fill" orientation="vertical" alignment="leading" spacing="16" translatesAutoresizingMaskIntoConstraints="NO">
                                                     <rect key="frame" x="0.0" y="0.0" width="318" height="900"/>
                                                     <subviews>
                                                         <!-- General Box -->
@@ -268,8 +268,6 @@
                                                 <constraint firstAttribute="bottom" secondItem="SECTIONS-STK" secondAttribute="bottom" constant="12" id="SEC-STK-BOT"/>
                                                 <constraint firstItem="SECTIONS-STK" firstAttribute="leading" secondItem="DOC-VIEW" secondAttribute="leading" constant="12" id="SEC-STK-LEAD"/>
                                                 <constraint firstAttribute="trailing" secondItem="SECTIONS-STK" secondAttribute="trailing" constant="12" id="SEC-STK-TRAIL"/>
-                                                <!-- Match width to allow proper wrapping -->
-                                                <constraint firstAttribute="width" secondItem="SCROLL-CLIP" secondAttribute="width" id="DOC-WIDTH-EQ"/>
                                             </constraints>
                                         </view>
                                     </subviews>
