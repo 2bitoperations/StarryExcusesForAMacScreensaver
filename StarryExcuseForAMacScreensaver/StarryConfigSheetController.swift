@@ -163,9 +163,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func buildUI() {
         guard let contentView = window?.contentView else { return }
-        contentView.translatesAutoresizingMaskIntoConstraints = false
+        // Do NOT disable translatesAutoresizingMaskIntoConstraints on the window's contentView.
+        // Doing so without supplying external constraints can lead to a zero-sized layout at display time.
         
-        // Root container uses manual constraints
         let leftWidth: CGFloat = 320
         
         // Left vertical stack inside a scroll view
@@ -178,7 +178,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         scroll.borderType = .noBorder
         scroll.drawsBackground = false
         
+        // Document view hosting the vertical stack
         let docView = NSView()
+        // Give the document view an initial non-zero frame so AppKit will show it immediately
+        docView.frame = NSRect(x: 0, y: 0, width: leftWidth, height: 800)
         docView.translatesAutoresizingMaskIntoConstraints = false
         scroll.documentView = docView
         
@@ -209,7 +212,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         generalStack.addArrangedSubview(starsRow)
         generalStack.addArrangedSubview(blRow)
         generalBox.contentView?.addSubview(generalStack)
-        pinToEdges(generalStack, in: generalBox.contentView!, inset: 12)
+        if let generalContent = generalBox.contentView {
+            pinToEdges(generalStack, in: generalContent, inset: 12)
+        }
         
         // MOON BOX
         let moonBox = makeBox(title: "Moon")
@@ -238,7 +243,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonStack.addArrangedSubview(moonLabelRow)
         moonStack.addArrangedSubview(moonSliderRow)
         moonBox.contentView?.addSubview(moonStack)
-        pinToEdges(moonStack, in: moonBox.contentView!, inset: 12)
+        if let moonContent = moonBox.contentView {
+            pinToEdges(moonStack, in: moonContent, inset: 12)
+        }
         
         // SHOOTING STARS
         let shootingBox = makeBox(title: "Shooting Stars")
@@ -267,7 +274,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStack.addArrangedSubview(shootingEnableRow)
         shootingStack.addArrangedSubview(shootingAvgRow)
         shootingBox.contentView?.addSubview(shootingStack)
-        pinToEdges(shootingStack, in: shootingBox.contentView!, inset: 12)
+        if let shootingContent = shootingBox.contentView {
+            pinToEdges(shootingStack, in: shootingContent, inset: 12)
+        }
         
         // SATELLITES
         let satellitesBox = makeBox(title: "Satellites")
@@ -294,28 +303,31 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satellitesStack.addArrangedSubview(satellitesEnableRow)
         satellitesStack.addArrangedSubview(satellitesAvgRow)
         satellitesBox.contentView?.addSubview(satellitesStack)
-        pinToEdges(satellitesStack, in: satellitesBox.contentView!, inset: 12)
+        if let satContent = satellitesBox.contentView {
+            pinToEdges(satellitesStack, in: satContent, inset: 12)
+        }
         
         // Add sections to vertical stack
         sectionsStack.addArrangedSubview(generalBox)
         sectionsStack.addArrangedSubview(moonBox)
         sectionsStack.addArrangedSubview(shootingBox)
         sectionsStack.addArrangedSubview(satellitesBox)
-        // Stretch doc content
+        
+        // Crucial: pin ALL edges with equality (not <=) so the intrinsic height propagates.
         NSLayoutConstraint.activate([
             sectionsStack.topAnchor.constraint(equalTo: docView.topAnchor, constant: 12),
             sectionsStack.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: 12),
-            sectionsStack.trailingAnchor.constraint(lessThanOrEqualTo: docView.trailingAnchor, constant: -12),
-            sectionsStack.bottomAnchor.constraint(lessThanOrEqualTo: docView.bottomAnchor, constant: -12),
-            docView.widthAnchor.constraint(equalTo: scroll.widthAnchor) // to avoid horizontal scrolling
+            sectionsStack.trailingAnchor.constraint(equalTo: docView.trailingAnchor, constant: -12),
+            sectionsStack.bottomAnchor.constraint(equalTo: docView.bottomAnchor, constant: -12),
+            // Match width to avoid horizontal scrolling while still allowing vertical expansion.
+            docView.widthAnchor.constraint(equalTo: scroll.widthAnchor)
         ])
         
         leftContainer.addSubview(scroll)
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: leftContainer.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: leftContainer.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: leftContainer.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: leftContainer.bottomAnchor)
+            scroll.trailingAnchor.constraint(equalTo: leftContainer.trailingAnchor)
         ])
         
         // Buttons row
@@ -347,11 +359,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         leftContainer.addSubview(buttonsRow)
         NSLayoutConstraint.activate([
             buttonsRow.leadingAnchor.constraint(equalTo: leftContainer.leadingAnchor, constant: 12),
-            buttonsRow.bottomAnchor.constraint(equalTo: leftContainer.bottomAnchor, constant: -8)
+            buttonsRow.bottomAnchor.constraint(equalTo: leftContainer.bottomAnchor, constant: -8),
+            scroll.bottomAnchor.constraint(equalTo: buttonsRow.topAnchor, constant: -8)
         ])
-        
-        // Adjust scroll bottom relative to buttons
-        scroll.bottomAnchor.constraint(equalTo: buttonsRow.topAnchor, constant: -8).isActive = true
         
         // Preview view (right side)
         let preview = NSView()
@@ -362,9 +372,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // Add to content
         contentView.addSubview(leftContainer)
         contentView.addSubview(preview)
-        
-        contentView.translatesAutoresizingMaskIntoConstraints = false
-        leftContainer.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
             leftContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -384,7 +391,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsAvgSecondsField.delegate = self
         satellitesAvgSecondsField?.delegate = self
         
-        // Key equivalents set later (applyButtonKeyEquivalents)
+        // Force an initial layout pass so that the scroll view has proper content before display.
+        contentView.layoutSubtreeIfNeeded()
+        
+        if let log = log {
+            os_log("buildUI completed: sections=%{public}d", log: log, type: .info, sectionsStack.arrangedSubviews.count)
+        }
     }
     
     // MARK: - View Builders
@@ -468,11 +480,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         window?.delegate = self
         styleWindow()
         
-        // Build UI (replaces former XIB)
-        buildUI()
-        
         // Set log early
         self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
+        
+        // Build UI (replaces former XIB)
+        buildUI()
         
         // Load defaults into UI
         starsPerSecond.integerValue = Int(round(defaultsManager.starsPerSecond))
