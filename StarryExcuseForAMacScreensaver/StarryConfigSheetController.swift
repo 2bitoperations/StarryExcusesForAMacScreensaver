@@ -493,7 +493,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastMoonSizePercent = moonSizePercentSlider.doubleValue
         lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
-        lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on ?? defaultsManager.satellitesEnabled
+        lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
         lastSatellitesAvgSpawnSeconds = satellitesAvgSecondsField?.doubleValue ?? defaultsManager.satellitesAvgSpawnSeconds
         
         updatePreviewLabels()
@@ -1123,14 +1123,14 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             shootingStarsSpeed: shootingStarsSpeedSlider?.doubleValue ?? lastShootingStarsSpeed,
             shootingStarsThickness: shootingStarsThicknessSlider?.doubleValue ?? lastShootingStarsThickness,
             shootingStarsBrightness: shootingStarsBrightnessSlider?.doubleValue ?? lastShootingStarsBrightness,
-            shootingStarsDebugShowSpawnBounds: shootingStarsDebugSpawnBoundsCheckbox?.state == .on ?? lastShootingStarsDebugSpawnBounds,
-            satellitesEnabled: satellitesEnabledCheckbox?.state == .on ?? lastSatellitesEnabled,
+            shootingStarsDebugShowSpawnBounds: shootingStarsDebugSpawnBoundsCheckbox?.state == .on,
+            satellitesEnabled: satellitesEnabledCheckbox?.state == .on,
             satellitesAvgSpawnSeconds: satellitesAvg,
             satellitesSpeed: satellitesSpeedSlider?.doubleValue ?? lastSatellitesSpeed,
             satellitesSize: satellitesSizeSlider?.doubleValue ?? lastSatellitesSize,
             satellitesBrightness: satellitesBrightnessSlider?.doubleValue ?? lastSatellitesBrightness,
-            satellitesTrailing: satellitesTrailingCheckbox?.state == .on ?? lastSatellitesTrailing,
-            debugOverlayEnabled: debugOverlayEnabledCheckbox?.state == .on ?? lastDebugOverlayEnabled,
+            satellitesTrailing: satellitesTrailingCheckbox?.state == .on,
+            debugOverlayEnabled: debugOverlayEnabledCheckbox?.state == .on,
             debugDropBaseEveryNFrames: 0,
             debugForceClearEveryNFrames: 0,
             debugLogEveryFrame: false,
