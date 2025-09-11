@@ -5,6 +5,7 @@
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <objects>
+        <!-- File's Owner -->
         <customObject id="-2" userLabel="File's Owner" customClass="StarryConfigSheetController" customModule="StarryExcuseForAMacScreensaver" customModuleProvider="target">
             <connections>
                 <outlet property="buildingLightsPerSecond" destination="BLSPERSEC-FIELD" id="OUT-BLSPERSEC"/>
@@ -24,6 +25,7 @@
         </customObject>
         <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
         <customObject id="-3" userLabel="Application" customClass="NSObject"/>
+        <!-- Window -->
         <window title="Starry Excuses Settings" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" visibleAtLaunch="NO" animationBehavior="default" id="QvC-M9-y7g">
             <windowStyleMask key="styleMask" titled="YES" closable="YES"/>
             <windowCollectionBehavior key="collectionBehavior" fullScreenNone="YES"/>
@@ -34,402 +36,260 @@
                 <rect key="frame" x="0.0" y="0.0" width="1382" height="1050"/>
                 <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                 <subviews>
-                    <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="12" translatesAutoresizingMaskIntoConstraints="NO" id="Ab2-ul-qfO">
-                        <rect key="frame" x="0.0" y="27" width="305" height="1023"/>
+                    <!-- Left Side Vertical Container -->
+                    <stackView id="LEFT-ROOT-STK" distribution="fill" orientation="vertical" alignment="leading" spacing="12" translatesAutoresizingMaskIntoConstraints="NO">
+                        <rect key="frame" x="0.0" y="27" width="320" height="1023"/>
                         <subviews>
-                            <scrollView horizontalLineScroll="10" horizontalPageScroll="10" verticalLineScroll="10" verticalPageScroll="10" usesPredominantAxisScrolling="NO" id="5cw-2R-ldl">
-                                <rect key="frame" x="0.0" y="28" width="305" height="975"/>
-                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
-                                <clipView key="contentView" id="9XO-Uq-xJm">
-                                    <rect key="frame" x="1" y="1" width="303" height="973"/>
+                            <!-- Scroll View for Settings Sections -->
+                            <scrollView wantsLayer="YES" horizontalLineScroll="10" horizontalPageScroll="10" verticalLineScroll="10" verticalPageScroll="10" hasHorizontalScroller="NO" usesPredominantAxisScrolling="NO" translatesAutoresizingMaskIntoConstraints="NO" id="SETTINGS-SCROLL">
+                                <rect key="frame" x="0.0" y="28" width="320" height="975"/>
+                                <clipView key="contentView" drawsBackground="NO" copiesOnScroll="NO" id="SCROLL-CLIP">
+                                    <rect key="frame" x="1" y="1" width="318" height="973"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <subviews>
-                                        <view id="0ew-vm-fck">
-                                            <rect key="frame" x="0.0" y="0.0" width="288" height="958"/>
-                                            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                                        <!-- Document View -->
+                                        <view id="DOC-VIEW" translatesAutoresizingMaskIntoConstraints="NO">
+                                            <rect key="frame" x="0.0" y="0.0" width="318" height="900"/>
                                             <subviews>
-                                                <box borderType="line" title="General" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
-                                                    <rect key="frame" x="5" y="878" width="278" height="88"/>
-                                                    <view key="contentView" id="GEN-BOX-CONTENT">
-                                                        <rect key="frame" x="4" y="5" width="270" height="68"/>
-                                                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                                                        <subviews>
-                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" spacing="4" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-STK">
-                                                                <rect key="frame" x="12" y="12" width="246" height="44"/>
+                                                <!-- Master vertical stack of section boxes -->
+                                                <stackView id="SECTIONS-STK" distribution="gravityAreas" orientation="vertical" alignment="leading" spacing="16" translatesAutoresizingMaskIntoConstraints="NO">
+                                                    <rect key="frame" x="0.0" y="0.0" width="318" height="900"/>
+                                                    <subviews>
+                                                        <!-- General Box -->
+                                                        <box title="General" borderType="line" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-BOX">
+                                                            <view key="contentView" id="GEN-BOX-CONTENT" translatesAutoresizingMaskIntoConstraints="NO">
                                                                 <subviews>
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-ROW1">
-                                                                        <rect key="frame" x="0.0" y="24" width="160" height="20"/>
+                                                                    <stackView id="GEN-STK" distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
                                                                         <subviews>
-                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="LBL-SPERSEC">
-                                                                                <rect key="frame" x="-2" y="2" width="88" height="16"/>
-                                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Stars/second:" id="LBL-SPERSEC-CELL">
-                                                                                    <font key="font" metaFont="system"/>
-                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
-                                                                            <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="STARSPERSEC-FIELD">
-                                                                                <rect key="frame" x="90" y="0.0" width="70" height="20"/>
-                                                                                <constraints>
-                                                                                    <constraint firstAttribute="width" constant="70" id="STARSPERSEC-WIDTH"/>
-                                                                                </constraints>
-                                                                                <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="STARSPERSEC-FIELD-CELL">
-                                                                                    <font key="font" metaFont="cellTitle"/>
-                                                                                    <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
+                                                                            <!-- Row: Stars / second -->
+                                                                            <stackView id="GEN-ROW1" distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                <subviews>
+                                                                                    <textField id="LBL-SPERSEC" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Stars/second:" id="LBL-SPERSEC-CELL">
+                                                                                            <font key="font" metaFont="system"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                    <textField id="STARSPERSEC-FIELD" focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <constraints>
+                                                                                            <constraint firstAttribute="width" constant="70" id="STARSPERSEC-WIDTH"/>
+                                                                                        </constraints>
+                                                                                        <textFieldCell key="cell" controlSize="small" selectable="YES" editable="YES" borderStyle="bezel" drawsBackground="YES" id="STARSPERSEC-FIELD-CELL">
+                                                                                            <font key="font" metaFont="cellTitle"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                </subviews>
+                                                                            </stackView>
+                                                                            <!-- Row: Building lights / second -->
+                                                                            <stackView id="GEN-ROW2" distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                <subviews>
+                                                                                    <textField id="LBL-BLSPERSEC" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Building lights/second:" id="LBL-BLSPERSEC-CELL">
+                                                                                            <font key="font" metaFont="system"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                    <textField id="BLSPERSEC-FIELD" focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <constraints>
+                                                                                            <constraint firstAttribute="width" constant="70" id="BLSPERSEC-WIDTH"/>
+                                                                                        </constraints>
+                                                                                        <textFieldCell key="cell" controlSize="small" selectable="YES" editable="YES" borderStyle="bezel" drawsBackground="YES" id="BLSPERSEC-FIELD-CELL">
+                                                                                            <font key="font" metaFont="cellTitle"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                </subviews>
+                                                                            </stackView>
                                                                         </subviews>
-                                                                        <visibilityPriorities>
-                                                                            <integer value="1000"/>
-                                                                            <integer value="1000"/>
-                                                                        </visibilityPriorities>
-                                                                        <customSpacing>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                        </customSpacing>
-                                                                    </stackView>
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="GEN-ROW2">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="214" height="20"/>
-                                                                        <subviews>
-                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="LBL-BLSPERSEC">
-                                                                                <rect key="frame" x="-2" y="2" width="142" height="16"/>
-                                                                                <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Building lights/second:" id="LBL-BLSPERSEC-CELL">
-                                                                                    <font key="font" metaFont="system"/>
-                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
-                                                                            <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="BLSPERSEC-FIELD">
-                                                                                <rect key="frame" x="144" y="0.0" width="70" height="20"/>
-                                                                                <constraints>
-                                                                                    <constraint firstAttribute="width" constant="70" id="BLSPERSEC-WIDTH"/>
-                                                                                </constraints>
-                                                                                <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="BLSPERSEC-FIELD-CELL">
-                                                                                    <font key="font" metaFont="cellTitle"/>
-                                                                                    <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
-                                                                        </subviews>
-                                                                        <visibilityPriorities>
-                                                                            <integer value="1000"/>
-                                                                            <integer value="1000"/>
-                                                                        </visibilityPriorities>
-                                                                        <customSpacing>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                        </customSpacing>
                                                                     </stackView>
                                                                 </subviews>
-                                                                <visibilityPriorities>
-                                                                    <integer value="1000"/>
-                                                                    <integer value="1000"/>
-                                                                </visibilityPriorities>
-                                                                <customSpacing>
-                                                                    <real value="3.4028234663852886e+38"/>
-                                                                    <real value="3.4028234663852886e+38"/>
-                                                                </customSpacing>
-                                                            </stackView>
-                                                        </subviews>
-                                                        <constraints>
-                                                            <constraint firstAttribute="bottom" secondItem="GEN-STK" secondAttribute="bottom" constant="12" id="GEN-STK-BOT"/>
-                                                            <constraint firstItem="GEN-STK" firstAttribute="leading" secondItem="GEN-BOX-CONTENT" secondAttribute="leading" constant="12" id="GEN-STK-LEAD"/>
-                                                            <constraint firstItem="GEN-STK" firstAttribute="top" secondItem="GEN-BOX-CONTENT" secondAttribute="top" constant="12" id="GEN-STK-TOP"/>
-                                                            <constraint firstAttribute="trailing" secondItem="GEN-STK" secondAttribute="trailing" constant="12" id="GEN-STK-TRAIL"/>
-                                                        </constraints>
-                                                    </view>
-                                                </box>
-                                                <box borderType="line" title="Shooting Stars" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BOX">
-                                                    <rect key="frame" x="5" y="685" width="278" height="94"/>
-                                                    <view key="contentView" id="SHOOT-BOX-CONTENT">
-                                                        <rect key="frame" x="4" y="5" width="270" height="74"/>
-                                                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                                                        <subviews>
-                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-STK">
-                                                                <rect key="frame" x="12" y="12" width="246" height="50"/>
+                                                                <constraints>
+                                                                    <constraint firstItem="GEN-STK" firstAttribute="top" secondItem="GEN-BOX-CONTENT" secondAttribute="top" constant="12" id="GEN-STK-TOP"/>
+                                                                    <constraint firstAttribute="trailing" secondItem="GEN-STK" secondAttribute="trailing" constant="12" id="GEN-STK-TRAIL"/>
+                                                                    <constraint firstItem="GEN-STK" firstAttribute="leading" secondItem="GEN-BOX-CONTENT" secondAttribute="leading" constant="12" id="GEN-STK-LEAD"/>
+                                                                    <constraint firstAttribute="bottom" secondItem="GEN-STK" secondAttribute="bottom" constant="12" id="GEN-STK-BOT"/>
+                                                                </constraints>
+                                                            </view>
+                                                        </box>
+                                                        <!-- Moon Box -->
+                                                        <box title="Moon" borderType="line" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BOX">
+                                                            <view key="contentView" id="MOON-BOX-CONTENT" translatesAutoresizingMaskIntoConstraints="NO">
                                                                 <subviews>
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-ROW0">
-                                                                        <rect key="frame" x="0.0" y="28" width="177" height="22"/>
+                                                                    <stackView id="MOON-STK" distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
                                                                         <subviews>
-                                                                            <switch translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-EN-CB">
-                                                                                <rect key="frame" x="-2" y="-2" width="42" height="25"/>
-                                                                                <connections>
-                                                                                    <action selector="shootingStarsToggled:" target="-2" id="SHOOT-EN-ACT"/>
-                                                                                </connections>
-                                                                            </switch>
-                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-EN-LBL">
-                                                                                <rect key="frame" x="44" y="3" width="135" height="16"/>
-                                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Enable shooting stars" id="SHOOT-EN-LBL-CELL">
-                                                                                    <font key="font" metaFont="system"/>
-                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
+                                                                            <!-- Label + preview -->
+                                                                            <stackView id="MOON-LABEL-ROW" distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                <subviews>
+                                                                                    <textField id="MOON-SIZE-LABEL" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Moon size (% of width)" id="MOON-SIZE-LABEL-CELL">
+                                                                                            <font key="font" metaFont="system"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                    <textField id="MOON-SIZE-PREV" focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <textFieldCell key="cell" controlSize="small" lineBreakMode="clipping" title="0.00%" id="MOON-SIZE-PREV-CELL">
+                                                                                            <font key="font" metaFont="smallSystem"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                </subviews>
+                                                                            </stackView>
+                                                                            <!-- Slider -->
+                                                                            <stackView id="MOON-SLIDER-ROW" distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                <subviews>
+                                                                                    <slider id="MOON-SIZE-SLIDER" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <constraints>
+                                                                                            <constraint firstAttribute="height" constant="19" id="MOON-SIZE-SLIDER-HEIGHT"/>
+                                                                                        </constraints>
+                                                                                        <sliderCell key="cell" state="on" alignment="left" minValue="0.001" maxValue="0.25" doubleValue="0.02" tickMarkPosition="below" sliderType="linear" id="MOON-SIZE-SLIDER-CELL"/>
+                                                                                        <connections>
+                                                                                            <action selector="moonSliderChanged:" target="-2" id="MOON-SLIDER-ACT"/>
+                                                                                        </connections>
+                                                                                    </slider>
+                                                                                </subviews>
+                                                                            </stackView>
                                                                         </subviews>
-                                                                        <visibilityPriorities>
-                                                                            <integer value="1000"/>
-                                                                            <integer value="1000"/>
-                                                                        </visibilityPriorities>
-                                                                        <customSpacing>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                        </customSpacing>
-                                                                    </stackView>
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-ROW1">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="222" height="20"/>
-                                                                        <subviews>
-                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-LBL">
-                                                                                <rect key="frame" x="-2" y="2" width="150" height="16"/>
-                                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Seconds between stars:" id="SHOOT-AVG-LBL-CELL">
-                                                                                    <font key="font" metaFont="system"/>
-                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
-                                                                            <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-AVG-FIELD">
-                                                                                <rect key="frame" x="152" y="0.0" width="70" height="20"/>
-                                                                                <constraints>
-                                                                                    <constraint firstAttribute="width" constant="70" id="SHOOT-AVG-WIDTH"/>
-                                                                                </constraints>
-                                                                                <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="SHOOT-AVG-FIELD-CELL">
-                                                                                    <font key="font" metaFont="cellTitle"/>
-                                                                                    <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                                <connections>
-                                                                                    <action selector="shootingStarsAvgSecondsChanged:" target="-2" id="SHOOT-AVG-ACT"/>
-                                                                                </connections>
-                                                                            </textField>
-                                                                        </subviews>
-                                                                        <visibilityPriorities>
-                                                                            <integer value="1000"/>
-                                                                            <integer value="1000"/>
-                                                                        </visibilityPriorities>
-                                                                        <customSpacing>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                        </customSpacing>
                                                                     </stackView>
                                                                 </subviews>
-                                                                <visibilityPriorities>
-                                                                    <integer value="1000"/>
-                                                                    <integer value="1000"/>
-                                                                </visibilityPriorities>
-                                                                <customSpacing>
-                                                                    <real value="3.4028234663852886e+38"/>
-                                                                    <real value="3.4028234663852886e+38"/>
-                                                                </customSpacing>
-                                                            </stackView>
-                                                        </subviews>
-                                                        <constraints>
-                                                            <constraint firstAttribute="bottom" secondItem="SHOOT-STK" secondAttribute="bottom" constant="12" id="SHOOT-STK-BOT"/>
-                                                            <constraint firstItem="SHOOT-STK" firstAttribute="leading" secondItem="SHOOT-BOX-CONTENT" secondAttribute="leading" constant="12" id="SHOOT-STK-LEAD"/>
-                                                            <constraint firstItem="SHOOT-STK" firstAttribute="top" secondItem="SHOOT-BOX-CONTENT" secondAttribute="top" constant="12" id="SHOOT-STK-TOP"/>
-                                                            <constraint firstAttribute="trailing" secondItem="SHOOT-STK" secondAttribute="trailing" constant="12" id="SHOOT-STK-TRAIL"/>
-                                                        </constraints>
-                                                    </view>
-                                                </box>
-                                                <box borderType="line" title="Satellites" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BOX">
-                                                    <rect key="frame" x="5" y="585" width="278" height="94"/>
-                                                    <view key="contentView" id="SAT-BOX-CONTENT">
-                                                        <rect key="frame" x="4" y="5" width="270" height="74"/>
-                                                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                                                        <subviews>
-                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-STK">
-                                                                <rect key="frame" x="12" y="12" width="246" height="50"/>
+                                                                <constraints>
+                                                                    <constraint firstItem="MOON-STK" firstAttribute="top" secondItem="MOON-BOX-CONTENT" secondAttribute="top" constant="12" id="MOON-STK-TOP"/>
+                                                                    <constraint firstAttribute="trailing" secondItem="MOON-STK" secondAttribute="trailing" constant="12" id="MOON-STK-TRAIL"/>
+                                                                    <constraint firstItem="MOON-STK" firstAttribute="leading" secondItem="MOON-BOX-CONTENT" secondAttribute="leading" constant="12" id="MOON-STK-LEAD"/>
+                                                                    <constraint firstAttribute="bottom" secondItem="MOON-STK" secondAttribute="bottom" constant="12" id="MOON-STK-BOT"/>
+                                                                </constraints>
+                                                            </view>
+                                                        </box>
+                                                        <!-- Shooting Stars Box -->
+                                                        <box title="Shooting Stars" borderType="line" translatesAutoresizingMaskIntoConstraints="NO" id="SHOOT-BOX">
+                                                            <view key="contentView" id="SHOOT-BOX-CONTENT" translatesAutoresizingMaskIntoConstraints="NO">
                                                                 <subviews>
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-ROW0">
-                                                                        <rect key="frame" x="0.0" y="28" width="145" height="22"/>
+                                                                    <stackView id="SHOOT-STK" distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
                                                                         <subviews>
-                                                                            <switch translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-CB">
-                                                                                <rect key="frame" x="-2" y="-2" width="42" height="25"/>
-                                                                                <connections>
-                                                                                    <action selector="satellitesToggled:" target="-2" id="SAT-EN-ACT"/>
-                                                                                </connections>
-                                                                            </switch>
-                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-EN-LBL">
-                                                                                <rect key="frame" x="44" y="3" width="103" height="16"/>
-                                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Enable satellites" id="SAT-EN-LBL-CELL">
-                                                                                    <font key="font" metaFont="system"/>
-                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
+                                                                            <!-- Enable Row -->
+                                                                            <stackView id="SHOOT-ROW0" distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                <subviews>
+                                                                                    <switch id="SHOOT-EN-CB" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <connections>
+                                                                                            <action selector="shootingStarsToggled:" target="-2" id="SHOOT-EN-ACT"/>
+                                                                                        </connections>
+                                                                                    </switch>
+                                                                                    <textField id="SHOOT-EN-LBL" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Enable shooting stars" id="SHOOT-EN-LBL-CELL">
+                                                                                            <font key="font" metaFont="system"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                </subviews>
+                                                                            </stackView>
+                                                                            <!-- Seconds Row -->
+                                                                            <stackView id="SHOOT-ROW1" distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                <subviews>
+                                                                                    <textField id="SHOOT-AVG-LBL" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Seconds between stars:" id="SHOOT-AVG-LBL-CELL">
+                                                                                            <font key="font" metaFont="system"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                    <textField id="SHOOT-AVG-FIELD" focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <constraints>
+                                                                                            <constraint firstAttribute="width" constant="70" id="SHOOT-AVG-WIDTH"/>
+                                                                                        </constraints>
+                                                                                        <textFieldCell key="cell" controlSize="small" selectable="YES" editable="YES" borderStyle="bezel" drawsBackground="YES" id="SHOOT-AVG-FIELD-CELL">
+                                                                                            <font key="font" metaFont="cellTitle"/>
+                                                                                        </textFieldCell>
+                                                                                        <connections>
+                                                                                            <action selector="shootingStarsAvgSecondsChanged:" target="-2" id="SHOOT-AVG-ACT"/>
+                                                                                        </connections>
+                                                                                    </textField>
+                                                                                </subviews>
+                                                                            </stackView>
                                                                         </subviews>
-                                                                        <visibilityPriorities>
-                                                                            <integer value="1000"/>
-                                                                            <integer value="1000"/>
-                                                                        </visibilityPriorities>
-                                                                        <customSpacing>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                        </customSpacing>
-                                                                    </stackView>
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-ROW1">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="217" height="20"/>
-                                                                        <subviews>
-                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-AVG-LBL">
-                                                                                <rect key="frame" x="-2" y="2" width="145" height="16"/>
-                                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Seconds between sats:" id="SAT-AVG-LBL-CELL">
-                                                                                    <font key="font" metaFont="system"/>
-                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
-                                                                            <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-AVG-FIELD">
-                                                                                <rect key="frame" x="147" y="0.0" width="70" height="20"/>
-                                                                                <constraints>
-                                                                                    <constraint firstAttribute="width" constant="70" id="SAT-AVG-WIDTH"/>
-                                                                                </constraints>
-                                                                                <textFieldCell key="cell" controlSize="small" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="SAT-AVG-FIELD-CELL">
-                                                                                    <font key="font" metaFont="cellTitle"/>
-                                                                                    <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                                <connections>
-                                                                                    <action selector="satellitesAvgSecondsChanged:" target="-2" id="SAT-AVG-ACT"/>
-                                                                                </connections>
-                                                                            </textField>
-                                                                        </subviews>
-                                                                        <visibilityPriorities>
-                                                                            <integer value="1000"/>
-                                                                            <integer value="1000"/>
-                                                                        </visibilityPriorities>
-                                                                        <customSpacing>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                        </customSpacing>
                                                                     </stackView>
                                                                 </subviews>
-                                                                <visibilityPriorities>
-                                                                    <integer value="1000"/>
-                                                                    <integer value="1000"/>
-                                                                </visibilityPriorities>
-                                                                <customSpacing>
-                                                                    <real value="3.4028234663852886e+38"/>
-                                                                    <real value="3.4028234663852886e+38"/>
-                                                                </customSpacing>
-                                                            </stackView>
-                                                        </subviews>
-                                                        <constraints>
-                                                            <constraint firstAttribute="bottom" secondItem="SAT-STK" secondAttribute="bottom" constant="12" id="SAT-STK-BOT"/>
-                                                            <constraint firstItem="SAT-STK" firstAttribute="leading" secondItem="SAT-BOX-CONTENT" secondAttribute="leading" constant="12" id="SAT-STK-LEAD"/>
-                                                            <constraint firstItem="SAT-STK" firstAttribute="top" secondItem="SAT-BOX-CONTENT" secondAttribute="top" constant="12" id="SAT-STK-TOP"/>
-                                                            <constraint firstAttribute="trailing" secondItem="SAT-STK" secondAttribute="trailing" constant="12" id="SAT-STK-TRAIL"/>
-                                                        </constraints>
-                                                    </view>
-                                                </box>
-                                                <box borderType="line" title="Moon" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-BOX">
-                                                    <rect key="frame" x="5" y="785" width="278" height="87"/>
-                                                    <view key="contentView" id="MOON-BOX-CONTENT">
-                                                        <rect key="frame" x="4" y="5" width="270" height="67"/>
-                                                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                                                        <subviews>
-                                                            <stackView distribution="fill" orientation="vertical" alignment="leading" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-STK">
-                                                                <rect key="frame" x="12" y="12" width="246" height="43"/>
+                                                                <constraints>
+                                                                    <constraint firstItem="SHOOT-STK" firstAttribute="top" secondItem="SHOOT-BOX-CONTENT" secondAttribute="top" constant="12" id="SHOOT-STK-TOP"/>
+                                                                    <constraint firstAttribute="trailing" secondItem="SHOOT-STK" secondAttribute="trailing" constant="12" id="SHOOT-STK-TRAIL"/>
+                                                                    <constraint firstItem="SHOOT-STK" firstAttribute="leading" secondItem="SHOOT-BOX-CONTENT" secondAttribute="leading" constant="12" id="SHOOT-STK-LEAD"/>
+                                                                    <constraint firstAttribute="bottom" secondItem="SHOOT-STK" secondAttribute="bottom" constant="12" id="SHOOT-STK-BOT"/>
+                                                                </constraints>
+                                                            </view>
+                                                        </box>
+                                                        <!-- Satellites Box -->
+                                                        <box title="Satellites" borderType="line" translatesAutoresizingMaskIntoConstraints="NO" id="SAT-BOX">
+                                                            <view key="contentView" id="SAT-BOX-CONTENT" translatesAutoresizingMaskIntoConstraints="NO">
                                                                 <subviews>
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="6" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-LABEL-ROW">
-                                                                        <rect key="frame" x="0.0" y="27" width="180" height="16"/>
+                                                                    <stackView id="SAT-STK" distribution="fill" orientation="vertical" alignment="leading" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
                                                                         <subviews>
-                                                                            <textField focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-LABEL">
-                                                                                <rect key="frame" x="-2" y="0.0" width="144" height="16"/>
-                                                                                <textFieldCell key="cell" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="Moon size (% of width)" id="MOON-SIZE-LABEL-CELL">
-                                                                                    <font key="font" metaFont="system"/>
-                                                                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
-                                                                            <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-PREV">
-                                                                                <rect key="frame" x="144" y="0.0" width="38" height="14"/>
-                                                                                <textFieldCell key="cell" controlSize="small" lineBreakMode="clipping" sendsActionOnEndEditing="YES" title="0.00%" id="MOON-SIZE-PREV-CELL">
-                                                                                    <font key="font" metaFont="smallSystem"/>
-                                                                                    <color key="textColor" name="secondaryLabelColor" catalog="System" colorSpace="catalog"/>
-                                                                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                                                                </textFieldCell>
-                                                                            </textField>
+                                                                            <!-- Enable Row -->
+                                                                            <stackView id="SAT-ROW0" distribution="fill" orientation="horizontal" alignment="centerY" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                <subviews>
+                                                                                    <switch id="SAT-EN-CB" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <connections>
+                                                                                            <action selector="satellitesToggled:" target="-2" id="SAT-EN-ACT"/>
+                                                                                        </connections>
+                                                                                    </switch>
+                                                                                    <textField id="SAT-EN-LBL" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Enable satellites" id="SAT-EN-LBL-CELL">
+                                                                                            <font key="font" metaFont="system"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                </subviews>
+                                                                            </stackView>
+                                                                            <!-- Seconds Row -->
+                                                                            <stackView id="SAT-ROW1" distribution="fill" orientation="horizontal" alignment="firstBaseline" spacing="8" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                <subviews>
+                                                                                    <textField id="SAT-AVG-LBL" focusRingType="none" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <textFieldCell key="cell" lineBreakMode="clipping" title="Seconds between sats:" id="SAT-AVG-LBL-CELL">
+                                                                                            <font key="font" metaFont="system"/>
+                                                                                        </textFieldCell>
+                                                                                    </textField>
+                                                                                    <textField id="SAT-AVG-FIELD" focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO">
+                                                                                        <constraints>
+                                                                                            <constraint firstAttribute="width" constant="70" id="SAT-AVG-WIDTH"/>
+                                                                                        </constraints>
+                                                                                        <textFieldCell key="cell" controlSize="small" selectable="YES" editable="YES" borderStyle="bezel" drawsBackground="YES" id="SAT-AVG-FIELD-CELL">
+                                                                                            <font key="font" metaFont="cellTitle"/>
+                                                                                        </textFieldCell>
+                                                                                        <connections>
+                                                                                            <action selector="satellitesAvgSecondsChanged:" target="-2" id="SAT-AVG-ACT"/>
+                                                                                        </connections>
+                                                                                    </textField>
+                                                                                </subviews>
+                                                                            </stackView>
                                                                         </subviews>
-                                                                        <visibilityPriorities>
-                                                                            <integer value="1000"/>
-                                                                            <integer value="1000"/>
-                                                                        </visibilityPriorities>
-                                                                        <customSpacing>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                        </customSpacing>
-                                                                    </stackView>
-                                                                    <stackView distribution="fill" orientation="horizontal" alignment="centerY" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SLIDER-ROW">
-                                                                        <rect key="frame" x="0.0" y="0.0" width="246" height="19"/>
-                                                                        <subviews>
-                                                                            <slider verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="MOON-SIZE-SLIDER">
-                                                                                <rect key="frame" x="-2" y="-6" width="250" height="27"/>
-                                                                                <constraints>
-                                                                                    <constraint firstAttribute="height" constant="19" id="MOON-SIZE-SLIDER-HEIGHT"/>
-                                                                                </constraints>
-                                                                                <sliderCell key="cell" state="on" alignment="left" minValue="0.001" maxValue="0.25" doubleValue="0.02" tickMarkPosition="below" sliderType="linear" id="MOON-SIZE-SLIDER-CELL"/>
-                                                                                <connections>
-                                                                                    <action selector="moonSliderChanged:" target="-2" id="MOON-SLIDER-ACT"/>
-                                                                                </connections>
-                                                                            </slider>
-                                                                        </subviews>
-                                                                        <visibilityPriorities>
-                                                                            <integer value="1000"/>
-                                                                        </visibilityPriorities>
-                                                                        <customSpacing>
-                                                                            <real value="3.4028234663852886e+38"/>
-                                                                        </customSpacing>
                                                                     </stackView>
                                                                 </subviews>
-                                                                <visibilityPriorities>
-                                                                    <integer value="1000"/>
-                                                                    <integer value="1000"/>
-                                                                </visibilityPriorities>
-                                                                <customSpacing>
-                                                                    <real value="3.4028234663852886e+38"/>
-                                                                    <real value="3.4028234663852886e+38"/>
-                                                                </customSpacing>
-                                                            </stackView>
-                                                        </subviews>
-                                                        <constraints>
-                                                            <constraint firstAttribute="bottom" secondItem="MOON-STK" secondAttribute="bottom" constant="12" id="MOON-STK-BOT"/>
-                                                            <constraint firstItem="MOON-STK" firstAttribute="leading" secondItem="MOON-BOX-CONTENT" secondAttribute="leading" constant="12" id="MOON-STK-LEAD"/>
-                                                            <constraint firstItem="MOON-STK" firstAttribute="top" secondItem="MOON-BOX-CONTENT" secondAttribute="top" constant="12" id="MOON-STK-TOP"/>
-                                                            <constraint firstAttribute="trailing" secondItem="MOON-STK" secondAttribute="trailing" constant="12" id="MOON-STK-TRAIL"/>
-                                                        </constraints>
-                                                    </view>
-                                                </box>
+                                                                <constraints>
+                                                                    <constraint firstItem="SAT-STK" firstAttribute="top" secondItem="SAT-BOX-CONTENT" secondAttribute="top" constant="12" id="SAT-STK-TOP"/>
+                                                                    <constraint firstAttribute="trailing" secondItem="SAT-STK" secondAttribute="trailing" constant="12" id="SAT-STK-TRAIL"/>
+                                                                    <constraint firstItem="SAT-STK" firstAttribute="leading" secondItem="SAT-BOX-CONTENT" secondAttribute="leading" constant="12" id="SAT-STK-LEAD"/>
+                                                                    <constraint firstAttribute="bottom" secondItem="SAT-STK" secondAttribute="bottom" constant="12" id="SAT-STK-BOT"/>
+                                                                </constraints>
+                                                            </view>
+                                                        </box>
+                                                    </subviews>
+                                                </stackView>
                                             </subviews>
                                             <constraints>
-                                                <constraint firstAttribute="firstBaseline" secondItem="GEN-BOX" secondAttribute="top" constant="8" id="GEN-BOX-BOTTOM-GE"/>
-                                                <constraint firstItem="GEN-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="GEN-BOX-LEAD"/>
-                                                <constraint firstAttribute="trailing" secondItem="GEN-BOX" secondAttribute="trailing" constant="8" id="GEN-BOX-TRAIL"/>
-                                                <constraint firstItem="GEN-BOX" firstAttribute="bottom" secondItem="MOON-BOX" secondAttribute="top" constant="-10" id="MOON-BOX-BOTTOM-GE"/>
-                                                <constraint firstItem="MOON-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="MOON-BOX-LEAD"/>
-                                                <constraint firstAttribute="trailing" secondItem="MOON-BOX" secondAttribute="trailing" constant="8" id="MOON-BOX-TRAIL"/>
-                                                <constraint firstItem="SHOOT-BOX" firstAttribute="bottom" secondItem="SAT-BOX" secondAttribute="top" constant="-10" id="SAT-BOX-BOTTOM-GE"/>
-                                                <constraint firstItem="SAT-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="SAT-BOX-LEAD"/>
-                                                <constraint firstAttribute="trailing" secondItem="SAT-BOX" secondAttribute="trailing" constant="8" id="SAT-BOX-TRAIL"/>
-                                                <constraint firstItem="MOON-BOX" firstAttribute="bottom" secondItem="SHOOT-BOX" secondAttribute="top" constant="-10" id="SHOOT-BOX-BOTTOM-GE"/>
-                                                <constraint firstItem="SHOOT-BOX" firstAttribute="leading" secondItem="0ew-vm-fck" secondAttribute="leading" constant="8" id="SHOOT-BOX-LEAD"/>
-                                                <constraint firstAttribute="trailing" secondItem="SHOOT-BOX" secondAttribute="trailing" constant="8" id="SHOOT-BOX-TRAIL"/>
+                                                <constraint firstItem="SECTIONS-STK" firstAttribute="top" secondItem="DOC-VIEW" secondAttribute="top" constant="12" id="SEC-STK-TOP"/>
+                                                <constraint firstAttribute="bottom" secondItem="SECTIONS-STK" secondAttribute="bottom" constant="12" id="SEC-STK-BOT"/>
+                                                <constraint firstItem="SECTIONS-STK" firstAttribute="leading" secondItem="DOC-VIEW" secondAttribute="leading" constant="12" id="SEC-STK-LEAD"/>
+                                                <constraint firstAttribute="trailing" secondItem="SECTIONS-STK" secondAttribute="trailing" constant="12" id="SEC-STK-TRAIL"/>
+                                                <!-- Match width to allow proper wrapping -->
+                                                <constraint firstAttribute="width" secondItem="SCROLL-CLIP" secondAttribute="width" id="DOC-WIDTH-EQ"/>
                                             </constraints>
                                         </view>
                                     </subviews>
+                                    <constraints>
+                                        <constraint firstItem="DOC-VIEW" firstAttribute="top" secondItem="SCROLL-CLIP" secondAttribute="top" id="DOC-TOP"/>
+                                        <constraint firstAttribute="bottom" secondItem="DOC-VIEW" secondAttribute="bottom" id="DOC-BOT"/>
+                                        <constraint firstItem="DOC-VIEW" firstAttribute="leading" secondItem="SCROLL-CLIP" secondAttribute="leading" id="DOC-LEAD"/>
+                                        <constraint firstAttribute="trailing" secondItem="DOC-VIEW" secondAttribute="trailing" id="DOC-TRAIL"/>
+                                    </constraints>
                                 </clipView>
-                                <scroller key="horizontalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="YES" id="hrg-dx-TnB">
-                                    <rect key="frame" x="1" y="958" width="303" height="16"/>
-                                    <autoresizingMask key="autoresizingMask"/>
-                                </scroller>
-                                <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" doubleValue="1" horizontal="NO" id="xhU-5O-e3p">
-                                    <rect key="frame" x="288" y="1" width="16" height="973"/>
-                                    <autoresizingMask key="autoresizingMask"/>
+                                <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="NO" id="SCROLLER-V">
+                                    <rect key="frame" x="304" y="1" width="15" height="973"/>
                                 </scroller>
                             </scrollView>
-                            <stackView distribution="fillProportionally" orientation="horizontal" alignment="centerY" spacing="12" translatesAutoresizingMaskIntoConstraints="NO" id="BTN-STK">
-                                <rect key="frame" x="0.0" y="0.0" width="176" height="16"/>
+                            <!-- Button Row -->
+                            <stackView id="BTN-STK" distribution="fillProportionally" orientation="horizontal" alignment="centerY" spacing="12" translatesAutoresizingMaskIntoConstraints="NO">
+                                <rect key="frame" x="0.0" y="0.0" width="176" height="28"/>
                                 <subviews>
-                                    <button translatesAutoresizingMaskIntoConstraints="NO" id="SAVE-BTN">
-                                        <rect key="frame" x="4" y="-7" width="54" height="27"/>
+                                    <button id="SAVE-BTN" translatesAutoresizingMaskIntoConstraints="NO">
+                                        <rect key="frame" x="4" y="0.0" width="54" height="28"/>
                                         <buttonCell key="cell" type="push" title="Save" bezelStyle="rounded" alignment="center" controlSize="small" borderStyle="border" inset="2" id="SAVE-BTN-CELL">
                                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                         </buttonCell>
@@ -437,8 +297,8 @@
                                             <action selector="saveClose:" target="-2" id="SAVE-BTN-ACT"/>
                                         </connections>
                                     </button>
-                                    <button translatesAutoresizingMaskIntoConstraints="NO" id="PAUSE-BTN">
-                                        <rect key="frame" x="58" y="-7" width="60" height="27"/>
+                                    <button id="PAUSE-BTN" translatesAutoresizingMaskIntoConstraints="NO">
+                                        <rect key="frame" x="58" y="0.0" width="60" height="28"/>
                                         <buttonCell key="cell" type="push" title="Pause" bezelStyle="rounded" alignment="center" controlSize="small" borderStyle="border" inset="2" id="PAUSE-BTN-CELL">
                                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                         </buttonCell>
@@ -446,8 +306,8 @@
                                             <action selector="previewTogglePause:" target="-2" id="PAUSE-BTN-ACT"/>
                                         </connections>
                                     </button>
-                                    <button translatesAutoresizingMaskIntoConstraints="NO" id="CANCEL-BTN">
-                                        <rect key="frame" x="118" y="-7" width="64" height="27"/>
+                                    <button id="CANCEL-BTN" translatesAutoresizingMaskIntoConstraints="NO">
+                                        <rect key="frame" x="118" y="0.0" width="64" height="28"/>
                                         <buttonCell key="cell" type="push" title="Cancel" bezelStyle="rounded" alignment="center" controlSize="small" borderStyle="border" inset="2" id="CANCEL-BTN-CELL">
                                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                                         </buttonCell>
@@ -457,38 +317,25 @@
                                     </button>
                                 </subviews>
                                 <edgeInsets key="edgeInsets" left="10" right="0.0" top="0.0" bottom="0.0"/>
-                                <visibilityPriorities>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                    <integer value="1000"/>
-                                </visibilityPriorities>
-                                <customSpacing>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                    <real value="3.4028234663852886e+38"/>
-                                </customSpacing>
                             </stackView>
                         </subviews>
-                        <visibilityPriorities>
-                            <integer value="1000"/>
-                            <integer value="1000"/>
-                        </visibilityPriorities>
-                        <customSpacing>
-                            <real value="3.4028234663852886e+38"/>
-                            <real value="3.4028234663852886e+38"/>
-                        </customSpacing>
+                        <constraints>
+                            <constraint firstAttribute="width" constant="320" id="LEFT-WIDTH"/>
+                        </constraints>
                     </stackView>
-                    <customView translatesAutoresizingMaskIntoConstraints="NO" id="PREVIEW-VIEW">
-                        <rect key="frame" x="315" y="20" width="1047" height="1010"/>
+                    <!-- Preview View -->
+                    <customView id="PREVIEW-VIEW" translatesAutoresizingMaskIntoConstraints="NO">
+                        <rect key="frame" x="330" y="20" width="1032" height="1010"/>
                     </customView>
                 </subviews>
                 <constraints>
-                    <constraint firstItem="PREVIEW-VIEW" firstAttribute="leading" secondItem="Ab2-ul-qfO" secondAttribute="trailing" constant="10" id="WIv-oU-crH"/>
-                    <constraint firstItem="PREVIEW-VIEW" firstAttribute="top" secondItem="EiT-Mj-1SZ" secondAttribute="top" constant="20" symbolic="YES" id="WRk-Qd-uZe"/>
-                    <constraint firstItem="Ab2-ul-qfO" firstAttribute="top" secondItem="EiT-Mj-1SZ" secondAttribute="top" id="aiB-Hn-mmm"/>
-                    <constraint firstAttribute="bottom" secondItem="PREVIEW-VIEW" secondAttribute="bottom" constant="20" symbolic="YES" id="ndP-5z-M9v"/>
-                    <constraint firstAttribute="trailing" secondItem="PREVIEW-VIEW" secondAttribute="trailing" constant="20" symbolic="YES" id="qlt-N8-veo"/>
-                    <constraint firstItem="Ab2-ul-qfO" firstAttribute="leading" secondItem="EiT-Mj-1SZ" secondAttribute="leading" id="qsM-Bf-MvP"/>
+                    <constraint firstItem="PREVIEW-VIEW" firstAttribute="leading" secondItem="LEFT-ROOT-STK" secondAttribute="trailing" constant="10" id="PREVIEW-LEAD"/>
+                    <constraint firstItem="LEFT-ROOT-STK" firstAttribute="top" secondItem="EiT-Mj-1SZ" secondAttribute="top" id="LEFT-TOP"/>
+                    <constraint firstItem="LEFT-ROOT-STK" firstAttribute="leading" secondItem="EiT-Mj-1SZ" secondAttribute="leading" id="LEFT-LEAD"/>
+                    <constraint firstAttribute="trailing" secondItem="PREVIEW-VIEW" secondAttribute="trailing" constant="20" id="PREVIEW-TRAIL"/>
+                    <constraint firstAttribute="bottom" secondItem="PREVIEW-VIEW" secondAttribute="bottom" constant="20" id="PREVIEW-BOT"/>
+                    <constraint firstItem="PREVIEW-VIEW" firstAttribute="top" secondItem="EiT-Mj-1SZ" secondAttribute="top" constant="20" id="PREVIEW-TOP"/>
+                    <constraint firstAttribute="bottom" secondItem="LEFT-ROOT-STK" secondAttribute="bottom" constant="0.0" id="LEFT-BOT"/>
                 </constraints>
             </view>
             <point key="canvasLocation" x="419" y="109"/>
