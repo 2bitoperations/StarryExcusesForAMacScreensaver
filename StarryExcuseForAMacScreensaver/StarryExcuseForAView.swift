@@ -12,7 +12,12 @@ import QuartzCore
 import Metal
 
 class StarryExcuseForAView: ScreenSaverView {
-    private lazy var configSheetController: StarryConfigSheetController = StarryConfigSheetController(windowNibName: "StarryExcusesConfigSheet")
+    // Updated: use programmatic config sheet controller (no XIB)
+    private lazy var configSheetController: StarryConfigSheetController = {
+        let controller = StarryConfigSheetController()
+        return controller
+    }()
+    
     private var defaultsManager = StarryDefaultsManager()
     
     // Replaced prior bitmap CALayer approach with a CAMetalLayer + Metal renderer.
@@ -54,15 +59,18 @@ class StarryExcuseForAView: ScreenSaverView {
     
     override var configureSheet: NSWindow? {
         os_log("configureSheet requested", log: log!, type: .info)
+        
+        // Ensure controller knows about this view (idempotent)
         configSheetController.setView(view: self)
-        // Force nib load
+        
+        // Force window creation (windowDidLoad will build UI programmatically)
         _ = configSheetController.window
         
         if let win = configSheetController.window {
-            os_log("Config sheet window loaded", log: log!, type: .info)
+            os_log("Programmatic config sheet window ready", log: log!, type: .info)
             return win
         } else {
-            os_log("Nib-based config sheet failed to load, providing fallback sheet window", log: log!, type: .error)
+            os_log("Programmatic config sheet failed to create window; using fallback sheet window", log: log!, type: .fault)
             return createFallbackSheetWindow()
         }
     }
@@ -281,14 +289,14 @@ class StarryExcuseForAView: ScreenSaverView {
         )
     }
     
-    // Fallback plain sheet if nib fails (ensures Options button still appears)
+    // Fallback plain sheet if programmatic controller somehow fails (should be rare)
     private func createFallbackSheetWindow() -> NSWindow {
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
                            styleMask: [.titled, .closable],
                            backing: .buffered,
                            defer: false)
         win.title = "Starry Excuses (Fallback Config)"
-        let label = NSTextField(labelWithString: "Configuration sheet failed to load.\nPlease reinstall or report an issue.")
+        let label = NSTextField(labelWithString: "Configuration sheet failed to initialize.\nPlease reinstall or report an issue.")
         label.alignment = .center
         label.frame = NSRect(x: 20, y: 60, width: 360, height: 120)
         win.contentView?.addSubview(label)
