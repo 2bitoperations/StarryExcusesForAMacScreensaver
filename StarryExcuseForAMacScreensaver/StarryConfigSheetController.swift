@@ -136,6 +136,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var lastSatellitesTrailing: Bool = false
     private var lastSatellitesTrailHalfLifeSeconds: Double = 0
     
+    // MARK: - One-time UI init flag
+    private var uiInitialized = false
+    
     // MARK: - Init
     
     convenience init() {
@@ -149,6 +152,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     override init(window: NSWindow?) {
         super.init(window: window)
+        // For programmatic windows created via init(window:), windowDidLoad is NOT invoked automatically,
+        // so we must build the UI explicitly here.
+        initializeProgrammaticUIIfNeeded()
     }
     
     required init?(coder: NSCoder) {
@@ -159,12 +165,70 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.view = view
     }
     
+    // Ensure UI is built (idempotent) before the sheet is displayed.
+    private func initializeProgrammaticUIIfNeeded() {
+        guard !uiInitialized, let _ = window else { return }
+        uiInitialized = true
+        
+        self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
+        window?.delegate = self
+        styleWindow()
+        buildUI()
+        populateDefaultsAndState()
+        applyAccessibility()
+        applyButtonKeyEquivalents()
+        applySystemSymbolImages()
+        if let renderer = previewRenderer {
+            renderer.setDebugOverlayEnabled(lastDebugOverlayEnabled)
+        }
+        if let styleMaskRaw = window?.styleMask.rawValue, let log = log {
+            os_log("Config sheet UI initialized early (styleMask raw=0x%{public}llx)", log: log, type: .info, styleMaskRaw)
+        }
+    }
+    
+    // In case AppKit still calls windowDidLoad (e.g., future behavior), guard to avoid double build.
+    override func windowDidLoad() {
+        super.windowDidLoad()
+        initializeProgrammaticUIIfNeeded()
+    }
+    
+    // MARK: - Populate defaults
+    
+    private func populateDefaultsAndState() {
+        // Safeguard (should already be true)
+        guard starsPerSecond != nil else { return }
+        
+        // Load defaults into UI
+        starsPerSecond.integerValue = Int(round(defaultsManager.starsPerSecond))
+        buildingLightsPerSecond.doubleValue = defaultsManager.buildingLightsPerSecond
+        moonSizePercentSlider.doubleValue = defaultsManager.moonDiameterScreenWidthPercent
+        shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
+        shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
+        satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
+        satellitesAvgSecondsField?.doubleValue = defaultsManager.satellitesAvgSpawnSeconds
+        
+        // Snapshot last-known
+        lastStarsPerSecond = starsPerSecond.integerValue
+        lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
+        lastMoonSizePercent = moonSizePercentSlider.doubleValue
+        lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
+        lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
+        lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
+        lastSatellitesAvgSpawnSeconds = satellitesAvgSecondsField?.doubleValue ?? defaultsManager.satellitesAvgSpawnSeconds
+        
+        updatePreviewLabels()
+        updateShootingStarsUIEnabled()
+        updateSatellitesUIEnabled()
+        
+        setupPreviewEngine()
+        updatePauseToggleTitle()
+        validateInputs()
+    }
+    
     // MARK: - UI Construction (Programmatic Replacement for XIB)
     
     private func buildUI() {
         guard let contentView = window?.contentView else { return }
-        // Do NOT disable translatesAutoresizingMaskIntoConstraints on the window's contentView.
-        // Doing so without supplying external constraints can lead to a zero-sized layout at display time.
         
         let leftWidth: CGFloat = 320
         
@@ -180,7 +244,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         // Document view hosting the vertical stack
         let docView = NSView()
-        // Give the document view an initial non-zero frame so AppKit will show it immediately
         docView.frame = NSRect(x: 0, y: 0, width: leftWidth, height: 800)
         docView.translatesAutoresizingMaskIntoConstraints = false
         scroll.documentView = docView
@@ -196,13 +259,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         let generalBox = makeBox(title: "General")
         let generalStack = makeVStack(spacing: 8)
         
-        // Stars/second
         let starsRow = makeLabeledFieldRow(label: "Stars/second:",
                                            fieldWidth: 70,
                                            small: true) { tf in
             self.starsPerSecond = tf
         }
-        // Building lights/second
         let blRow = makeLabeledFieldRow(label: "Building lights/second:",
                                         fieldWidth: 70,
                                         small: true) { tf in
@@ -219,7 +280,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // MOON BOX
         let moonBox = makeBox(title: "Moon")
         let moonStack = makeVStack(spacing: 8)
-        // Label row
         let moonLabelRow = NSStackView()
         moonLabelRow.orientation = .horizontal
         moonLabelRow.alignment = .firstBaseline
@@ -230,7 +290,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.moonSizePercentPreview = moonSizePreview
         moonLabelRow.addArrangedSubview(moonSizeLabel)
         moonLabelRow.addArrangedSubview(moonSizePreview)
-        // Slider row
         let moonSlider = NSSlider(value: 0.02, minValue: 0.001, maxValue: 0.25, target: self, action: #selector(moonSliderChanged(_:)))
         moonSlider.translatesAutoresizingMaskIntoConstraints = false
         moonSlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
@@ -250,7 +309,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // SHOOTING STARS
         let shootingBox = makeBox(title: "Shooting Stars")
         let shootingStack = makeVStack(spacing: 8)
-        // Enable row
         let shootingEnableRow = NSStackView()
         shootingEnableRow.orientation = .horizontal
         shootingEnableRow.alignment = .centerY
@@ -263,7 +321,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         let shootingLabel = makeLabel("Enable shooting stars")
         shootingEnableRow.addArrangedSubview(shootingSwitch)
         shootingEnableRow.addArrangedSubview(shootingLabel)
-        // Average seconds row
         let shootingAvgRow = makeLabeledFieldRow(label: "Seconds between stars:",
                                                  fieldWidth: 70,
                                                  small: true) { tf in
@@ -307,19 +364,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             pinToEdges(satellitesStack, in: satContent, inset: 12)
         }
         
-        // Add sections to vertical stack
+        // Add sections
         sectionsStack.addArrangedSubview(generalBox)
         sectionsStack.addArrangedSubview(moonBox)
         sectionsStack.addArrangedSubview(shootingBox)
         sectionsStack.addArrangedSubview(satellitesBox)
         
-        // Crucial: pin ALL edges with equality (not <=) so the intrinsic height propagates.
         NSLayoutConstraint.activate([
             sectionsStack.topAnchor.constraint(equalTo: docView.topAnchor, constant: 12),
             sectionsStack.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: 12),
             sectionsStack.trailingAnchor.constraint(equalTo: docView.trailingAnchor, constant: -12),
             sectionsStack.bottomAnchor.constraint(equalTo: docView.bottomAnchor, constant: -12),
-            // Match width to avoid horizontal scrolling while still allowing vertical expansion.
             docView.widthAnchor.constraint(equalTo: scroll.widthAnchor)
         ])
         
@@ -330,7 +385,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             scroll.trailingAnchor.constraint(equalTo: leftContainer.trailingAnchor)
         ])
         
-        // Buttons row
         let buttonsRow = NSStackView()
         buttonsRow.orientation = .horizontal
         buttonsRow.alignment = .centerY
@@ -363,13 +417,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             scroll.bottomAnchor.constraint(equalTo: buttonsRow.topAnchor, constant: -8)
         ])
         
-        // Preview view (right side)
         let preview = NSView()
         preview.wantsLayer = true
         preview.translatesAutoresizingMaskIntoConstraints = false
         self.moonPreviewView = preview
         
-        // Add to content
         contentView.addSubview(leftContainer)
         contentView.addSubview(preview)
         
@@ -385,17 +437,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             preview.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20)
         ])
         
-        // Delegates
         starsPerSecond.delegate = self
         buildingLightsPerSecond.delegate = self
         shootingStarsAvgSecondsField.delegate = self
         satellitesAvgSecondsField?.delegate = self
         
-        // Force an initial layout pass so that the scroll view has proper content before display.
         contentView.layoutSubtreeIfNeeded()
         
         if let log = log {
-            os_log("buildUI completed: sections=%{public}d", log: log, type: .info, sectionsStack.arrangedSubviews.count)
+            os_log("buildUI completed (sections=%{public}d)", log: log, type: .info, sectionsStack.arrangedSubviews.count)
         }
     }
     
@@ -472,63 +522,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         ])
     }
     
-    // MARK: - Lifecycle
-    
-    override func windowDidLoad() {
-        super.windowDidLoad()
-        
-        window?.delegate = self
-        styleWindow()
-        
-        // Set log early
-        self.log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
-        
-        // Build UI (replaces former XIB)
-        buildUI()
-        
-        // Load defaults into UI
-        starsPerSecond.integerValue = Int(round(defaultsManager.starsPerSecond))
-        buildingLightsPerSecond.doubleValue = defaultsManager.buildingLightsPerSecond
-        
-        // Minimal retained logic (other optional controls may be nil)
-        moonSizePercentSlider.doubleValue = defaultsManager.moonDiameterScreenWidthPercent
-        
-        shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
-        shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
-        
-        satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
-        satellitesAvgSecondsField?.doubleValue = defaultsManager.satellitesAvgSpawnSeconds
-        
-        // Snapshot last-known
-        lastStarsPerSecond = starsPerSecond.integerValue
-        lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
-        lastMoonSizePercent = moonSizePercentSlider.doubleValue
-        lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
-        lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
-        lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
-        lastSatellitesAvgSpawnSeconds = satellitesAvgSecondsField?.doubleValue ?? defaultsManager.satellitesAvgSpawnSeconds
-        
-        updatePreviewLabels()
-        updateShootingStarsUIEnabled()
-        updateSatellitesUIEnabled()
-        
-        setupPreviewEngine()
-        updatePauseToggleTitle()
-        validateInputs()
-        
-        if let styleMaskRaw = window?.styleMask.rawValue {
-            os_log("Config sheet (programmatic) loaded (styleMask raw=0x%{public}llx)", log: log!, type: .info, styleMaskRaw)
-        }
-        
-        applyAccessibility()
-        applyButtonKeyEquivalents()
-        applySystemSymbolImages()
-        
-        if let renderer = previewRenderer {
-            renderer.setDebugOverlayEnabled(lastDebugOverlayEnabled)
-        }
-    }
-    
     // MARK: - Styling / Accessibility
     
     private func styleWindow() {
@@ -558,7 +551,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         pauseToggleButton.setAccessibilityLabel("Pause or resume preview")
     }
     
-    // MARK: - SF Symbols (still functional if tag identifiers used)
+    // MARK: - SF Symbols
     
     private func applySystemSymbolImages() {
         guard #available(macOS 11.0, *) else { return }
@@ -659,7 +652,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         }
     }
     
-    // MARK: - Actions (existing logic retained)
+    // MARK: - Actions
     
     @IBAction func buildingHeightChanged(_ sender: Any) {
         guard let slider = buildingHeightSlider else { return }
@@ -1101,7 +1094,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func currentPreviewRuntimeConfig() -> StarryRuntimeConfig {
-        // Satellites avg spawn seconds (choose explicit field or derived per-minute slider)
         var satellitesAvg: Double
         if let secsField = satellitesAvgSecondsField {
             satellitesAvg = secsField.doubleValue
