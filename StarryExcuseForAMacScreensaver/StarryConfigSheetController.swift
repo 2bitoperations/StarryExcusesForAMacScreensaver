@@ -16,9 +16,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     var buildingLightsPerSecond: NSTextField!
     var buildingHeightSlider: NSSlider?
     var buildingHeightPreview: NSTextField?
+    var secsBetweenClears: NSTextField?          // now visible in UI
     
     // Optional (not in simplified UI layout but retained for logic compatibility)
-    var secsBetweenClears: NSTextField?
     var moonTraversalMinutes: NSTextField?
     
     // Building frequency controls
@@ -207,6 +207,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let bhPrev = buildingHeightPreview, let bhSlider = buildingHeightSlider {
             bhPrev.stringValue = String(format: "%.2f%%", bhSlider.doubleValue * 100.0)
         }
+        if let sbcField = secsBetweenClears {
+            sbcField.doubleValue = defaultsManager.secsBetweenClears
+        }
         moonSizePercentSlider.doubleValue = defaultsManager.moonDiameterScreenWidthPercent
         shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
         shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
@@ -217,6 +220,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastStarsPerSecond = starsPerSecond.integerValue
         lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         lastBuildingHeight = buildingHeightSlider?.doubleValue ?? defaultsManager.buildingHeight
+        lastSecsBetweenClears = secsBetweenClears?.doubleValue ?? defaultsManager.secsBetweenClears
         lastMoonSizePercent = moonSizePercentSlider.doubleValue
         lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
@@ -276,6 +280,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                                         small: true) { tf in
             self.buildingLightsPerSecond = tf
         }
+        let sbcRow = makeLabeledFieldRow(label: "Seconds between clears:",
+                                         fieldWidth: 70,
+                                         small: true) { tf in
+            self.secsBetweenClears = tf
+        }
         
         // Building Height Slider (0.0 - 1.0)
         let bhLabelRow = NSStackView()
@@ -300,6 +309,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         generalStack.addArrangedSubview(starsRow)
         generalStack.addArrangedSubview(blRow)
+        generalStack.addArrangedSubview(sbcRow)
         generalStack.addArrangedSubview(bhLabelRow)
         generalStack.addArrangedSubview(bhSliderRow)
         generalBox.contentView?.addSubview(generalStack)
@@ -469,6 +479,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         starsPerSecond.delegate = self
         buildingLightsPerSecond.delegate = self
+        secsBetweenClears?.delegate = self
         shootingStarsAvgSecondsField.delegate = self
         satellitesAvgSecondsField?.delegate = self
         
@@ -573,6 +584,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func applyAccessibility() {
         starsPerSecond.setAccessibilityLabel("Stars per second")
         buildingLightsPerSecond.setAccessibilityLabel("Building lights per second")
+        secsBetweenClears?.setAccessibilityLabel("Seconds between clears")
         buildingHeightSlider?.setAccessibilityLabel("Building height fraction of screen")
         moonSizePercentSlider.setAccessibilityLabel("Moon size as percent of screen width")
         shootingStarsEnabledCheckbox.setAccessibilityLabel("Enable shooting stars")
@@ -655,6 +667,18 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                           oldValue: format(lastBuildingLightsPerSecond),
                           newValue: format(newVal))
                 lastBuildingLightsPerSecond = newVal
+                rebuildPreviewEngineIfNeeded()
+                updatePreviewConfig()
+            }
+        } else if field == secsBetweenClears {
+            // enforce minimum of 1 second
+            var newVal = field.doubleValue
+            if newVal < 1.0 { newVal = 1.0; field.doubleValue = newVal }
+            if newVal != lastSecsBetweenClears {
+                logChange(changedKey: "secsBetweenClears",
+                          oldValue: format(lastSecsBetweenClears),
+                          newValue: format(newVal))
+                lastSecsBetweenClears = newVal
                 rebuildPreviewEngineIfNeeded()
                 updatePreviewConfig()
             }
@@ -1244,6 +1268,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let bh = buildingHeightSlider {
             defaultsManager.buildingHeight = bh.doubleValue
         }
+        if let sbcField = secsBetweenClears {
+            defaultsManager.secsBetweenClears = sbcField.doubleValue
+        }
         
         defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         defaultsManager.shootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
@@ -1288,6 +1315,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         var parts: [String] = []
         parts.append("starsPerSecond=\(starsPerSecond.integerValue)")
         parts.append("buildingLightsPerSecond=\(format(buildingLightsPerSecond.doubleValue))")
+        parts.append("secsBetweenClears=\(format(secsBetweenClears?.doubleValue ?? lastSecsBetweenClears))")
         parts.append("buildingHeight=\(format(buildingHeightSlider?.doubleValue ?? lastBuildingHeight))")
         parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
         parts.append("shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)")
