@@ -702,18 +702,18 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         thickSlider.leadingAnchor.constraint(equalTo: thickSliderRow.leadingAnchor).isActive = true
         thickSlider.trailingAnchor.constraint(equalTo: thickSliderRow.trailingAnchor).isActive = true
         
-        // Brightness slider
+        // Brightness slider (updated range 0.0 - 1.0, default 0.2)
         let brightSSLabelRow = NSStackView()
         brightSSLabelRow.orientation = .horizontal
         brightSSLabelRow.alignment = .firstBaseline
         brightSSLabelRow.spacing = 4
         brightSSLabelRow.translatesAutoresizingMaskIntoConstraints = false
         let brightSSLabel = makeLabel("Brightness")
-        let brightSSPreview = makeSmallLabel("0.900")
+        let brightSSPreview = makeSmallLabel("0.200")
         self.shootingStarsBrightnessPreview = brightSSPreview
         brightSSLabelRow.addArrangedSubview(brightSSLabel)
         brightSSLabelRow.addArrangedSubview(brightSSPreview)
-        let brightSSSlider = NSSlider(value: 0.9, minValue: 0.3, maxValue: 1.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        let brightSSSlider = NSSlider(value: 0.2, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
         brightSSSlider.translatesAutoresizingMaskIntoConstraints = false
         self.shootingStarsBrightnessSlider = brightSSSlider
         let brightSSSliderRow = NSStackView(views: [brightSSSlider])

@@ -44,8 +44,9 @@ class StarryDefaultsManager {
     private let defaultShootingStarsLength: Double = 160
     private let defaultShootingStarsSpeed: Double = 600
     private let defaultShootingStarsThickness: Double = 2
-    private let defaultShootingStarsBrightness: Double = 0.9
-    // NEW: shooting star trail half-life seconds (0.01 .. 2.0)
+    // UPDATED: brightness now 0.0 ... 1.0 with default 0.2
+    private let defaultShootingStarsBrightness: Double = 0.2
+    // shooting star trail half-life seconds (0.01 .. 2.0)
     private let defaultShootingStarsTrailHalfLifeSeconds: Double = 0.18
     private let defaultShootingStarsDebugSpawnBounds = false
     
@@ -453,13 +454,13 @@ class StarryDefaultsManager {
     
     var shootingStarsBrightness: Double {
         set {
-            let clamped = max(0.3, min(1.0, newValue))
+            let clamped = max(0.0, min(1.0, newValue))
             defaults.set(clamped, forKey: "ShootingStarsBrightness")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "ShootingStarsBrightness")
-            return (v >= 0.3 && v <= 1.0) ? v : defaultShootingStarsBrightness
+            return (v >= 0.0 && v <= 1.0) ? v : defaultShootingStarsBrightness
         }
     }
     
