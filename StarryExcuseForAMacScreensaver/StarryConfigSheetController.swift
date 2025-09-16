@@ -1624,8 +1624,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         let enabled = moonPhaseOverrideCheckbox?.state == .on
         moonPhaseSlider?.isEnabled = enabled
         if let mp = moonPhasePreview {
-            mp.isEnabled = enabled ?? false
-            mp.alphaValue = (enabled ?? false) ? 1.0 : 0.5
+            mp.isEnabled = enabled
+            mp.alphaValue = enabled ? 1.0 : 0.5
         }
     }
     
