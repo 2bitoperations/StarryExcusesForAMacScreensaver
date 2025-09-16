@@ -483,7 +483,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         let moonSizePreview = makeSmallLabel("0.00%")
         self.moonSizePercentPreview = moonSizePreview
         moonLabelRow.addArrangedSubview(moonSizeLabel)
-        moonLabelRow.addArrangedSubview(moonSizePreview)
+        moonLabelRow.addArrangedSubview(moonSizePreview
+        )
         let moonSlider = NSSlider(value: 0.02, minValue: 0.001, maxValue: 0.25, target: self, action: #selector(moonSliderChanged(_:)))
         moonSlider.translatesAutoresizingMaskIntoConstraints = false
         moonSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -934,6 +935,16 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         sectionsStack.addArrangedSubview(moonBox)
         sectionsStack.addArrangedSubview(shootingBox)
         sectionsStack.addArrangedSubview(satellitesBox)
+        
+        // Force full-width for non-General sections so their right edges align with scrollable area.
+        // (General already appears visually correct; leave it as-is.)
+        let boxesToExpand: [NSBox] = [moonBox, shootingBox, satellitesBox]
+        for box in boxesToExpand {
+            box.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            box.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            // Match stack width (stack itself is pinned with trailing = docView.trailing - 12)
+            box.widthAnchor.constraint(equalTo: sectionsStack.widthAnchor).isActive = true
+        }
         
         NSLayoutConstraint.activate([
             sectionsStack.topAnchor.constraint(equalTo: docView.topAnchor, constant: 12),
