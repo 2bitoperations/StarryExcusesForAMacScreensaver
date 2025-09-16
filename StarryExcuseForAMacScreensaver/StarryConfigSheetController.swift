@@ -17,13 +17,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     var buildingHeightSlider: NSSlider?
     var buildingHeightPreview: NSTextField?
     var secsBetweenClears: NSTextField?          // now visible in UI
+    var buildingFrequencySlider: NSSlider?
+    var buildingFrequencyPreview: NSTextField?
     
     // Optional (not in simplified UI layout but retained for logic compatibility)
     var moonTraversalMinutes: NSTextField?
-    
-    // Building frequency controls
-    var buildingFrequencySlider: NSSlider?
-    var buildingFrequencyPreview: NSTextField?
     
     // Moon sizing & brightness sliders
     var moonSizePercentSlider: NSSlider!          // present
@@ -152,8 +150,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     override init(window: NSWindow?) {
         super.init(window: window)
-        // For programmatic windows created via init(window:), windowDidLoad is NOT invoked automatically,
-        // so we must build the UI explicitly here.
         initializeProgrammaticUIIfNeeded()
     }
     
@@ -186,7 +182,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         }
     }
     
-    // In case AppKit still calls windowDidLoad (e.g., future behavior), guard to avoid double build.
     override func windowDidLoad() {
         super.windowDidLoad()
         initializeProgrammaticUIIfNeeded()
@@ -195,18 +190,25 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // MARK: - Populate defaults
     
     private func populateDefaultsAndState() {
-        // Safeguard (should already be true)
         guard starsPerSecond != nil else { return }
         
-        // Load defaults into UI
         starsPerSecond.integerValue = Int(round(defaultsManager.starsPerSecond))
         buildingLightsPerSecond.doubleValue = defaultsManager.buildingLightsPerSecond
+        
         if let bhSlider = buildingHeightSlider {
             bhSlider.doubleValue = defaultsManager.buildingHeight
         }
         if let bhPrev = buildingHeightPreview, let bhSlider = buildingHeightSlider {
             bhPrev.stringValue = String(format: "%.2f%%", bhSlider.doubleValue * 100.0)
         }
+        
+        if let bfSlider = buildingFrequencySlider {
+            bfSlider.doubleValue = defaultsManager.buildingFrequency
+        }
+        if let bfPrev = buildingFrequencyPreview, let bfSlider = buildingFrequencySlider {
+            bfPrev.stringValue = String(format: "%.3f", bfSlider.doubleValue)
+        }
+        
         if let sbcField = secsBetweenClears {
             sbcField.doubleValue = defaultsManager.secsBetweenClears
         }
@@ -216,10 +218,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
         satellitesAvgSecondsField?.doubleValue = defaultsManager.satellitesAvgSpawnSeconds
         
-        // Snapshot last-known
         lastStarsPerSecond = starsPerSecond.integerValue
         lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         lastBuildingHeight = buildingHeightSlider?.doubleValue ?? defaultsManager.buildingHeight
+        lastBuildingFrequency = buildingFrequencySlider?.doubleValue ?? defaultsManager.buildingFrequency
         lastSecsBetweenClears = secsBetweenClears?.doubleValue ?? defaultsManager.secsBetweenClears
         lastMoonSizePercent = moonSizePercentSlider.doubleValue
         lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
@@ -236,14 +238,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         validateInputs()
     }
     
-    // MARK: - UI Construction (Programmatic Replacement for XIB)
+    // MARK: - UI Construction
     
     private func buildUI() {
         guard let contentView = window?.contentView else { return }
         
         let leftWidth: CGFloat = 320
         
-        // Left vertical stack inside a scroll view
         let leftContainer = NSView()
         leftContainer.translatesAutoresizingMaskIntoConstraints = false
         
@@ -253,7 +254,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         scroll.borderType = .noBorder
         scroll.drawsBackground = false
         
-        // Document view hosting the vertical stack
         let docView = NSView()
         docView.frame = NSRect(x: 0, y: 0, width: leftWidth, height: 800)
         docView.translatesAutoresizingMaskIntoConstraints = false
@@ -286,7 +286,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             self.secsBetweenClears = tf
         }
         
-        // Building Height Slider (0.0 - 1.0)
+        // Building Height Slider
         let bhLabelRow = NSStackView()
         bhLabelRow.orientation = .horizontal
         bhLabelRow.alignment = .firstBaseline
@@ -307,11 +307,34 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         bhSliderRow.spacing = 4
         bhSliderRow.translatesAutoresizingMaskIntoConstraints = false
         
+        // Building Frequency Slider
+        let bfLabelRow = NSStackView()
+        bfLabelRow.orientation = .horizontal
+        bfLabelRow.alignment = .firstBaseline
+        bfLabelRow.spacing = 4
+        bfLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let bfLabel = makeLabel("Building frequency")
+        let bfPreview = makeSmallLabel("0.000")
+        self.buildingFrequencyPreview = bfPreview
+        bfLabelRow.addArrangedSubview(bfLabel)
+        bfLabelRow.addArrangedSubview(bfPreview)
+        let bfSlider = NSSlider(value: 0.033, minValue: 0.001, maxValue: 1.0, target: self, action: #selector(buildingFrequencyChanged(_:)))
+        bfSlider.translatesAutoresizingMaskIntoConstraints = false
+        bfSlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        self.buildingFrequencySlider = bfSlider
+        let bfSliderRow = NSStackView(views: [bfSlider])
+        bfSliderRow.orientation = .horizontal
+        bfSliderRow.alignment = .centerY
+        bfSliderRow.spacing = 4
+        bfSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        
         generalStack.addArrangedSubview(starsRow)
         generalStack.addArrangedSubview(blRow)
         generalStack.addArrangedSubview(sbcRow)
         generalStack.addArrangedSubview(bhLabelRow)
         generalStack.addArrangedSubview(bhSliderRow)
+        generalStack.addArrangedSubview(bfLabelRow)
+        generalStack.addArrangedSubview(bfSliderRow)
         generalBox.contentView?.addSubview(generalStack)
         if let generalContent = generalBox.contentView {
             pinToEdges(generalStack, in: generalContent, inset: 12)
@@ -586,6 +609,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         buildingLightsPerSecond.setAccessibilityLabel("Building lights per second")
         secsBetweenClears?.setAccessibilityLabel("Seconds between clears")
         buildingHeightSlider?.setAccessibilityLabel("Building height fraction of screen")
+        buildingFrequencySlider?.setAccessibilityLabel("Building frequency")
         moonSizePercentSlider.setAccessibilityLabel("Moon size as percent of screen width")
         shootingStarsEnabledCheckbox.setAccessibilityLabel("Enable shooting stars")
         shootingStarsAvgSecondsField.setAccessibilityLabel("Average seconds between shooting stars")
@@ -671,7 +695,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 updatePreviewConfig()
             }
         } else if field == secsBetweenClears {
-            // enforce minimum of 1 second
             var newVal = field.doubleValue
             if newVal < 1.0 { newVal = 1.0; field.doubleValue = newVal }
             if newVal != lastSecsBetweenClears {
@@ -728,6 +751,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     @IBAction func buildingFrequencyChanged(_ sender: Any) {
         guard let slider = buildingFrequencySlider else { return }
         let newVal = slider.doubleValue
+        buildingFrequencyPreview?.stringValue = String(format: "%.3f", newVal)
         if newVal != lastBuildingFrequency {
             logChange(changedKey: "buildingFrequency",
                       oldValue: format(lastBuildingFrequency),
@@ -1220,6 +1244,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let bhSlider = buildingHeightSlider, let bhPrev = buildingHeightPreview {
             bhPrev.stringValue = String(format: "%.2f%%", bhSlider.doubleValue * 100.0)
         }
+        if let bfSlider = buildingFrequencySlider, let bfPrev = buildingFrequencyPreview {
+            bfPrev.stringValue = String(format: "%.3f", bfSlider.doubleValue)
+        }
     }
     
     private func effectivePaused() -> Bool { previewTimer == nil }
@@ -1267,6 +1294,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.moonDiameterScreenWidthPercent = moonSizePercentSlider.doubleValue
         if let bh = buildingHeightSlider {
             defaultsManager.buildingHeight = bh.doubleValue
+        }
+        if let bf = buildingFrequencySlider {
+            defaultsManager.buildingFrequency = bf.doubleValue
         }
         if let sbcField = secsBetweenClears {
             defaultsManager.secsBetweenClears = sbcField.doubleValue
@@ -1317,6 +1347,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         parts.append("buildingLightsPerSecond=\(format(buildingLightsPerSecond.doubleValue))")
         parts.append("secsBetweenClears=\(format(secsBetweenClears?.doubleValue ?? lastSecsBetweenClears))")
         parts.append("buildingHeight=\(format(buildingHeightSlider?.doubleValue ?? lastBuildingHeight))")
+        parts.append("buildingFrequency=\(format(buildingFrequencySlider?.doubleValue ?? lastBuildingFrequency))")
         parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
         parts.append("shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)")
         parts.append("shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))")
