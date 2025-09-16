@@ -529,6 +529,21 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsAvgSecondsField.delegate = self
         satellitesAvgSecondsField?.delegate = self
         
+        // Align text fields' right edges with scroll area's right edge by constraining rows.
+        // (They already contain an internal spacer pushing the fixed-width field to the trailing edge.)
+        for row in [starsRow, blRow, sbcRow] {
+            row.trailingAnchor.constraint(equalTo: generalStack.trailingAnchor).isActive = true
+        }
+        // Shooting stars & satellites rows
+        if let shootingAvgRow = shootingStarsAvgSecondsField?.superview as? NSStackView,
+           let shootingParent = shootingAvgRow.superview {
+            shootingAvgRow.trailingAnchor.constraint(equalTo: shootingParent.trailingAnchor).isActive = true
+        }
+        if let satsAvgRow = satellitesAvgSecondsField?.superview as? NSStackView,
+           let satsParent = satsAvgRow.superview {
+            satsAvgRow.trailingAnchor.constraint(equalTo: satsParent.trailingAnchor).isActive = true
+        }
+        
         contentView.layoutSubtreeIfNeeded()
         
         if let log = log {
@@ -583,6 +598,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if small {
             lbl.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
         }
+        
+        // Flexible spacer to push the fixed-width text field to the right edge.
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        
         let tf = NSTextField()
         tf.translatesAutoresizingMaskIntoConstraints = false
         tf.alignment = .left
@@ -595,7 +617,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         tf.widthAnchor.constraint(equalToConstant: fieldWidth).isActive = true
         
         row.addArrangedSubview(lbl)
+        row.addArrangedSubview(spacer)
         row.addArrangedSubview(tf)
+        
+        // Ensure the text field hugs the trailing edge when row expands.
+        tf.setContentHuggingPriority(.required, for: .horizontal)
+        tf.setContentCompressionResistancePriority(.required, for: .horizontal)
+        
         bindField(tf)
         return row
     }
