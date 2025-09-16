@@ -60,7 +60,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     var shootingStarsTrailHalfLifePreview: NSTextField? { shootingStarsTrailDecayPreview }
     var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch?
     
-    // Satellites controls (enable + avg seconds present)
+    // Satellites controls (enable + avg seconds present; now adding all)
     var satellitesEnabledCheckbox: NSSwitch?
     var satellitesAvgSecondsField: NSTextField?
     var satellitesPerMinuteSlider: NSSlider?
@@ -239,11 +239,35 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             maskCB.state = defaultsManager.showLightAreaTextureFillMask ? .on : .off
         }
         
+        // Shooting stars
         shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
         shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
+        
+        // Satellites (all new sliders)
         satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
         satellitesAvgSecondsField?.doubleValue = defaultsManager.satellitesAvgSpawnSeconds
         
+        if let speedSlider = satellitesSpeedSlider {
+            speedSlider.doubleValue = defaultsManager.satellitesSpeed
+            satellitesSpeedPreview?.stringValue = String(format: "%.1f", speedSlider.doubleValue)
+        }
+        if let sizeSlider = satellitesSizeSlider {
+            sizeSlider.doubleValue = defaultsManager.satellitesSize
+            satellitesSizePreview?.stringValue = String(format: "%.2f", sizeSlider.doubleValue)
+        }
+        if let brightnessSlider = satellitesBrightnessSlider {
+            brightnessSlider.doubleValue = defaultsManager.satellitesBrightness
+            satellitesBrightnessPreview?.stringValue = String(format: "%.3f", brightnessSlider.doubleValue)
+        }
+        if let trailingCB = satellitesTrailingCheckbox {
+            trailingCB.state = defaultsManager.satellitesTrailing ? .on : .off
+        }
+        if let hlSlider = satellitesTrailHalfLifeSlider {
+            hlSlider.doubleValue = defaultsManager.satellitesTrailHalfLifeSeconds
+            satellitesTrailHalfLifePreview?.stringValue = String(format: "%.3f", hlSlider.doubleValue)
+        }
+        
+        // Last-known capture
         lastStarsPerSecond = starsPerSecond.integerValue
         lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         lastBuildingHeight = buildingHeightSlider?.doubleValue ?? defaultsManager.buildingHeight
@@ -259,6 +283,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
         lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
         lastSatellitesAvgSpawnSeconds = satellitesAvgSecondsField?.doubleValue ?? defaultsManager.satellitesAvgSpawnSeconds
+        lastSatellitesSpeed = satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed
+        lastSatellitesSize = satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize
+        lastSatellitesBrightness = satellitesBrightnessSlider?.doubleValue ?? defaultsManager.satellitesBrightness
+        lastSatellitesTrailing = satellitesTrailingCheckbox?.state == .on ?? defaultsManager.satellitesTrailing
+        lastSatellitesTrailHalfLifeSeconds = satellitesTrailHalfLifeSlider?.doubleValue ?? defaultsManager.satellitesTrailHalfLifeSeconds
         lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         
         updatePreviewLabels()
@@ -562,6 +591,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // SATELLITES
         let satellitesBox = makeBox(title: "Satellites")
         let satellitesStack = makeVStack(spacing: 8)
+        
+        // Enable row
         let satellitesEnableRow = NSStackView()
         satellitesEnableRow.orientation = .horizontal
         satellitesEnableRow.alignment = .centerY
@@ -574,6 +605,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         let satellitesLabel = makeLabel("Enable satellites")
         satellitesEnableRow.addArrangedSubview(satellitesSwitch)
         satellitesEnableRow.addArrangedSubview(satellitesLabel)
+        
+        // Avg seconds row
         let satellitesAvgRow = makeLabeledFieldRow(label: "Seconds between sats:",
                                                    fieldWidth: 70,
                                                    small: true) { tf in
@@ -581,8 +614,122 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             tf.target = self
             tf.action = #selector(satellitesAvgSecondsChanged(_:))
         }
+        
+        // Speed slider
+        let satSpeedLabelRow = NSStackView()
+        satSpeedLabelRow.orientation = .horizontal
+        satSpeedLabelRow.alignment = .firstBaseline
+        satSpeedLabelRow.spacing = 4
+        satSpeedLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let satSpeedLabel = makeLabel("Speed (px/sec)")
+        let satSpeedPreview = makeSmallLabel("90.0")
+        self.satellitesSpeedPreview = satSpeedPreview
+        satSpeedLabelRow.addArrangedSubview(satSpeedLabel)
+        satSpeedLabelRow.addArrangedSubview(satSpeedPreview)
+        let satSpeedSlider = NSSlider(value: 90.0, minValue: 10.0, maxValue: 600.0, target: self, action: #selector(satellitesSliderChanged(_:)))
+        satSpeedSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.satellitesSpeedSlider = satSpeedSlider
+        let satSpeedSliderRow = NSStackView(views: [satSpeedSlider])
+        satSpeedSliderRow.orientation = .horizontal
+        satSpeedSliderRow.alignment = .centerY
+        satSpeedSliderRow.spacing = 4
+        satSpeedSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        satSpeedSlider.leadingAnchor.constraint(equalTo: satSpeedSliderRow.leadingAnchor).isActive = true
+        satSpeedSlider.trailingAnchor.constraint(equalTo: satSpeedSliderRow.trailingAnchor).isActive = true
+        
+        // Size slider
+        let satSizeLabelRow = NSStackView()
+        satSizeLabelRow.orientation = .horizontal
+        satSizeLabelRow.alignment = .firstBaseline
+        satSizeLabelRow.spacing = 4
+        satSizeLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let satSizeLabel = makeLabel("Size (px)")
+        let satSizePreview = makeSmallLabel("2.00")
+        self.satellitesSizePreview = satSizePreview
+        satSizeLabelRow.addArrangedSubview(satSizeLabel)
+        satSizeLabelRow.addArrangedSubview(satSizePreview)
+        let satSizeSlider = NSSlider(value: 2.0, minValue: 1.0, maxValue: 6.0, target: self, action: #selector(satellitesSliderChanged(_:)))
+        satSizeSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.satellitesSizeSlider = satSizeSlider
+        let satSizeSliderRow = NSStackView(views: [satSizeSlider])
+        satSizeSliderRow.orientation = .horizontal
+        satSizeSliderRow.alignment = .centerY
+        satSizeSliderRow.spacing = 4
+        satSizeSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        satSizeSlider.leadingAnchor.constraint(equalTo: satSizeSliderRow.leadingAnchor).isActive = true
+        satSizeSlider.trailingAnchor.constraint(equalTo: satSizeSliderRow.trailingAnchor).isActive = true
+        
+        // Brightness slider
+        let satBrightnessLabelRow = NSStackView()
+        satBrightnessLabelRow.orientation = .horizontal
+        satBrightnessLabelRow.alignment = .firstBaseline
+        satBrightnessLabelRow.spacing = 4
+        satBrightnessLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let satBrightnessLabel = makeLabel("Brightness")
+        let satBrightnessPreview = makeSmallLabel("0.900")
+        self.satellitesBrightnessPreview = satBrightnessPreview
+        satBrightnessLabelRow.addArrangedSubview(satBrightnessLabel)
+        satBrightnessLabelRow.addArrangedSubview(satBrightnessPreview)
+        let satBrightnessSlider = NSSlider(value: 0.9, minValue: 0.2, maxValue: 1.2, target: self, action: #selector(satellitesSliderChanged(_:)))
+        satBrightnessSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.satellitesBrightnessSlider = satBrightnessSlider
+        let satBrightnessSliderRow = NSStackView(views: [satBrightnessSlider])
+        satBrightnessSliderRow.orientation = .horizontal
+        satBrightnessSliderRow.alignment = .centerY
+        satBrightnessSliderRow.spacing = 4
+        satBrightnessSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        satBrightnessSlider.leadingAnchor.constraint(equalTo: satBrightnessSliderRow.leadingAnchor).isActive = true
+        satBrightnessSlider.trailingAnchor.constraint(equalTo: satBrightnessSliderRow.trailingAnchor).isActive = true
+        
+        // Trailing toggle
+        let satTrailingRow = NSStackView()
+        satTrailingRow.orientation = .horizontal
+        satTrailingRow.alignment = .centerY
+        satTrailingRow.spacing = 6
+        satTrailingRow.translatesAutoresizingMaskIntoConstraints = false
+        let satTrailingSwitch = NSSwitch()
+        satTrailingSwitch.target = self
+        satTrailingSwitch.action = #selector(satellitesTrailingToggled(_:))
+        self.satellitesTrailingCheckbox = satTrailingSwitch
+        let satTrailingLabel = makeLabel("Enable trailing")
+        satTrailingRow.addArrangedSubview(satTrailingSwitch)
+        satTrailingRow.addArrangedSubview(satTrailingLabel)
+        
+        // Trail half-life slider
+        let satHLLabelRow = NSStackView()
+        satHLLabelRow.orientation = .horizontal
+        satHLLabelRow.alignment = .firstBaseline
+        satHLLabelRow.spacing = 4
+        satHLLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let satHLLabel = makeLabel("Trail half-life (s)")
+        let satHLPreview = makeSmallLabel("0.180")
+        self.satellitesTrailDecayPreview = satHLPreview
+        satHLLabelRow.addArrangedSubview(satHLLabel)
+        satHLLabelRow.addArrangedSubview(satHLPreview)
+        let satHLSlider = NSSlider(value: 0.18, minValue: 0.01, maxValue: 2.0, target: self, action: #selector(satellitesSliderChanged(_:)))
+        satHLSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.satellitesTrailDecaySlider = satHLSlider
+        let satHLSliderRow = NSStackView(views: [satHLSlider])
+        satHLSliderRow.orientation = .horizontal
+        satHLSliderRow.alignment = .centerY
+        satHLSliderRow.spacing = 4
+        satHLSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        satHLSlider.leadingAnchor.constraint(equalTo: satHLSliderRow.leadingAnchor).isActive = true
+        satHLSlider.trailingAnchor.constraint(equalTo: satHLSliderRow.trailingAnchor).isActive = true
+        
+        // Assemble satellites stack
         satellitesStack.addArrangedSubview(satellitesEnableRow)
         satellitesStack.addArrangedSubview(satellitesAvgRow)
+        satellitesStack.addArrangedSubview(satSpeedLabelRow)
+        satellitesStack.addArrangedSubview(satSpeedSliderRow)
+        satellitesStack.addArrangedSubview(satSizeLabelRow)
+        satellitesStack.addArrangedSubview(satSizeSliderRow)
+        satellitesStack.addArrangedSubview(satBrightnessLabelRow)
+        satellitesStack.addArrangedSubview(satBrightnessSliderRow)
+        satellitesStack.addArrangedSubview(satTrailingRow)
+        satellitesStack.addArrangedSubview(satHLLabelRow)
+        satellitesStack.addArrangedSubview(satHLSliderRow)
+        
         satellitesBox.contentView?.addSubview(satellitesStack)
         if let satContent = satellitesBox.contentView {
             pinToEdges(satellitesStack, in: satContent, inset: 12)
@@ -671,7 +818,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         for row in [starsRow, blRow, sbcRow] {
             row.trailingAnchor.constraint(equalTo: generalStack.trailingAnchor).isActive = true
         }
-        // Shooting stars & satellites rows alignment
         if let shootingAvgRow = shootingStarsAvgSecondsField?.superview as? NSStackView,
            let shootingParent = shootingAvgRow.superview {
             shootingAvgRow.trailingAnchor.constraint(equalTo: shootingParent.trailingAnchor).isActive = true
@@ -757,7 +903,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         row.addArrangedSubview(spacer)
         row.addArrangedSubview(tf)
         
-        // Ensure the text field hugs the trailing edge when row expands.
         tf.setContentHuggingPriority(.required, for: .horizontal)
         tf.setContentCompressionResistancePriority(.required, for: .horizontal)
         
@@ -809,6 +954,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsAvgSecondsField.setAccessibilityLabel("Average seconds between shooting stars")
         satellitesEnabledCheckbox?.setAccessibilityLabel("Enable satellites layer")
         satellitesAvgSecondsField?.setAccessibilityLabel("Average seconds between satellites")
+        satellitesSpeedSlider?.setAccessibilityLabel("Satellites speed pixels per second")
+        satellitesSizeSlider?.setAccessibilityLabel("Satellites size in pixels")
+        satellitesBrightnessSlider?.setAccessibilityLabel("Satellites brightness")
+        satellitesTrailingCheckbox?.setAccessibilityLabel("Enable satellites trailing")
+        satellitesTrailHalfLifeSlider?.setAccessibilityLabel("Satellites trail half-life seconds")
         pauseToggleButton.setAccessibilityLabel("Pause or resume preview")
     }
     
@@ -1450,6 +1600,18 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let phaseSlider = moonPhaseSlider, let phasePrev = moonPhasePreview {
             phasePrev.stringValue = formatPhase(phaseSlider.doubleValue)
         }
+        if let satSpeed = satellitesSpeedSlider, let lbl = satellitesSpeedPreview {
+            lbl.stringValue = String(format: "%.1f", satSpeed.doubleValue)
+        }
+        if let satSize = satellitesSizeSlider, let lbl = satellitesSizePreview {
+            lbl.stringValue = String(format: "%.2f", satSize.doubleValue)
+        }
+        if let satBright = satellitesBrightnessSlider, let lbl = satellitesBrightnessPreview {
+            lbl.stringValue = String(format: "%.3f", satBright.doubleValue)
+        }
+        if let hl = satellitesTrailHalfLifeSlider, let lbl = satellitesTrailHalfLifePreview {
+            lbl.stringValue = String(format: "%.3f", hl.doubleValue)
+        }
     }
     
     private func effectivePaused() -> Bool { previewTimer == nil }
@@ -1478,8 +1640,23 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         guard let enabledCheckbox = satellitesEnabledCheckbox else { return }
         let enabled = enabledCheckbox.state == .on
         let alpha: CGFloat = enabled ? 1.0 : 0.4
-        satellitesAvgSecondsField?.isEnabled = enabled
-        satellitesAvgSecondsField?.alphaValue = alpha
+        let controls: [NSControl?] = [
+            satellitesAvgSecondsField,
+            satellitesSpeedSlider,
+            satellitesSizeSlider,
+            satellitesBrightnessSlider,
+            satellitesTrailingCheckbox,
+            satellitesTrailHalfLifeSlider
+        ]
+        for c in controls {
+            c?.isEnabled = enabled
+            c?.alphaValue = alpha
+        }
+        // Preview labels
+        satellitesSpeedPreview?.alphaValue = alpha
+        satellitesSizePreview?.alphaValue = alpha
+        satellitesBrightnessPreview?.alphaValue = alpha
+        satellitesTrailHalfLifePreview?.alphaValue = alpha
     }
     
     // MARK: - Save / Close / Cancel
@@ -1525,14 +1702,31 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             defaultsManager.showLightAreaTextureFillMask = (maskCB.state == .on)
         }
         
+        // Shooting stars
         defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         defaultsManager.shootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
         
+        // Satellites
         if let cb = satellitesEnabledCheckbox {
             defaultsManager.satellitesEnabled = (cb.state == .on)
         }
         if let secsField = satellitesAvgSecondsField {
             defaultsManager.satellitesAvgSpawnSeconds = secsField.doubleValue
+        }
+        if let speed = satellitesSpeedSlider {
+            defaultsManager.satellitesSpeed = speed.doubleValue
+        }
+        if let size = satellitesSizeSlider {
+            defaultsManager.satellitesSize = size.doubleValue
+        }
+        if let bright = satellitesBrightnessSlider {
+            defaultsManager.satellitesBrightness = bright.doubleValue
+        }
+        if let trailingCB = satellitesTrailingCheckbox {
+            defaultsManager.satellitesTrailing = (trailingCB.state == .on)
+        }
+        if let hl = satellitesTrailHalfLifeSlider {
+            defaultsManager.satellitesTrailHalfLifeSeconds = hl.doubleValue
         }
         
         view?.settingsChanged()
@@ -1586,6 +1780,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             parts.append("satellitesEnabled=nil")
         }
         parts.append("satellitesAvgSpawnSeconds=\(format(lastSatellitesAvgSpawnSeconds))")
+        parts.append("satelliteSpeed=\(format(lastSatellitesSpeed))")
+        parts.append("satelliteSize=\(format(lastSatellitesSize))")
+        parts.append("satelliteBrightness=\(format(lastSatellitesBrightness))")
+        parts.append("satelliteTrailing=\(lastSatellitesTrailing ? "true" : "false")")
+        parts.append("satelliteTrailHL=\(format(lastSatellitesTrailHalfLifeSeconds))")
         return parts.joined(separator: ", ")
     }
     
