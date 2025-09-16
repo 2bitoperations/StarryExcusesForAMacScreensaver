@@ -41,7 +41,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // Debug toggle (moon mask)
     var showLightAreaTextureFillMaskCheckbox: NSSwitch?
     
-    // Shooting Stars controls (enabled + avg seconds present)
+    // Shooting Stars controls (now fully present)
     var shootingStarsEnabledCheckbox: NSSwitch!
     var shootingStarsAvgSecondsField: NSTextField!
     var shootingStarsDirectionPopup: NSPopUpButton?
@@ -242,6 +242,30 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // Shooting stars
         shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
         shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
+        if let popup = shootingStarsDirectionPopup {
+            popup.selectItem(at: defaultsManager.shootingStarsDirectionMode)
+        }
+        if let len = shootingStarsLengthSlider {
+            len.doubleValue = defaultsManager.shootingStarsLength
+            shootingStarsLengthPreview?.stringValue = String(format: "%.0f", len.doubleValue)
+        }
+        if let spd = shootingStarsSpeedSlider {
+            spd.doubleValue = defaultsManager.shootingStarsSpeed
+            shootingStarsSpeedPreview?.stringValue = String(format: "%.0f", spd.doubleValue)
+        }
+        if let thick = shootingStarsThicknessSlider {
+            thick.doubleValue = defaultsManager.shootingStarsThickness
+            shootingStarsThicknessPreview?.stringValue = String(format: "%.2f", thick.doubleValue)
+        }
+        if let bright = shootingStarsBrightnessSlider {
+            bright.doubleValue = defaultsManager.shootingStarsBrightness
+            shootingStarsBrightnessPreview?.stringValue = String(format: "%.3f", bright.doubleValue)
+        }
+        if let hl = shootingStarsTrailHalfLifeSlider {
+            hl.doubleValue = defaultsManager.shootingStarsTrailHalfLifeSeconds
+            shootingStarsTrailHalfLifePreview?.stringValue = String(format: "%.3f", hl.doubleValue)
+        }
+        shootingStarsDebugSpawnBoundsCheckbox?.state = defaultsManager.shootingStarsDebugShowSpawnBounds ? .on : .off
         
         // Satellites
         satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
@@ -281,6 +305,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastShowLightAreaTextureFillMask = showLightAreaTextureFillMaskCheckbox?.state == .on ? true : defaultsManager.showLightAreaTextureFillMask
         lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
+        lastShootingStarsDirectionMode = shootingStarsDirectionPopup?.indexOfSelectedItem ?? defaultsManager.shootingStarsDirectionMode
+        lastShootingStarsLength = shootingStarsLengthSlider?.doubleValue ?? defaultsManager.shootingStarsLength
+        lastShootingStarsSpeed = shootingStarsSpeedSlider?.doubleValue ?? defaultsManager.shootingStarsSpeed
+        lastShootingStarsThickness = shootingStarsThicknessSlider?.doubleValue ?? defaultsManager.shootingStarsThickness
+        lastShootingStarsBrightness = shootingStarsBrightnessSlider?.doubleValue ?? defaultsManager.shootingStarsBrightness
+        lastShootingStarsTrailHalfLifeSeconds = shootingStarsTrailHalfLifeSlider?.doubleValue ?? defaultsManager.shootingStarsTrailHalfLifeSeconds
+        lastShootingStarsDebugSpawnBounds = shootingStarsDebugSpawnBoundsCheckbox?.state == .on ? true : defaultsManager.shootingStarsDebugShowSpawnBounds
         lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
         lastSatellitesAvgSpawnSeconds = satellitesAvgSecondsField?.doubleValue ?? defaultsManager.satellitesAvgSpawnSeconds
         lastSatellitesSpeed = satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed
@@ -581,8 +612,169 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             tf.target = self
             tf.action = #selector(shootingStarsAvgSecondsChanged(_:))
         }
+        
+        // Direction popup
+        let dirRow = NSStackView()
+        dirRow.orientation = .horizontal
+        dirRow.alignment = .centerY
+        dirRow.spacing = 4
+        dirRow.translatesAutoresizingMaskIntoConstraints = false
+        let dirLabel = makeLabel("Direction")
+        let dirPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        dirPopup.translatesAutoresizingMaskIntoConstraints = false
+        dirPopup.addItems(withTitles: [
+            "Random",
+            "Left → Right",
+            "Right → Left",
+            "TL → BR",
+            "TR → BL"
+        ])
+        dirPopup.target = self
+        dirPopup.action = #selector(shootingStarsDirectionChanged(_:))
+        self.shootingStarsDirectionPopup = dirPopup
+        dirRow.addArrangedSubview(dirLabel)
+        dirRow.addArrangedSubview(dirPopup)
+        dirPopup.widthAnchor.constraint(equalToConstant: 130).isActive = true
+        
+        // Length slider
+        let lengthLabelRow = NSStackView()
+        lengthLabelRow.orientation = .horizontal
+        lengthLabelRow.alignment = .firstBaseline
+        lengthLabelRow.spacing = 4
+        lengthLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let lengthLabel = makeLabel("Length (px)")
+        let lengthPreview = makeSmallLabel("160")
+        self.shootingStarsLengthPreview = lengthPreview
+        lengthLabelRow.addArrangedSubview(lengthLabel)
+        lengthLabelRow.addArrangedSubview(lengthPreview)
+        let lengthSlider = NSSlider(value: 160, minValue: 40, maxValue: 300, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        lengthSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.shootingStarsLengthSlider = lengthSlider
+        let lengthSliderRow = NSStackView(views: [lengthSlider])
+        lengthSliderRow.orientation = .horizontal
+        lengthSliderRow.alignment = .centerY
+        lengthSliderRow.spacing = 4
+        lengthSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        lengthSlider.leadingAnchor.constraint(equalTo: lengthSliderRow.leadingAnchor).isActive = true
+        lengthSlider.trailingAnchor.constraint(equalTo: lengthSliderRow.trailingAnchor).isActive = true
+        
+        // Speed slider
+        let speedLabelRow = NSStackView()
+        speedLabelRow.orientation = .horizontal
+        speedLabelRow.alignment = .firstBaseline
+        speedLabelRow.spacing = 4
+        speedLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let speedLabel = makeLabel("Speed (px/s)")
+        let speedPreview = makeSmallLabel("600")
+        self.shootingStarsSpeedPreview = speedPreview
+        speedLabelRow.addArrangedSubview(speedLabel)
+        speedLabelRow.addArrangedSubview(speedPreview)
+        let speedSlider = NSSlider(value: 600, minValue: 200, maxValue: 1200, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        speedSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.shootingStarsSpeedSlider = speedSlider
+        let speedSliderRow = NSStackView(views: [speedSlider])
+        speedSliderRow.orientation = .horizontal
+        speedSliderRow.alignment = .centerY
+        speedSliderRow.spacing = 4
+        speedSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        speedSlider.leadingAnchor.constraint(equalTo: speedSliderRow.leadingAnchor).isActive = true
+        speedSlider.trailingAnchor.constraint(equalTo: speedSliderRow.trailingAnchor).isActive = true
+        
+        // Thickness slider
+        let thickLabelRow = NSStackView()
+        thickLabelRow.orientation = .horizontal
+        thickLabelRow.alignment = .firstBaseline
+        thickLabelRow.spacing = 4
+        thickLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let thickLabel = makeLabel("Thickness (px)")
+        let thickPreview = makeSmallLabel("2.00")
+        self.shootingStarsThicknessPreview = thickPreview
+        thickLabelRow.addArrangedSubview(thickLabel)
+        thickLabelRow.addArrangedSubview(thickPreview)
+        let thickSlider = NSSlider(value: 2.0, minValue: 1.0, maxValue: 4.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        thickSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.shootingStarsThicknessSlider = thickSlider
+        let thickSliderRow = NSStackView(views: [thickSlider])
+        thickSliderRow.orientation = .horizontal
+        thickSliderRow.alignment = .centerY
+        thickSliderRow.spacing = 4
+        thickSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        thickSlider.leadingAnchor.constraint(equalTo: thickSliderRow.leadingAnchor).isActive = true
+        thickSlider.trailingAnchor.constraint(equalTo: thickSliderRow.trailingAnchor).isActive = true
+        
+        // Brightness slider
+        let brightSSLabelRow = NSStackView()
+        brightSSLabelRow.orientation = .horizontal
+        brightSSLabelRow.alignment = .firstBaseline
+        brightSSLabelRow.spacing = 4
+        brightSSLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let brightSSLabel = makeLabel("Brightness")
+        let brightSSPreview = makeSmallLabel("0.900")
+        self.shootingStarsBrightnessPreview = brightSSPreview
+        brightSSLabelRow.addArrangedSubview(brightSSLabel)
+        brightSSLabelRow.addArrangedSubview(brightSSPreview)
+        let brightSSSlider = NSSlider(value: 0.9, minValue: 0.3, maxValue: 1.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        brightSSSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.shootingStarsBrightnessSlider = brightSSSlider
+        let brightSSSliderRow = NSStackView(views: [brightSSSlider])
+        brightSSSliderRow.orientation = .horizontal
+        brightSSSliderRow.alignment = .centerY
+        brightSSSliderRow.spacing = 4
+        brightSSSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        brightSSSlider.leadingAnchor.constraint(equalTo: brightSSSliderRow.leadingAnchor).isActive = true
+        brightSSSlider.trailingAnchor.constraint(equalTo: brightSSSliderRow.trailingAnchor).isActive = true
+        
+        // Trail half-life
+        let hlRow = NSStackView()
+        hlRow.orientation = .horizontal
+        hlRow.alignment = .firstBaseline
+        hlRow.spacing = 4
+        hlRow.translatesAutoresizingMaskIntoConstraints = false
+        let hlLabel = makeLabel("Trail half-life (s)")
+        let hlPreview = makeSmallLabel("0.180")
+        self.shootingStarsTrailDecayPreview = hlPreview
+        hlRow.addArrangedSubview(hlLabel)
+        hlRow.addArrangedSubview(hlPreview)
+        let hlSlider = NSSlider(value: 0.18, minValue: 0.01, maxValue: 2.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        hlSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.shootingStarsTrailDecaySlider = hlSlider
+        let hlSliderRow = NSStackView(views: [hlSlider])
+        hlSliderRow.orientation = .horizontal
+        hlSliderRow.alignment = .centerY
+        hlSliderRow.spacing = 4
+        hlSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        hlSlider.leadingAnchor.constraint(equalTo: hlSliderRow.leadingAnchor).isActive = true
+        hlSlider.trailingAnchor.constraint(equalTo: hlSliderRow.trailingAnchor).isActive = true
+        
+        // Debug spawn bounds
+        let debugSpawnRow = NSStackView()
+        debugSpawnRow.orientation = .horizontal
+        debugSpawnRow.alignment = .centerY
+        debugSpawnRow.spacing = 6
+        debugSpawnRow.translatesAutoresizingMaskIntoConstraints = false
+        let dbgSpawnSwitch = NSSwitch()
+        dbgSpawnSwitch.target = self
+        dbgSpawnSwitch.action = #selector(shootingStarsDebugSpawnBoundsToggled(_:))
+        self.shootingStarsDebugSpawnBoundsCheckbox = dbgSpawnSwitch
+        let dbgSpawnLabel = makeLabel("Show spawn bounds (debug)")
+        debugSpawnRow.addArrangedSubview(dbgSpawnSwitch)
+        debugSpawnRow.addArrangedSubview(dbgSpawnLabel)
+        
         shootingStack.addArrangedSubview(shootingEnableRow)
         shootingStack.addArrangedSubview(shootingAvgRow)
+        shootingStack.addArrangedSubview(dirRow)
+        shootingStack.addArrangedSubview(lengthLabelRow)
+        shootingStack.addArrangedSubview(lengthSliderRow)
+        shootingStack.addArrangedSubview(speedLabelRow)
+        shootingStack.addArrangedSubview(speedSliderRow)
+        shootingStack.addArrangedSubview(thickLabelRow)
+        shootingStack.addArrangedSubview(thickSliderRow)
+        shootingStack.addArrangedSubview(brightSSLabelRow)
+        shootingStack.addArrangedSubview(brightSSSliderRow)
+        shootingStack.addArrangedSubview(hlRow)
+        shootingStack.addArrangedSubview(hlSliderRow)
+        shootingStack.addArrangedSubview(debugSpawnRow)
+        
         shootingBox.contentView?.addSubview(shootingStack)
         if let shootingContent = shootingBox.contentView {
             pinToEdges(shootingStack, in: shootingContent, inset: 12)
@@ -952,6 +1144,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         showLightAreaTextureFillMaskCheckbox?.setAccessibilityLabel("Show moon light-area texture fill mask")
         shootingStarsEnabledCheckbox.setAccessibilityLabel("Enable shooting stars")
         shootingStarsAvgSecondsField.setAccessibilityLabel("Average seconds between shooting stars")
+        shootingStarsDirectionPopup?.setAccessibilityLabel("Shooting stars direction mode")
+        shootingStarsLengthSlider?.setAccessibilityLabel("Shooting stars length in pixels")
+        shootingStarsSpeedSlider?.setAccessibilityLabel("Shooting stars speed in pixels per second")
+        shootingStarsThicknessSlider?.setAccessibilityLabel("Shooting stars thickness in pixels")
+        shootingStarsBrightnessSlider?.setAccessibilityLabel("Shooting stars brightness")
+        shootingStarsTrailHalfLifeSlider?.setAccessibilityLabel("Shooting stars trail half-life seconds")
+        shootingStarsDebugSpawnBoundsCheckbox?.setAccessibilityLabel("Show shooting stars spawn bounds debug overlay")
         satellitesEnabledCheckbox?.setAccessibilityLabel("Enable satellites layer")
         satellitesAvgSecondsField?.setAccessibilityLabel("Average seconds between satellites")
         satellitesSpeedSlider?.setAccessibilityLabel("Satellites speed pixels per second")
@@ -1600,6 +1799,22 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let phaseSlider = moonPhaseSlider, let phasePrev = moonPhasePreview {
             phasePrev.stringValue = formatPhase(phaseSlider.doubleValue)
         }
+        // Shooting stars previews
+        if let len = shootingStarsLengthSlider, let lbl = shootingStarsLengthPreview {
+            lbl.stringValue = String(format: "%.0f", len.doubleValue)
+        }
+        if let spd = shootingStarsSpeedSlider, let lbl = shootingStarsSpeedPreview {
+            lbl.stringValue = String(format: "%.0f", spd.doubleValue)
+        }
+        if let thk = shootingStarsThicknessSlider, let lbl = shootingStarsThicknessPreview {
+            lbl.stringValue = String(format: "%.2f", thk.doubleValue)
+        }
+        if let br = shootingStarsBrightnessSlider, let lbl = shootingStarsBrightnessPreview {
+            lbl.stringValue = String(format: "%.3f", br.doubleValue)
+        }
+        if let hl = shootingStarsTrailHalfLifeSlider, let lbl = shootingStarsTrailHalfLifePreview {
+            lbl.stringValue = String(format: "%.3f", hl.doubleValue)
+        }
         if let satSpeed = satellitesSpeedSlider, let lbl = satellitesSpeedPreview {
             lbl.stringValue = String(format: "%.1f", satSpeed.doubleValue)
         }
@@ -1631,9 +1846,26 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func updateShootingStarsUIEnabled() {
         let enabled = shootingStarsEnabledCheckbox.state == .on
-        shootingStarsAvgSecondsField.isEnabled = enabled
         let alpha: CGFloat = enabled ? 1.0 : 0.4
-        shootingStarsAvgSecondsField.alphaValue = alpha
+        let controls: [NSControl?] = [
+            shootingStarsAvgSecondsField,
+            shootingStarsDirectionPopup,
+            shootingStarsLengthSlider,
+            shootingStarsSpeedSlider,
+            shootingStarsThicknessSlider,
+            shootingStarsBrightnessSlider,
+            shootingStarsTrailHalfLifeSlider,
+            shootingStarsDebugSpawnBoundsCheckbox
+        ]
+        for c in controls {
+            c?.isEnabled = enabled
+            c?.alphaValue = alpha
+        }
+        shootingStarsLengthPreview?.alphaValue = alpha
+        shootingStarsSpeedPreview?.alphaValue = alpha
+        shootingStarsThicknessPreview?.alphaValue = alpha
+        shootingStarsBrightnessPreview?.alphaValue = alpha
+        shootingStarsTrailHalfLifePreview?.alphaValue = alpha
     }
     
     private func updateSatellitesUIEnabled() {
@@ -1705,6 +1937,27 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // Shooting stars
         defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         defaultsManager.shootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
+        if let popup = shootingStarsDirectionPopup {
+            defaultsManager.shootingStarsDirectionMode = popup.indexOfSelectedItem
+        }
+        if let len = shootingStarsLengthSlider {
+            defaultsManager.shootingStarsLength = len.doubleValue
+        }
+        if let spd = shootingStarsSpeedSlider {
+            defaultsManager.shootingStarsSpeed = spd.doubleValue
+        }
+        if let thk = shootingStarsThicknessSlider {
+            defaultsManager.shootingStarsThickness = thk.doubleValue
+        }
+        if let br = shootingStarsBrightnessSlider {
+            defaultsManager.shootingStarsBrightness = br.doubleValue
+        }
+        if let hl = shootingStarsTrailHalfLifeSlider {
+            defaultsManager.shootingStarsTrailHalfLifeSeconds = hl.doubleValue
+        }
+        if let dbg = shootingStarsDebugSpawnBoundsCheckbox {
+            defaultsManager.shootingStarsDebugShowSpawnBounds = (dbg.state == .on)
+        }
         
         // Satellites
         if let cb = satellitesEnabledCheckbox {
@@ -1774,6 +2027,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         parts.append("showLightAreaMask=\(showLightAreaTextureFillMaskCheckbox?.state == .on ? "true" : "false")")
         parts.append("shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)")
         parts.append("shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))")
+        if let shootingStarsDirectionPopup {
+            parts.append("shootingStarsDirectionMode=\(shootingStarsDirectionPopup.indexOfSelectedItem)")
+        } else {
+            parts.append("shootingStarsDirectionMode=nil")
+        }
+        parts.append("shootingLength=\(format(lastShootingStarsLength))")
+        parts.append("shootingSpeed=\(format(lastShootingStarsSpeed))")
+        parts.append("shootingThickness=\(format(lastShootingStarsThickness))")
+        parts.append("shootingBrightness=\(format(lastShootingStarsBrightness))")
+        parts.append("shootingTrailHL=\(format(lastShootingStarsTrailHalfLifeSeconds))")
+        parts.append("shootingDebugBounds=\(lastShootingStarsDebugSpawnBounds ? "true" : "false")")
         if let satellitesEnabledCheckbox {
             parts.append("satellitesEnabled=\(satellitesEnabledCheckbox.state == .on)")
         } else {
