@@ -19,6 +19,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     var secsBetweenClears: NSTextField?          // now visible in UI
     var buildingFrequencySlider: NSSlider?
     var buildingFrequencyPreview: NSTextField?
+    var debugOverlayEnabledCheckbox: NSSwitch?   // now visible in UI
     
     // Optional (not in simplified UI layout but retained for logic compatibility)
     var moonTraversalMinutes: NSTextField?
@@ -39,9 +40,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // Debug toggle
     var showLightAreaTextureFillMaskCheckbox: NSSwitch?
-    
-    // Debug overlay toggle
-    var debugOverlayEnabledCheckbox: NSSwitch?
     
     // Shooting Stars controls (enabled + avg seconds present)
     var shootingStarsEnabledCheckbox: NSSwitch!
@@ -212,6 +210,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let sbcField = secsBetweenClears {
             sbcField.doubleValue = defaultsManager.secsBetweenClears
         }
+        
+        debugOverlayEnabledCheckbox?.state = defaultsManager.debugOverlayEnabled ? .on : .off
+        
         moonSizePercentSlider.doubleValue = defaultsManager.moonDiameterScreenWidthPercent
         shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
         shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
@@ -228,6 +229,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
         lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
         lastSatellitesAvgSpawnSeconds = satellitesAvgSecondsField?.doubleValue ?? defaultsManager.satellitesAvgSpawnSeconds
+        lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         
         updatePreviewLabels()
         updateShootingStarsUIEnabled()
@@ -328,6 +330,20 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         bfSliderRow.spacing = 4
         bfSliderRow.translatesAutoresizingMaskIntoConstraints = false
         
+        // Debug Overlay Toggle
+        let debugOverlayRow = NSStackView()
+        debugOverlayRow.orientation = .horizontal
+        debugOverlayRow.alignment = .centerY
+        debugOverlayRow.spacing = 6
+        debugOverlayRow.translatesAutoresizingMaskIntoConstraints = false
+        let debugSwitch = NSSwitch()
+        debugSwitch.target = self
+        debugSwitch.action = #selector(debugOverlayToggled(_:))
+        self.debugOverlayEnabledCheckbox = debugSwitch
+        let debugLabel = makeLabel("Show debug overlay")
+        debugOverlayRow.addArrangedSubview(debugSwitch)
+        debugOverlayRow.addArrangedSubview(debugLabel)
+        
         generalStack.addArrangedSubview(starsRow)
         generalStack.addArrangedSubview(blRow)
         generalStack.addArrangedSubview(sbcRow)
@@ -335,6 +351,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         generalStack.addArrangedSubview(bhSliderRow)
         generalStack.addArrangedSubview(bfLabelRow)
         generalStack.addArrangedSubview(bfSliderRow)
+        generalStack.addArrangedSubview(debugOverlayRow)
         generalBox.contentView?.addSubview(generalStack)
         if let generalContent = generalBox.contentView {
             pinToEdges(generalStack, in: generalContent, inset: 12)
@@ -610,6 +627,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         secsBetweenClears?.setAccessibilityLabel("Seconds between clears")
         buildingHeightSlider?.setAccessibilityLabel("Building height fraction of screen")
         buildingFrequencySlider?.setAccessibilityLabel("Building frequency")
+        debugOverlayEnabledCheckbox?.setAccessibilityLabel("Show debug overlay")
         moonSizePercentSlider.setAccessibilityLabel("Moon size as percent of screen width")
         shootingStarsEnabledCheckbox.setAccessibilityLabel("Enable shooting stars")
         shootingStarsAvgSecondsField.setAccessibilityLabel("Average seconds between shooting stars")
@@ -1301,6 +1319,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let sbcField = secsBetweenClears {
             defaultsManager.secsBetweenClears = sbcField.doubleValue
         }
+        if let debugSwitch = debugOverlayEnabledCheckbox {
+            defaultsManager.debugOverlayEnabled = (debugSwitch.state == .on)
+        }
         
         defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         defaultsManager.shootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
@@ -1348,6 +1369,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         parts.append("secsBetweenClears=\(format(secsBetweenClears?.doubleValue ?? lastSecsBetweenClears))")
         parts.append("buildingHeight=\(format(buildingHeightSlider?.doubleValue ?? lastBuildingHeight))")
         parts.append("buildingFrequency=\(format(buildingFrequencySlider?.doubleValue ?? lastBuildingFrequency))")
+        parts.append("debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ? "true" : "false")")
         parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
         parts.append("shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)")
         parts.append("shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))")
