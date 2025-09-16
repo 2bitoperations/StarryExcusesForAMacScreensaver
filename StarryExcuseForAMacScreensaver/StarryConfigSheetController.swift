@@ -308,8 +308,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         bhSliderRow.alignment = .centerY
         bhSliderRow.spacing = 4
         bhSliderRow.translatesAutoresizingMaskIntoConstraints = false
-        // Full-width constraints
-        bhSliderRow.widthAnchor.constraint(equalTo: generalStack.widthAnchor).isActive = true
         bhSlider.leadingAnchor.constraint(equalTo: bhSliderRow.leadingAnchor).isActive = true
         bhSlider.trailingAnchor.constraint(equalTo: bhSliderRow.trailingAnchor).isActive = true
         
@@ -333,8 +331,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         bfSliderRow.alignment = .centerY
         bfSliderRow.spacing = 4
         bfSliderRow.translatesAutoresizingMaskIntoConstraints = false
-        // Full-width constraints
-        bfSliderRow.widthAnchor.constraint(equalTo: generalStack.widthAnchor).isActive = true
         bfSlider.leadingAnchor.constraint(equalTo: bfSliderRow.leadingAnchor).isActive = true
         bfSlider.trailingAnchor.constraint(equalTo: bfSliderRow.trailingAnchor).isActive = true
         
@@ -387,8 +383,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonSliderRow.alignment = .centerY
         moonSliderRow.spacing = 4
         moonSliderRow.translatesAutoresizingMaskIntoConstraints = false
-        // Full-width constraints
-        moonSliderRow.widthAnchor.constraint(equalTo: moonStack.widthAnchor).isActive = true
         moonSlider.leadingAnchor.constraint(equalTo: moonSliderRow.leadingAnchor).isActive = true
         moonSlider.trailingAnchor.constraint(equalTo: moonSliderRow.trailingAnchor).isActive = true
         moonStack.addArrangedSubview(moonLabelRow)
