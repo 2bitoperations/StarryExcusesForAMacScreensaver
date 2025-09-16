@@ -162,7 +162,7 @@ final class StarryMetalRenderer {
             return nil
         }
         self.device = device
-        self.commandQueue = device.makeCommandQueue()!
+               self.commandQueue = device.makeCommandQueue()!
         self.metalLayer = nil
         self.log = log
         
@@ -298,8 +298,9 @@ final class StarryMetalRenderer {
     
     private func processClear(userInfo ui: [AnyHashable: Any]?) {
         let target: String = (ui?["target"] as? String)?.lowercased() ?? "all"
+        let deep = (ui?["releaseMemory"] as? Bool) == true || (ui?["deep"] as? Bool) == true
         if target == "all" {
-            clearOffscreenTextures(reason: "Notification(all)")
+            clearOffscreenTextures(reason: "Notification(all)", releaseMemory: deep)
             return
         }
         guard let cb = commandQueue.makeCommandBuffer() else {
@@ -322,12 +323,15 @@ final class StarryMetalRenderer {
             clr(layerTex.shootingScratch, label: "shootingScratch")
         default:
             os_log("Clear notification: unknown target '%{public}@' — clearing ALL instead", log: log, type: .error, target)
-            clearOffscreenTextures(reason: "Notification(invalid \(target))")
+            clearOffscreenTextures(reason: "Notification(invalid \(target))", releaseMemory: deep)
             return
         }
         cb.commit()
         cb.waitUntilCompleted()
-        os_log("Clear notification: '%{public}@' complete", log: log, type: .info, target)
+        os_log("Clear notification: '%{public}@' complete (deep=%{public}@)", log: log, type: .info, target, deep ? "true" : "false")
+        if deep {
+            releaseAllGPUResources(reason: "Notification(target=\(target))")
+        }
     }
     
     private func buildPipelines() throws {
@@ -623,8 +627,8 @@ final class StarryMetalRenderer {
             clearOffscreenTextures(reason: "Allocate on render()")
         }
         if drawData.clearAll {
-            os_log("Render: Clear requested via drawData.clearAll", log: log, type: .info)
-            clearOffscreenTextures(reason: "UserClearAll")
+            os_log("Render: Clear requested via drawData.clearAll (deep release)", log: log, type: .info)
+            clearOffscreenTextures(reason: "UserClearAll", releaseMemory: true)
         }
         
         // Update engine-derived overlay flag, then recompute effective
@@ -722,8 +726,8 @@ final class StarryMetalRenderer {
             clearOffscreenTextures(reason: "Allocate on renderToImage()")
         }
         if drawData.clearAll {
-            os_log("RenderToImage: Clear requested via drawData.clearAll", log: log, type: .info)
-            clearOffscreenTextures(reason: "UserClearAll(headless)")
+            os_log("RenderToImage: Clear requested via drawData.clearAll (deep release)", log: log, type: .info)
+            clearOffscreenTextures(reason: "UserClearAll(headless)", releaseMemory: true)
         }
         ensureOffscreenComposite(size: drawData.size)
         guard let finalTarget = offscreenComposite else { return nil }
@@ -1001,12 +1005,36 @@ final class StarryMetalRenderer {
         offscreenSize = size
     }
     
-    private func clearOffscreenTextures(reason: String = "unspecified") {
-        os_log("ClearOffscreenTextures: begin (reason=%@)", log: log, type: .info, reason)
+    // Lightweight clear: zeros existing textures.
+    // If releaseMemory == true we also deallocate (nil) textures & dynamic buffers afterward.
+    private func clearOffscreenTextures(reason: String = "unspecified", releaseMemory: Bool = false) {
+        os_log("ClearOffscreenTextures: begin (reason=%@ releaseMemory=%{public}@)", log: log, type: .info, reason, releaseMemory ? "true" : "false")
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             os_log("ClearOffscreenTextures: failed to make command buffer", log: log, type: .error)
+            if releaseMemory {
+                releaseAllGPUResources(reason: reason + " (no CB)")
+            }
             return
         }
+        
+        var approxBytes: Int = 0
+        func bytes(_ t: MTLTexture?) -> Int {
+            guard let t else { return 0 }
+            return t.width * t.height * 4
+        }
+        if releaseMemory {
+            approxBytes =
+                bytes(layerTex.base) +
+                bytes(layerTex.baseScratch) +
+                bytes(layerTex.satellites) +
+                bytes(layerTex.satellitesScratch) +
+                bytes(layerTex.shooting) +
+                bytes(layerTex.shootingScratch) +
+                bytes(offscreenComposite) +
+                bytes(overlayTexture) +
+                bytes(moonAlbedoTexture)
+        }
+        
         func clear(texture: MTLTexture?) {
             guard let t = texture else { return }
             let rpd = MTLRenderPassDescriptor()
@@ -1030,10 +1058,64 @@ final class StarryMetalRenderer {
         clear(texture: layerTex.satellitesScratch)
         clear(texture: layerTex.shooting)
         clear(texture: layerTex.shootingScratch)
+        if let off = offscreenComposite {
+            clear(texture: off)
+        }
+        if let ov = overlayTexture {
+            clear(texture: ov)
+        }
+        if let moon = moonAlbedoTexture {
+            clear(texture: moon)
+        }
         
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
-        os_log("ClearOffscreenTextures: complete (reason=%@)", log: log, type: .info, reason)
+        os_log("ClearOffscreenTextures: content cleared (reason=%@)", log: log, type: .info, reason)
+        
+        if releaseMemory {
+            releaseAllGPUResources(reason: reason, approxFreedBytes: approxBytes)
+        }
+    }
+    
+    // Releases all dynamic GPU resources so memory is genuinely freed.
+    private func releaseAllGPUResources(reason: String, approxFreedBytes: Int? = nil) {
+        let freedMB: String = {
+            if let b = approxFreedBytes { return String(format: "%.2f MB", Double(b)/1_048_576.0) }
+            return "n/a"
+        }()
+        os_log("Releasing GPU resources (reason=%@ approxContentBytes=%{public}@)", log: log, type: .info, reason, freedMB)
+        
+        layerTex = LayerTextures() // sets size to .zero; forces re-alloc later
+        offscreenComposite = nil
+        offscreenSize = .zero
+        
+        overlayTexture = nil
+        overlayQuadVertexBuffer = nil
+        
+        moonAlbedoTexture = nil
+        moonAlbedoStagingTexture = nil
+        moonAlbedoNeedsBlit = false
+        moonAlbedoHasMipmaps = false
+        
+        freeSpriteBuffers()
+        
+        // When size is reset to .zero, next render() call with a non-zero drawData.size will allocate anew.
+        os_log("GPU resources released (reason=%@). Next frame will reallocate as needed.", log: log, type: .info, reason)
+    }
+    
+    private func freeSpriteBuffers() {
+        func clearSet(_ set: inout SpriteBufferSet, label: String) {
+            if set.capacity > 0 {
+                os_log("Releasing sprite buffers (%{public}@ capacity=%d)", log: log, type: .info, label, set.capacity)
+            }
+            set.staging = nil
+            set.device = nil
+            set.capacity = 0
+        }
+        clearSet(&baseSpriteBuffers, label: "base")
+        clearSet(&satellitesSpriteBuffers, label: "satellites")
+        clearSet(&shootingSpriteBuffers, label: "shooting")
+        clearSet(&otherSpriteBuffers, label: "other")
     }
     
     private func clearTexture(_ texture: MTLTexture, commandBuffer: MTLCommandBuffer, label: String) {

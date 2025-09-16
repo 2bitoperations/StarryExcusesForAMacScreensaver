@@ -89,6 +89,14 @@ class SkylineCoreRenderer {
         os_log("SkylineCoreRenderer: disableFlasherOnBase -> %{public}@", log: log, type: .info, disabled ? "true" : "false")
     }
     
+    // Deep-reset hook (currently light weight; present for parity with Metal renderer memory release)
+    func resetForMemoryRelease() {
+        starAccumulator = 0
+        buildingLightAccumulator = 0
+        frameCounter = 0
+        os_log("SkylineCoreRenderer: counters reset for memory release", log: log, type: .info)
+    }
+    
     // Generate sprite instances for this frame using time-based spawning.
     // dtSeconds: simulation time elapsed since last frame.
     func generateSprites(dtSeconds: Double) -> [SpriteInstance] {
