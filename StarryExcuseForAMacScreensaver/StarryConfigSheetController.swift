@@ -243,7 +243,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
         shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
         
-        // Satellites (all new sliders)
+        // Satellites
         satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
         satellitesAvgSecondsField?.doubleValue = defaultsManager.satellitesAvgSpawnSeconds
         
@@ -615,18 +615,18 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             tf.action = #selector(satellitesAvgSecondsChanged(_:))
         }
         
-        // Speed slider
+        // Speed slider (UPDATED range & default)
         let satSpeedLabelRow = NSStackView()
         satSpeedLabelRow.orientation = .horizontal
         satSpeedLabelRow.alignment = .firstBaseline
         satSpeedLabelRow.spacing = 4
         satSpeedLabelRow.translatesAutoresizingMaskIntoConstraints = false
         let satSpeedLabel = makeLabel("Speed (px/sec)")
-        let satSpeedPreview = makeSmallLabel("90.0")
+        let satSpeedPreview = makeSmallLabel("30.0")
         self.satellitesSpeedPreview = satSpeedPreview
         satSpeedLabelRow.addArrangedSubview(satSpeedLabel)
         satSpeedLabelRow.addArrangedSubview(satSpeedPreview)
-        let satSpeedSlider = NSSlider(value: 90.0, minValue: 10.0, maxValue: 600.0, target: self, action: #selector(satellitesSliderChanged(_:)))
+        let satSpeedSlider = NSSlider(value: 30.0, minValue: 1.0, maxValue: 100.0, target: self, action: #selector(satellitesSliderChanged(_:)))
         satSpeedSlider.translatesAutoresizingMaskIntoConstraints = false
         self.satellitesSpeedSlider = satSpeedSlider
         let satSpeedSliderRow = NSStackView(views: [satSpeedSlider])
@@ -659,18 +659,18 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satSizeSlider.leadingAnchor.constraint(equalTo: satSizeSliderRow.leadingAnchor).isActive = true
         satSizeSlider.trailingAnchor.constraint(equalTo: satSizeSliderRow.trailingAnchor).isActive = true
         
-        // Brightness slider
+        // Brightness slider (UPDATED default)
         let satBrightnessLabelRow = NSStackView()
         satBrightnessLabelRow.orientation = .horizontal
         satBrightnessLabelRow.alignment = .firstBaseline
         satBrightnessLabelRow.spacing = 4
         satBrightnessLabelRow.translatesAutoresizingMaskIntoConstraints = false
         let satBrightnessLabel = makeLabel("Brightness")
-        let satBrightnessPreview = makeSmallLabel("0.900")
+        let satBrightnessPreview = makeSmallLabel("0.500")
         self.satellitesBrightnessPreview = satBrightnessPreview
         satBrightnessLabelRow.addArrangedSubview(satBrightnessLabel)
         satBrightnessLabelRow.addArrangedSubview(satBrightnessPreview)
-        let satBrightnessSlider = NSSlider(value: 0.9, minValue: 0.2, maxValue: 1.2, target: self, action: #selector(satellitesSliderChanged(_:)))
+        let satBrightnessSlider = NSSlider(value: 0.5, minValue: 0.2, maxValue: 1.2, target: self, action: #selector(satellitesSliderChanged(_:)))
         satBrightnessSlider.translatesAutoresizingMaskIntoConstraints = false
         self.satellitesBrightnessSlider = satBrightnessSlider
         let satBrightnessSliderRow = NSStackView(views: [satBrightnessSlider])
@@ -695,18 +695,18 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satTrailingRow.addArrangedSubview(satTrailingSwitch)
         satTrailingRow.addArrangedSubview(satTrailingLabel)
         
-        // Trail half-life slider
+        // Trail half-life slider (UPDATED range & default)
         let satHLLabelRow = NSStackView()
         satHLLabelRow.orientation = .horizontal
         satHLLabelRow.alignment = .firstBaseline
         satHLLabelRow.spacing = 4
         satHLLabelRow.translatesAutoresizingMaskIntoConstraints = false
         let satHLLabel = makeLabel("Trail half-life (s)")
-        let satHLPreview = makeSmallLabel("0.180")
+        let satHLPreview = makeSmallLabel("0.100")
         self.satellitesTrailDecayPreview = satHLPreview
         satHLLabelRow.addArrangedSubview(satHLLabel)
         satHLLabelRow.addArrangedSubview(satHLPreview)
-        let satHLSlider = NSSlider(value: 0.18, minValue: 0.01, maxValue: 2.0, target: self, action: #selector(satellitesSliderChanged(_:)))
+        let satHLSlider = NSSlider(value: 0.10, minValue: 0.0, maxValue: 0.5, target: self, action: #selector(satellitesSliderChanged(_:)))
         satHLSlider.translatesAutoresizingMaskIntoConstraints = false
         self.satellitesTrailDecaySlider = satHLSlider
         let satHLSliderRow = NSStackView(views: [satHLSlider])

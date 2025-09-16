@@ -49,15 +49,15 @@ class StarryDefaultsManager {
     private let defaultShootingStarsTrailHalfLifeSeconds: Double = 0.18
     private let defaultShootingStarsDebugSpawnBounds = false
     
-    // Satellites defaults
+    // Satellites defaults (UPDATED 2025-09 per new requirements)
     private let defaultSatellitesEnabled = true
-    private let defaultSatellitesAvgSpawnSeconds = 0.75     // frequent
-    private let defaultSatellitesSpeed = 90.0               // px/sec
+    private let defaultSatellitesAvgSpawnSeconds = 0.75
+    private let defaultSatellitesSpeed = 30.0               // px/sec (was 90.0)
     private let defaultSatellitesSize = 2.0                 // px
-    private let defaultSatellitesBrightness = 0.9           // 0..1
+    private let defaultSatellitesBrightness = 0.5           // (was 0.9)
     private let defaultSatellitesTrailing = true
-    // NEW: satellites trail half-life seconds (0.01 .. 2.0)
-    private let defaultSatellitesTrailHalfLifeSeconds = 0.18
+    // Trail half-life range now 0.0 ... 0.5 (was 0.01 ... 2.0); default 0.10 (was 0.18)
+    private let defaultSatellitesTrailHalfLifeSeconds = 0.10
     
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
@@ -112,7 +112,7 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         
-        // MIGRATION: Satellites legacy conversions -> half-life
+        // MIGRATION: Satellites legacy conversions -> half-life (original migration to 0.01..2.0)
         if defaults.object(forKey: "SatellitesTrailHalfLifeSeconds") == nil {
             if let _ = defaults.object(forKey: "SatellitesTrailDecay") {
                 let v = defaults.double(forKey: "SatellitesTrailDecay")
@@ -132,11 +132,15 @@ class StarryDefaultsManager {
             }
             defaults.synchronize()
         } else {
-            let hl = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
-            let clamped = max(0.01, min(2.0, hl))
-            if clamped != hl {
-                defaults.set(clamped, forKey: "SatellitesTrailHalfLifeSeconds")
-            }
+            // Existing value: will clamp later to new range below.
+        }
+        
+        // NEW RANGE MIGRATION (2025-09): clamp satellites trail half-life to 0.0 ... 0.5 (default 0.10)
+        let oldHL = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
+        if oldHL.isNaN || oldHL < 0.0 || oldHL > 0.5 {
+            let clamped = max(0.0, min(0.5, oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : oldHL))
+            defaults.set(clamped == oldHL ? clamped : (oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : clamped),
+                         forKey: "SatellitesTrailHalfLifeSeconds")
             defaults.synchronize()
         }
         
@@ -516,13 +520,13 @@ class StarryDefaultsManager {
     
     var satellitesSpeed: Double {
         set {
-            let clamped = max(10.0, min(600.0, newValue))
+            let clamped = max(1.0, min(100.0, newValue))
             defaults.set(clamped, forKey: "SatellitesSpeed")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "SatellitesSpeed")
-            return (v >= 10.0 && v <= 600.0) ? v : defaultSatellitesSpeed
+            return (v >= 1.0 && v <= 100.0) ? v : defaultSatellitesSpeed
         }
     }
     
@@ -562,7 +566,7 @@ class StarryDefaultsManager {
     
     var satellitesTrailHalfLifeSeconds: Double {
         set {
-            let clamped = max(0.01, min(2.0, newValue))
+            let clamped = max(0.0, min(0.5, newValue))
             defaults.set(clamped, forKey: "SatellitesTrailHalfLifeSeconds")
             defaults.synchronize()
         }
@@ -571,7 +575,7 @@ class StarryDefaultsManager {
                 return defaultSatellitesTrailHalfLifeSeconds
             }
             let v = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
-            return max(0.01, min(2.0, v))
+            return max(0.0, min(0.5, v))
         }
     }
     
