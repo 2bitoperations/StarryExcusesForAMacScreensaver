@@ -33,12 +33,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     var brightBrightnessPreview: NSTextField?
     var darkBrightnessPreview: NSTextField?
     
-    // Phase override controls (not visually included in minimal rebuild, reserve placeholders)
+    // Phase override controls
     var moonPhaseOverrideCheckbox: NSSwitch?
     var moonPhaseSlider: NSSlider?
     var moonPhasePreview: NSTextField?
     
-    // Debug toggle
+    // Debug toggle (moon mask)
     var showLightAreaTextureFillMaskCheckbox: NSSwitch?
     
     // Shooting Stars controls (enabled + avg seconds present)
@@ -214,6 +214,31 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         debugOverlayEnabledCheckbox?.state = defaultsManager.debugOverlayEnabled ? .on : .off
         
         moonSizePercentSlider.doubleValue = defaultsManager.moonDiameterScreenWidthPercent
+        
+        // Moon brightness
+        if let bright = brightBrightnessSlider {
+            bright.doubleValue = defaultsManager.moonBrightBrightness
+            brightBrightnessPreview?.stringValue = String(format: "%.3f", bright.doubleValue)
+        }
+        if let dark = darkBrightnessSlider {
+            dark.doubleValue = defaultsManager.moonDarkBrightness
+            darkBrightnessPreview?.stringValue = String(format: "%.3f", dark.doubleValue)
+        }
+        
+        // Moon phase override
+        if let phaseCB = moonPhaseOverrideCheckbox {
+            phaseCB.state = defaultsManager.moonPhaseOverrideEnabled ? .on : .off
+        }
+        if let phaseSlider = moonPhaseSlider {
+            phaseSlider.doubleValue = defaultsManager.moonPhaseOverrideValue
+            moonPhasePreview?.stringValue = formatPhase(phaseSlider.doubleValue)
+        }
+        
+        // Moon mask debug
+        if let maskCB = showLightAreaTextureFillMaskCheckbox {
+            maskCB.state = defaultsManager.showLightAreaTextureFillMask ? .on : .off
+        }
+        
         shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
         shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
         satellitesEnabledCheckbox?.state = defaultsManager.satellitesEnabled ? .on : .off
@@ -225,6 +250,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastBuildingFrequency = buildingFrequencySlider?.doubleValue ?? defaultsManager.buildingFrequency
         lastSecsBetweenClears = secsBetweenClears?.doubleValue ?? defaultsManager.secsBetweenClears
         lastMoonSizePercent = moonSizePercentSlider.doubleValue
+        lastBrightBrightness = brightBrightnessSlider?.doubleValue ?? defaultsManager.moonBrightBrightness
+        lastDarkBrightness = darkBrightnessSlider?.doubleValue ?? defaultsManager.moonDarkBrightness
+        lastMoonPhaseOverrideEnabled = moonPhaseOverrideCheckbox?.state == .on ? true : defaultsManager.moonPhaseOverrideEnabled
+        lastMoonPhaseOverrideValue = moonPhaseSlider?.doubleValue ?? defaultsManager.moonPhaseOverrideValue
+        lastShowLightAreaTextureFillMask = showLightAreaTextureFillMaskCheckbox?.state == .on ? true : defaultsManager.showLightAreaTextureFillMask
         lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
         lastSatellitesEnabled = satellitesEnabledCheckbox?.state == .on
@@ -232,6 +262,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         
         updatePreviewLabels()
+        updatePhaseOverrideUIEnabled()
         updateShootingStarsUIEnabled()
         updateSatellitesUIEnabled()
         
@@ -364,6 +395,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // MOON BOX
         let moonBox = makeBox(title: "Moon")
         let moonStack = makeVStack(spacing: 8)
+        
+        // Size
         let moonLabelRow = NSStackView()
         moonLabelRow.orientation = .horizontal
         moonLabelRow.alignment = .firstBaseline
@@ -385,8 +418,113 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonSliderRow.translatesAutoresizingMaskIntoConstraints = false
         moonSlider.leadingAnchor.constraint(equalTo: moonSliderRow.leadingAnchor).isActive = true
         moonSlider.trailingAnchor.constraint(equalTo: moonSliderRow.trailingAnchor).isActive = true
+        
+        // Bright-side brightness
+        let brightRow = NSStackView()
+        brightRow.orientation = .horizontal
+        brightRow.alignment = .firstBaseline
+        brightRow.spacing = 4
+        brightRow.translatesAutoresizingMaskIntoConstraints = false
+        let brightLabel = makeLabel("Bright-side brightness")
+        let brightPreview = makeSmallLabel("1.000")
+        self.brightBrightnessPreview = brightPreview
+        brightRow.addArrangedSubview(brightLabel)
+        brightRow.addArrangedSubview(brightPreview)
+        let brightSlider = NSSlider(value: 1.0, minValue: 0.2, maxValue: 1.2, target: self, action: #selector(moonSliderChanged(_:)))
+        brightSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.brightBrightnessSlider = brightSlider
+        let brightSliderRow = NSStackView(views: [brightSlider])
+        brightSliderRow.orientation = .horizontal
+        brightSliderRow.alignment = .centerY
+        brightSliderRow.spacing = 4
+        brightSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        brightSlider.leadingAnchor.constraint(equalTo: brightSliderRow.leadingAnchor).isActive = true
+        brightSlider.trailingAnchor.constraint(equalTo: brightSliderRow.trailingAnchor).isActive = true
+        
+        // Dark-side brightness
+        let darkRow = NSStackView()
+        darkRow.orientation = .horizontal
+        darkRow.alignment = .firstBaseline
+        darkRow.spacing = 4
+        darkRow.translatesAutoresizingMaskIntoConstraints = false
+        let darkLabel = makeLabel("Dark-side brightness")
+        let darkPreview = makeSmallLabel("0.150")
+        self.darkBrightnessPreview = darkPreview
+        darkRow.addArrangedSubview(darkLabel)
+        darkRow.addArrangedSubview(darkPreview)
+        let darkSlider = NSSlider(value: 0.15, minValue: 0.0, maxValue: 0.9, target: self, action: #selector(moonSliderChanged(_:)))
+        darkSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.darkBrightnessSlider = darkSlider
+        let darkSliderRow = NSStackView(views: [darkSlider])
+        darkSliderRow.orientation = .horizontal
+        darkSliderRow.alignment = .centerY
+        darkSliderRow.spacing = 4
+        darkSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        darkSlider.leadingAnchor.constraint(equalTo: darkSliderRow.leadingAnchor).isActive = true
+        darkSlider.trailingAnchor.constraint(equalTo: darkSliderRow.trailingAnchor).isActive = true
+        
+        // Phase override enable
+        let phaseToggleRow = NSStackView()
+        phaseToggleRow.orientation = .horizontal
+        phaseToggleRow.alignment = .centerY
+        phaseToggleRow.spacing = 6
+        phaseToggleRow.translatesAutoresizingMaskIntoConstraints = false
+        let phaseSwitch = NSSwitch()
+        phaseSwitch.target = self
+        phaseSwitch.action = #selector(moonPhaseOverrideToggled(_:))
+        self.moonPhaseOverrideCheckbox = phaseSwitch
+        let phaseToggleLabel = makeLabel("Enable phase override")
+        phaseToggleRow.addArrangedSubview(phaseSwitch)
+        phaseToggleRow.addArrangedSubview(phaseToggleLabel)
+        
+        // Phase slider
+        let phaseRow = NSStackView()
+        phaseRow.orientation = .horizontal
+        phaseRow.alignment = .firstBaseline
+        phaseRow.spacing = 4
+        phaseRow.translatesAutoresizingMaskIntoConstraints = false
+        let phaseLabel = makeLabel("Phase (0..1)")
+        let phasePreview = makeSmallLabel("0.000")
+        self.moonPhasePreview = phasePreview
+        phaseRow.addArrangedSubview(phaseLabel)
+        phaseRow.addArrangedSubview(phasePreview)
+        let phaseSlider = NSSlider(value: 0.0, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(moonPhaseSliderChanged(_:)))
+        phaseSlider.translatesAutoresizingMaskIntoConstraints = false
+        self.moonPhaseSlider = phaseSlider
+        let phaseSliderRow = NSStackView(views: [phaseSlider])
+        phaseSliderRow.orientation = .horizontal
+        phaseSliderRow.alignment = .centerY
+        phaseSliderRow.spacing = 4
+        phaseSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        phaseSlider.leadingAnchor.constraint(equalTo: phaseSliderRow.leadingAnchor).isActive = true
+        phaseSlider.trailingAnchor.constraint(equalTo: phaseSliderRow.trailingAnchor).isActive = true
+        
+        // Show light-area texture fill mask (debug-ish)
+        let maskRow = NSStackView()
+        maskRow.orientation = .horizontal
+        maskRow.alignment = .centerY
+        maskRow.spacing = 6
+        maskRow.translatesAutoresizingMaskIntoConstraints = false
+        let maskSwitch = NSSwitch()
+        maskSwitch.target = self
+        maskSwitch.action = #selector(showLightAreaTextureFillMaskToggled(_:))
+        self.showLightAreaTextureFillMaskCheckbox = maskSwitch
+        let maskLabel = makeLabel("Show light-area fill mask")
+        maskRow.addArrangedSubview(maskSwitch)
+        maskRow.addArrangedSubview(maskLabel)
+        
+        // Add moon controls
         moonStack.addArrangedSubview(moonLabelRow)
         moonStack.addArrangedSubview(moonSliderRow)
+        moonStack.addArrangedSubview(brightRow)
+        moonStack.addArrangedSubview(brightSliderRow)
+        moonStack.addArrangedSubview(darkRow)
+        moonStack.addArrangedSubview(darkSliderRow)
+        moonStack.addArrangedSubview(phaseToggleRow)
+        moonStack.addArrangedSubview(phaseRow)
+        moonStack.addArrangedSubview(phaseSliderRow)
+        moonStack.addArrangedSubview(maskRow)
+        
         moonBox.contentView?.addSubview(moonStack)
         if let moonContent = moonBox.contentView {
             pinToEdges(moonStack, in: moonContent, inset: 12)
@@ -530,11 +668,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satellitesAvgSecondsField?.delegate = self
         
         // Align text fields' right edges with scroll area's right edge by constraining rows.
-        // (They already contain an internal spacer pushing the fixed-width field to the trailing edge.)
         for row in [starsRow, blRow, sbcRow] {
             row.trailingAnchor.constraint(equalTo: generalStack.trailingAnchor).isActive = true
         }
-        // Shooting stars & satellites rows
+        // Shooting stars & satellites rows alignment
         if let shootingAvgRow = shootingStarsAvgSecondsField?.superview as? NSStackView,
            let shootingParent = shootingAvgRow.superview {
             shootingAvgRow.trailingAnchor.constraint(equalTo: shootingParent.trailingAnchor).isActive = true
@@ -663,6 +800,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         buildingFrequencySlider?.setAccessibilityLabel("Building frequency")
         debugOverlayEnabledCheckbox?.setAccessibilityLabel("Show debug overlay")
         moonSizePercentSlider.setAccessibilityLabel("Moon size as percent of screen width")
+        brightBrightnessSlider?.setAccessibilityLabel("Moon bright side brightness")
+        darkBrightnessSlider?.setAccessibilityLabel("Moon dark side brightness")
+        moonPhaseOverrideCheckbox?.setAccessibilityLabel("Enable moon phase override")
+        moonPhaseSlider?.setAccessibilityLabel("Moon phase override value")
+        showLightAreaTextureFillMaskCheckbox?.setAccessibilityLabel("Show moon light-area texture fill mask")
         shootingStarsEnabledCheckbox.setAccessibilityLabel("Enable shooting stars")
         shootingStarsAvgSecondsField.setAccessibilityLabel("Average seconds between shooting stars")
         satellitesEnabledCheckbox?.setAccessibilityLabel("Enable satellites layer")
@@ -1299,6 +1441,15 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         if let bfSlider = buildingFrequencySlider, let bfPrev = buildingFrequencyPreview {
             bfPrev.stringValue = String(format: "%.3f", bfSlider.doubleValue)
         }
+        if let bright = brightBrightnessSlider, let brightPrev = brightBrightnessPreview {
+            brightPrev.stringValue = String(format: "%.3f", bright.doubleValue)
+        }
+        if let dark = darkBrightnessSlider, let darkPrev = darkBrightnessPreview {
+            darkPrev.stringValue = String(format: "%.3f", dark.doubleValue)
+        }
+        if let phaseSlider = moonPhaseSlider, let phasePrev = moonPhasePreview {
+            phasePrev.stringValue = formatPhase(phaseSlider.doubleValue)
+        }
     }
     
     private func effectivePaused() -> Bool { previewTimer == nil }
@@ -1357,6 +1508,23 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             defaultsManager.debugOverlayEnabled = (debugSwitch.state == .on)
         }
         
+        // Moon extras
+        if let bright = brightBrightnessSlider {
+            defaultsManager.moonBrightBrightness = bright.doubleValue
+        }
+        if let dark = darkBrightnessSlider {
+            defaultsManager.moonDarkBrightness = dark.doubleValue
+        }
+        if let phaseCB = moonPhaseOverrideCheckbox {
+            defaultsManager.moonPhaseOverrideEnabled = (phaseCB.state == .on)
+        }
+        if let phaseSlider = moonPhaseSlider {
+            defaultsManager.moonPhaseOverrideValue = phaseSlider.doubleValue
+        }
+        if let maskCB = showLightAreaTextureFillMaskCheckbox {
+            defaultsManager.showLightAreaTextureFillMask = (maskCB.state == .on)
+        }
+        
         defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         defaultsManager.shootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
         
@@ -1405,6 +1573,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         parts.append("buildingFrequency=\(format(buildingFrequencySlider?.doubleValue ?? lastBuildingFrequency))")
         parts.append("debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ? "true" : "false")")
         parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
+        parts.append("moonBright=\(format(brightBrightnessSlider?.doubleValue ?? lastBrightBrightness))")
+        parts.append("moonDark=\(format(darkBrightnessSlider?.doubleValue ?? lastDarkBrightness))")
+        parts.append("moonPhaseOverrideEnabled=\(moonPhaseOverrideCheckbox?.state == .on ? "true" : "false")")
+        parts.append("moonPhaseOverrideValue=\(format(moonPhaseSlider?.doubleValue ?? lastMoonPhaseOverrideValue))")
+        parts.append("showLightAreaMask=\(showLightAreaTextureFillMaskCheckbox?.state == .on ? "true" : "false")")
         parts.append("shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)")
         parts.append("shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))")
         if let satellitesEnabledCheckbox {
