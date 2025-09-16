@@ -20,6 +20,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     var buildingFrequencySlider: NSSlider?
     var buildingFrequencyPreview: NSTextField?
     var debugOverlayEnabledCheckbox: NSSwitch?   // now visible in UI
+    var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch?   // moved to General section
     
     // Optional (not in simplified UI layout but retained for logic compatibility)
     var moonTraversalMinutes: NSTextField?
@@ -41,7 +42,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // Debug toggle (moon mask)
     var showLightAreaTextureFillMaskCheckbox: NSSwitch?
     
-    // Shooting Stars controls (now fully present)
+    // Shooting Stars controls
     var shootingStarsEnabledCheckbox: NSSwitch!
     var shootingStarsAvgSecondsField: NSTextField!
     var shootingStarsDirectionPopup: NSPopUpButton?
@@ -58,9 +59,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     var shootingStarsBrightnessPreview: NSTextField?
     var shootingStarsTrailDecayPreview: NSTextField?
     var shootingStarsTrailHalfLifePreview: NSTextField? { shootingStarsTrailDecayPreview }
-    var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch?
     
-    // Satellites controls (enable + avg seconds present; now adding all)
+    // Satellites controls
     var satellitesEnabledCheckbox: NSSwitch?
     var satellitesAvgSecondsField: NSTextField?
     var satellitesPerMinuteSlider: NSSlider?
@@ -265,6 +265,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             hl.doubleValue = defaultsManager.shootingStarsTrailHalfLifeSeconds
             shootingStarsTrailHalfLifePreview?.stringValue = String(format: "%.3f", hl.doubleValue)
         }
+        
+        // Spawn bounds (now general)
         shootingStarsDebugSpawnBoundsCheckbox?.state = defaultsManager.shootingStarsDebugShowSpawnBounds ? .on : .off
         
         // Satellites
@@ -439,6 +441,20 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         debugOverlayRow.addArrangedSubview(debugSwitch)
         debugOverlayRow.addArrangedSubview(debugLabel)
         
+        // Spawn bounds (moved from Shooting Stars, renamed)
+        let spawnBoundsRow = NSStackView()
+        spawnBoundsRow.orientation = .horizontal
+        spawnBoundsRow.alignment = .centerY
+        spawnBoundsRow.spacing = 6
+        spawnBoundsRow.translatesAutoresizingMaskIntoConstraints = false
+        let spawnBoundsSwitch = NSSwitch()
+        spawnBoundsSwitch.target = self
+        spawnBoundsSwitch.action = #selector(shootingStarsDebugSpawnBoundsToggled(_:))
+        self.shootingStarsDebugSpawnBoundsCheckbox = spawnBoundsSwitch
+        let spawnBoundsLabel = makeLabel("Show satellite/shooting star spawn bounds")
+        spawnBoundsRow.addArrangedSubview(spawnBoundsSwitch)
+        spawnBoundsRow.addArrangedSubview(spawnBoundsLabel)
+        
         generalStack.addArrangedSubview(starsRow)
         generalStack.addArrangedSubview(blRow)
         generalStack.addArrangedSubview(sbcRow)
@@ -447,6 +463,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         generalStack.addArrangedSubview(bfLabelRow)
         generalStack.addArrangedSubview(bfSliderRow)
         generalStack.addArrangedSubview(debugOverlayRow)
+        generalStack.addArrangedSubview(spawnBoundsRow)
         generalBox.contentView?.addSubview(generalStack)
         if let generalContent = generalBox.contentView {
             pinToEdges(generalStack, in: generalContent, inset: 12)
@@ -702,7 +719,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         thickSlider.leadingAnchor.constraint(equalTo: thickSliderRow.leadingAnchor).isActive = true
         thickSlider.trailingAnchor.constraint(equalTo: thickSliderRow.trailingAnchor).isActive = true
         
-        // Brightness slider (updated range 0.0 - 1.0, default 0.2)
+        // Brightness slider
         let brightSSLabelRow = NSStackView()
         brightSSLabelRow.orientation = .horizontal
         brightSSLabelRow.alignment = .firstBaseline
@@ -746,20 +763,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         hlSlider.leadingAnchor.constraint(equalTo: hlSliderRow.leadingAnchor).isActive = true
         hlSlider.trailingAnchor.constraint(equalTo: hlSliderRow.trailingAnchor).isActive = true
         
-        // Debug spawn bounds
-        let debugSpawnRow = NSStackView()
-        debugSpawnRow.orientation = .horizontal
-        debugSpawnRow.alignment = .centerY
-        debugSpawnRow.spacing = 6
-        debugSpawnRow.translatesAutoresizingMaskIntoConstraints = false
-        let dbgSpawnSwitch = NSSwitch()
-        dbgSpawnSwitch.target = self
-        dbgSpawnSwitch.action = #selector(shootingStarsDebugSpawnBoundsToggled(_:))
-        self.shootingStarsDebugSpawnBoundsCheckbox = dbgSpawnSwitch
-        let dbgSpawnLabel = makeLabel("Show spawn bounds (debug)")
-        debugSpawnRow.addArrangedSubview(dbgSpawnSwitch)
-        debugSpawnRow.addArrangedSubview(dbgSpawnLabel)
-        
         shootingStack.addArrangedSubview(shootingEnableRow)
         shootingStack.addArrangedSubview(shootingAvgRow)
         shootingStack.addArrangedSubview(dirRow)
@@ -773,7 +776,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStack.addArrangedSubview(brightSSSliderRow)
         shootingStack.addArrangedSubview(hlRow)
         shootingStack.addArrangedSubview(hlSliderRow)
-        shootingStack.addArrangedSubview(debugSpawnRow)
         
         shootingBox.contentView?.addSubview(shootingStack)
         if let shootingContent = shootingBox.contentView {
@@ -807,7 +809,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             tf.action = #selector(satellitesAvgSecondsChanged(_:))
         }
         
-        // Speed slider (UPDATED range & default)
+        // Speed slider
         let satSpeedLabelRow = NSStackView()
         satSpeedLabelRow.orientation = .horizontal
         satSpeedLabelRow.alignment = .firstBaseline
@@ -851,7 +853,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satSizeSlider.leadingAnchor.constraint(equalTo: satSizeSliderRow.leadingAnchor).isActive = true
         satSizeSlider.trailingAnchor.constraint(equalTo: satSizeSliderRow.trailingAnchor).isActive = true
         
-        // Brightness slider (UPDATED default)
+        // Brightness slider
         let satBrightnessLabelRow = NSStackView()
         satBrightnessLabelRow.orientation = .horizontal
         satBrightnessLabelRow.alignment = .firstBaseline
@@ -887,7 +889,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satTrailingRow.addArrangedSubview(satTrailingSwitch)
         satTrailingRow.addArrangedSubview(satTrailingLabel)
         
-        // Trail half-life slider (UPDATED range & default)
+        // Trail half-life slider
         let satHLLabelRow = NSStackView()
         satHLLabelRow.orientation = .horizontal
         satHLLabelRow.alignment = .firstBaseline
@@ -1136,6 +1138,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         buildingHeightSlider?.setAccessibilityLabel("Building height fraction of screen")
         buildingFrequencySlider?.setAccessibilityLabel("Building frequency")
         debugOverlayEnabledCheckbox?.setAccessibilityLabel("Show debug overlay")
+        shootingStarsDebugSpawnBoundsCheckbox?.setAccessibilityLabel("Show satellite and shooting star spawn bounds")
         moonSizePercentSlider.setAccessibilityLabel("Moon size as percent of screen width")
         brightBrightnessSlider?.setAccessibilityLabel("Moon bright side brightness")
         darkBrightnessSlider?.setAccessibilityLabel("Moon dark side brightness")
@@ -1150,7 +1153,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingStarsThicknessSlider?.setAccessibilityLabel("Shooting stars thickness in pixels")
         shootingStarsBrightnessSlider?.setAccessibilityLabel("Shooting stars brightness")
         shootingStarsTrailHalfLifeSlider?.setAccessibilityLabel("Shooting stars trail half-life seconds")
-        shootingStarsDebugSpawnBoundsCheckbox?.setAccessibilityLabel("Show shooting stars spawn bounds debug overlay")
         satellitesEnabledCheckbox?.setAccessibilityLabel("Enable satellites layer")
         satellitesAvgSecondsField?.setAccessibilityLabel("Average seconds between satellites")
         satellitesSpeedSlider?.setAccessibilityLabel("Satellites speed pixels per second")
@@ -1854,8 +1856,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             shootingStarsSpeedSlider,
             shootingStarsThicknessSlider,
             shootingStarsBrightnessSlider,
-            shootingStarsTrailHalfLifeSlider,
-            shootingStarsDebugSpawnBoundsCheckbox
+            shootingStarsTrailHalfLifeSlider
+            // (spawn bounds checkbox now in General section; always enabled)
         ]
         for c in controls {
             c?.isEnabled = enabled
@@ -2019,6 +2021,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         parts.append("buildingHeight=\(format(buildingHeightSlider?.doubleValue ?? lastBuildingHeight))")
         parts.append("buildingFrequency=\(format(buildingFrequencySlider?.doubleValue ?? lastBuildingFrequency))")
         parts.append("debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ? "true" : "false")")
+        parts.append("spawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox?.state == .on ? "true" : "false")")
         parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
         parts.append("moonBright=\(format(brightBrightnessSlider?.doubleValue ?? lastBrightBrightness))")
         parts.append("moonDark=\(format(darkBrightnessSlider?.doubleValue ?? lastDarkBrightness))")
