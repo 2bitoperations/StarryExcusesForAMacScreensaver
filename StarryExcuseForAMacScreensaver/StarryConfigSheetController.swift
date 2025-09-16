@@ -14,10 +14,10 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // General section (authoritative stars-per-second)
     var starsPerSecond: NSTextField!
     var buildingLightsPerSecond: NSTextField!
-    
-    // Optional (not in simplified UI layout but retained for logic compatibility)
     var buildingHeightSlider: NSSlider?
     var buildingHeightPreview: NSTextField?
+    
+    // Optional (not in simplified UI layout but retained for logic compatibility)
     var secsBetweenClears: NSTextField?
     var moonTraversalMinutes: NSTextField?
     
@@ -201,6 +201,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // Load defaults into UI
         starsPerSecond.integerValue = Int(round(defaultsManager.starsPerSecond))
         buildingLightsPerSecond.doubleValue = defaultsManager.buildingLightsPerSecond
+        if let bhSlider = buildingHeightSlider {
+            bhSlider.doubleValue = defaultsManager.buildingHeight
+        }
+        if let bhPrev = buildingHeightPreview, let bhSlider = buildingHeightSlider {
+            bhPrev.stringValue = String(format: "%.2f%%", bhSlider.doubleValue * 100.0)
+        }
         moonSizePercentSlider.doubleValue = defaultsManager.moonDiameterScreenWidthPercent
         shootingStarsEnabledCheckbox.state = defaultsManager.shootingStarsEnabled ? .on : .off
         shootingStarsAvgSecondsField.doubleValue = defaultsManager.shootingStarsAvgSeconds
@@ -210,6 +216,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         // Snapshot last-known
         lastStarsPerSecond = starsPerSecond.integerValue
         lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
+        lastBuildingHeight = buildingHeightSlider?.doubleValue ?? defaultsManager.buildingHeight
         lastMoonSizePercent = moonSizePercentSlider.doubleValue
         lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
@@ -270,8 +277,31 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             self.buildingLightsPerSecond = tf
         }
         
+        // Building Height Slider (0.0 - 1.0)
+        let bhLabelRow = NSStackView()
+        bhLabelRow.orientation = .horizontal
+        bhLabelRow.alignment = .firstBaseline
+        bhLabelRow.spacing = 4
+        bhLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let bhLabel = makeLabel("Building height (% of screen height)")
+        let bhPreview = makeSmallLabel("0.00%")
+        self.buildingHeightPreview = bhPreview
+        bhLabelRow.addArrangedSubview(bhLabel)
+        bhLabelRow.addArrangedSubview(bhPreview)
+        let bhSlider = NSSlider(value: 0.35, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(buildingHeightChanged(_:)))
+        bhSlider.translatesAutoresizingMaskIntoConstraints = false
+        bhSlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        self.buildingHeightSlider = bhSlider
+        let bhSliderRow = NSStackView(views: [bhSlider])
+        bhSliderRow.orientation = .horizontal
+        bhSliderRow.alignment = .centerY
+        bhSliderRow.spacing = 4
+        bhSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        
         generalStack.addArrangedSubview(starsRow)
         generalStack.addArrangedSubview(blRow)
+        generalStack.addArrangedSubview(bhLabelRow)
+        generalStack.addArrangedSubview(bhSliderRow)
         generalBox.contentView?.addSubview(generalStack)
         if let generalContent = generalBox.contentView {
             pinToEdges(generalStack, in: generalContent, inset: 12)
@@ -543,6 +573,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func applyAccessibility() {
         starsPerSecond.setAccessibilityLabel("Stars per second")
         buildingLightsPerSecond.setAccessibilityLabel("Building lights per second")
+        buildingHeightSlider?.setAccessibilityLabel("Building height fraction of screen")
         moonSizePercentSlider.setAccessibilityLabel("Moon size as percent of screen width")
         shootingStarsEnabledCheckbox.setAccessibilityLabel("Enable shooting stars")
         shootingStarsAvgSecondsField.setAccessibilityLabel("Average seconds between shooting stars")
@@ -658,7 +689,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         guard let slider = buildingHeightSlider else { return }
         let oldVal = lastBuildingHeight
         let newVal = slider.doubleValue
-        buildingHeightPreview?.stringValue = String(format: "%.3f", newVal)
+        buildingHeightPreview?.stringValue = String(format: "%.2f%%", newVal * 100.0)
         if oldVal != newVal {
             logChange(changedKey: "buildingHeight", oldValue: format(oldVal), newValue: format(newVal))
             lastBuildingHeight = newVal
@@ -1162,6 +1193,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func updatePreviewLabels() {
         let percent = moonSizePercentSlider.doubleValue * 100.0
         moonSizePercentPreview.stringValue = String(format: "%.2f%%", percent)
+        if let bhSlider = buildingHeightSlider, let bhPrev = buildingHeightPreview {
+            bhPrev.stringValue = String(format: "%.2f%%", bhSlider.doubleValue * 100.0)
+        }
     }
     
     private func effectivePaused() -> Bool { previewTimer == nil }
@@ -1207,6 +1241,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         defaultsManager.starsPerSecond = Double(starsPerSecond.integerValue)
         defaultsManager.buildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         defaultsManager.moonDiameterScreenWidthPercent = moonSizePercentSlider.doubleValue
+        if let bh = buildingHeightSlider {
+            defaultsManager.buildingHeight = bh.doubleValue
+        }
         
         defaultsManager.shootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         defaultsManager.shootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
@@ -1251,6 +1288,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         var parts: [String] = []
         parts.append("starsPerSecond=\(starsPerSecond.integerValue)")
         parts.append("buildingLightsPerSecond=\(format(buildingLightsPerSecond.doubleValue))")
+        parts.append("buildingHeight=\(format(buildingHeightSlider?.doubleValue ?? lastBuildingHeight))")
         parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
         parts.append("shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)")
         parts.append("shootingStarsAvgSeconds=\(format(shootingStarsAvgSecondsField.doubleValue))")
