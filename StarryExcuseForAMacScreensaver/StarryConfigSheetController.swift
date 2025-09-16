@@ -286,7 +286,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lastSatellitesSpeed = satellitesSpeedSlider?.doubleValue ?? defaultsManager.satellitesSpeed
         lastSatellitesSize = satellitesSizeSlider?.doubleValue ?? defaultsManager.satellitesSize
         lastSatellitesBrightness = satellitesBrightnessSlider?.doubleValue ?? defaultsManager.satellitesBrightness
-        lastSatellitesTrailing = satellitesTrailingCheckbox?.state == .on ?? defaultsManager.satellitesTrailing
+        lastSatellitesTrailing = satellitesTrailingCheckbox?.state == .on
         lastSatellitesTrailHalfLifeSeconds = satellitesTrailHalfLifeSlider?.doubleValue ?? defaultsManager.satellitesTrailHalfLifeSeconds
         lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         
