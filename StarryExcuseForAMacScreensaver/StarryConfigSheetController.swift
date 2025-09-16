@@ -301,13 +301,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         bhLabelRow.addArrangedSubview(bhPreview)
         let bhSlider = NSSlider(value: 0.35, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(buildingHeightChanged(_:)))
         bhSlider.translatesAutoresizingMaskIntoConstraints = false
-        bhSlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        bhSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.buildingHeightSlider = bhSlider
         let bhSliderRow = NSStackView(views: [bhSlider])
         bhSliderRow.orientation = .horizontal
         bhSliderRow.alignment = .centerY
         bhSliderRow.spacing = 4
         bhSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        // Full-width constraints
+        bhSliderRow.widthAnchor.constraint(equalTo: generalStack.widthAnchor).isActive = true
+        bhSlider.leadingAnchor.constraint(equalTo: bhSliderRow.leadingAnchor).isActive = true
+        bhSlider.trailingAnchor.constraint(equalTo: bhSliderRow.trailingAnchor).isActive = true
         
         // Building Frequency Slider
         let bfLabelRow = NSStackView()
@@ -322,13 +326,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         bfLabelRow.addArrangedSubview(bfPreview)
         let bfSlider = NSSlider(value: 0.033, minValue: 0.001, maxValue: 1.0, target: self, action: #selector(buildingFrequencyChanged(_:)))
         bfSlider.translatesAutoresizingMaskIntoConstraints = false
-        bfSlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        bfSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.buildingFrequencySlider = bfSlider
         let bfSliderRow = NSStackView(views: [bfSlider])
         bfSliderRow.orientation = .horizontal
         bfSliderRow.alignment = .centerY
         bfSliderRow.spacing = 4
         bfSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        // Full-width constraints
+        bfSliderRow.widthAnchor.constraint(equalTo: generalStack.widthAnchor).isActive = true
+        bfSlider.leadingAnchor.constraint(equalTo: bfSliderRow.leadingAnchor).isActive = true
+        bfSlider.trailingAnchor.constraint(equalTo: bfSliderRow.trailingAnchor).isActive = true
         
         // Debug Overlay Toggle
         let debugOverlayRow = NSStackView()
@@ -372,13 +380,17 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonLabelRow.addArrangedSubview(moonSizePreview)
         let moonSlider = NSSlider(value: 0.02, minValue: 0.001, maxValue: 0.25, target: self, action: #selector(moonSliderChanged(_:)))
         moonSlider.translatesAutoresizingMaskIntoConstraints = false
-        moonSlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        moonSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.moonSizePercentSlider = moonSlider
         let moonSliderRow = NSStackView(views: [moonSlider])
         moonSliderRow.orientation = .horizontal
         moonSliderRow.alignment = .centerY
         moonSliderRow.spacing = 4
         moonSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        // Full-width constraints
+        moonSliderRow.widthAnchor.constraint(equalTo: moonStack.widthAnchor).isActive = true
+        moonSlider.leadingAnchor.constraint(equalTo: moonSliderRow.leadingAnchor).isActive = true
+        moonSlider.trailingAnchor.constraint(equalTo: moonSliderRow.trailingAnchor).isActive = true
         moonStack.addArrangedSubview(moonLabelRow)
         moonStack.addArrangedSubview(moonSliderRow)
         moonBox.contentView?.addSubview(moonStack)
