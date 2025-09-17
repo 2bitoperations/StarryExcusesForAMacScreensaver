@@ -9,6 +9,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     weak var view: StarryExcuseForAView?
     private var log: OSLog?
     
+    // Keep a reference to the left scroll view so we can force initial scroll position.
+    private var leftScrollView: NSScrollView?
+    
     // MARK: - Former IBOutlets (now programmatically created)
     
     // General section (authoritative stars-per-second)
@@ -348,6 +351,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         scroll.hasVerticalScroller = true
         scroll.borderType = .noBorder
         scroll.drawsBackground = false
+        self.leftScrollView = scroll
         
         let docView = NSView()
         docView.frame = NSRect(x: 0, y: 0, width: leftWidth, height: 800)
@@ -1120,9 +1124,26 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         contentView.layoutSubtreeIfNeeded()
         
+        // Ensure initial scroll position is at the very top so "General" section is visible.
+        DispatchQueue.main.async { [weak self] in
+            self?.scrollLeftPaneToTop()
+        }
+        
         if let log = log {
             os_log("buildUI completed (sections=%{public}d)", log: log, type: .info, sectionsStack.arrangedSubviews.count)
         }
+    }
+    
+    // Scroll helper to force the left pane to the top.
+    private func scrollLeftPaneToTop() {
+        guard let scrollView = leftScrollView,
+              let doc = scrollView.documentView else { return }
+        scrollView.layoutSubtreeIfNeeded()
+        let clip = scrollView.contentView
+        let maxY = max(0, doc.bounds.height - clip.bounds.height)
+        let topPoint = NSPoint(x: 0, y: maxY)
+        clip.scroll(to: topPoint)
+        scrollView.reflectScrolledClipView(clip)
     }
     
     // MARK: - View Builders
