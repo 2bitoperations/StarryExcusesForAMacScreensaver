@@ -148,14 +148,16 @@ class StarryDefaultsManager {
         return v
     }
     
-    private func setClampedDouble(_ value: Double, key: String, min: Double, max: Double) {
-        let clamped = max(min, min(max, value))
+    // NOTE: Parameter names previously shadowed global min/max and caused 'Cannot call value of non-function type' build errors.
+    // Use distinct internal names and qualify global functions with Swift.
+    private func setClampedDouble(_ value: Double, key: String, min lower: Double, max upper: Double) {
+        let clamped = Swift.max(lower, Swift.min(upper, value))
         defaults.set(clamped, forKey: key)
         defaults.synchronize()
     }
     
-    private func setClampedInt(_ value: Int, key: String, min: Int, max: Int) {
-        let clamped = max(min, min(max, value))
+    private func setClampedInt(_ value: Int, key: String, min lower: Int, max upper: Int) {
+        let clamped = Swift.max(lower, Swift.min(upper, value))
         defaults.set(clamped, forKey: key)
         defaults.synchronize()
     }
@@ -187,9 +189,9 @@ class StarryDefaultsManager {
             if let _ = defaults.object(forKey: "ShootingStarsTrailDecay") {
                 let factor = defaults.double(forKey: "ShootingStarsTrailDecay")
                 let fps = 60.0
-                let f = max(0.0001, min(0.9999, factor))
-                let hl = max(Self.shootingStarsTrailHalfLifeMin,
-                             min(Self.shootingStarsTrailHalfLifeMax,
+                let f = Swift.max(0.0001, Swift.min(0.9999, factor))
+                let hl = Swift.max(Self.shootingStarsTrailHalfLifeMin,
+                             Swift.min(Self.shootingStarsTrailHalfLifeMax,
                                  log(0.5) / (fps * log(f))))
                 defaults.set(hl, forKey: "ShootingStarsTrailHalfLifeSeconds")
             } else {
@@ -198,8 +200,8 @@ class StarryDefaultsManager {
             defaults.synchronize()
         } else {
             let hl = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
-            let clamped = max(Self.shootingStarsTrailHalfLifeMin,
-                              min(Self.shootingStarsTrailHalfLifeMax, hl))
+            let clamped = Swift.max(Self.shootingStarsTrailHalfLifeMin,
+                              Swift.min(Self.shootingStarsTrailHalfLifeMax, hl))
             if clamped != hl {
                 defaults.set(clamped, forKey: "ShootingStarsTrailHalfLifeSeconds")
             }
@@ -212,12 +214,12 @@ class StarryDefaultsManager {
                 var hl: Double
                 if v > 0.0 && v <= 1.0 {
                     let fps = 60.0
-                    let f = max(0.0001, min(0.9999, v))
-                    hl = max(Self.shootingStarsTrailHalfLifeMin, min(Self.shootingStarsTrailHalfLifeMax, log(0.5) / (fps * log(f))))
+                    let f = Swift.max(0.0001, Swift.min(0.9999, v))
+                    hl = Swift.max(Self.shootingStarsTrailHalfLifeMin, Swift.min(Self.shootingStarsTrailHalfLifeMax, log(0.5) / (fps * log(f))))
                 } else {
-                    let t = max(0.01, min(120.0, v))
+                    let t = Swift.max(0.01, Swift.min(120.0, v))
                     hl = t * log(2.0) / log(100.0)
-                    hl = max(Self.shootingStarsTrailHalfLifeMin, min(Self.shootingStarsTrailHalfLifeMax, hl))
+                    hl = Swift.max(Self.shootingStarsTrailHalfLifeMin, Swift.min(Self.shootingStarsTrailHalfLifeMax, hl))
                 }
                 defaults.set(hl, forKey: "SatellitesTrailHalfLifeSeconds")
             } else {
@@ -228,8 +230,8 @@ class StarryDefaultsManager {
         
         let oldHL = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
         if oldHL.isNaN || oldHL < Self.satellitesTrailHalfLifeMin || oldHL > Self.satellitesTrailHalfLifeMax {
-            let clamped = max(Self.satellitesTrailHalfLifeMin,
-                              min(Self.satellitesTrailHalfLifeMax,
+            let clamped = Swift.max(Self.satellitesTrailHalfLifeMin,
+                              Swift.min(Self.satellitesTrailHalfLifeMax,
                                   oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : oldHL))
             defaults.set(clamped == oldHL ? clamped : (oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : clamped),
                          forKey: "SatellitesTrailHalfLifeSeconds")
@@ -238,7 +240,7 @@ class StarryDefaultsManager {
         
         if defaults.object(forKey: "StarsPerSecond") == nil {
             if defaults.object(forKey: "StarsPerUpdate") != nil {
-                let legacy = max(0, defaults.integer(forKey: "StarsPerUpdate"))
+                let legacy = Swift.max(0, defaults.integer(forKey: "StarsPerUpdate"))
                 defaults.set(Double(legacy) * 10.0, forKey: "StarsPerSecond")
             } else {
                 defaults.set(defaultStarsPerSecond, forKey: "StarsPerSecond")
@@ -248,7 +250,7 @@ class StarryDefaultsManager {
         
         if defaults.object(forKey: "BuildingLightsPerSecond") == nil {
             if defaults.object(forKey: "BuildingLightsPerUpdate") != nil {
-                let legacy = max(0, defaults.integer(forKey: "BuildingLightsPerUpdate"))
+                let legacy = Swift.max(0, defaults.integer(forKey: "BuildingLightsPerUpdate"))
                 defaults.set(Double(legacy) * 10.0, forKey: "BuildingLightsPerSecond")
             } else {
                 defaults.set(defaultBuildingLightsPerSecond, forKey: "BuildingLightsPerSecond")
@@ -261,7 +263,7 @@ class StarryDefaultsManager {
     
     var starsPerSecond: Double {
         set {
-            let v = max(Self.starsPerSecondMin, newValue)
+            let v = Swift.max(Self.starsPerSecondMin, newValue)
             defaults.set(v, forKey: "StarsPerSecond")
             // Keep legacy key in sync (rounded)
             defaults.set(Int(round(v / 10.0)), forKey: "StarsPerUpdate")
@@ -281,7 +283,7 @@ class StarryDefaultsManager {
     
     var starsPerUpdate: Int {
         set {
-            let val = max(0, newValue)
+            let val = Swift.max(0, newValue)
             defaults.set(val, forKey: "StarsPerUpdate")
             defaults.set(Double(val) * 10.0, forKey: "StarsPerSecond")
             defaults.synchronize()
@@ -291,13 +293,13 @@ class StarryDefaultsManager {
                 return v
             }
             // derive from starsPerSecond (which already defends)
-            return Int(max(0, round(starsPerSecond / 10.0)))
+            return Int(Swift.max(0, round(starsPerSecond / 10.0)))
         }
     }
     
     var buildingLightsPerUpdate: Int {
         set {
-            let v = max(0, newValue)
+            let v = Swift.max(0, newValue)
             defaults.set(v, forKey: "BuildingLightsPerUpdate")
             defaults.synchronize()
         }
@@ -311,7 +313,7 @@ class StarryDefaultsManager {
     
     var buildingLightsPerSecond: Double {
         set {
-            let v = max(Self.buildingLightsPerSecondMin, newValue)
+            let v = Swift.max(Self.buildingLightsPerSecondMin, newValue)
             defaults.set(v, forKey: "BuildingLightsPerSecond")
             defaults.synchronize()
         }
@@ -337,7 +339,7 @@ class StarryDefaultsManager {
     
     var secsBetweenClears: Double {
         set {
-            let v = max(Self.secsBetweenClearsMin, newValue)
+            let v = Swift.max(Self.secsBetweenClearsMin, newValue)
             defaults.set(v, forKey: "SecsBetweenClears")
             defaults.synchronize()
         }
