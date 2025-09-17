@@ -582,8 +582,6 @@ final class StarryEngine {
                                     waxingSign: waxSign)
         }
 
-        let logEveryFrame = config.debugOverlayEnabled || config.debugLogEveryFrame
-        let periodicLogThisFrame = (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
         let logThisFrame2 = logEveryFrame || (verboseLogging && periodicLogThisFrame)
         if logThisFrame2 {
             os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f showSpawnBounds=%{public}@",

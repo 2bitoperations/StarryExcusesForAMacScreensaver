@@ -580,7 +580,7 @@ final class StarryMetalRenderer {
             }
             staging.label = "MoonAlbedo (staging)"
             
-            var bytesPerRow = width
+            let bytesPerRow = width
             var uploadBytes: [UInt8]
             if let provider = image.dataProvider, let data = provider.data,
                image.bitsPerPixel == 8,
