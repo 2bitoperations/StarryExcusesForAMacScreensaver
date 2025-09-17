@@ -28,7 +28,18 @@ class StarryExcuseForAView: ScreenSaverView {
     private var engine: StarryEngine?
     private var traceEnabled: Bool
     private var frameIndex: UInt64 = 0
-    private var stoppedRunning: Bool = false   // Tracks whether stopAnimation has been invoked
+    private var stoppedRunning: Bool = false   // Tracks whether stopAnimation has been invoked (legacy path)
+    
+    // New: inferred visibility / availability state (to cope with macOS Tahoe not calling stopAnimation / notifications)
+    private var rendererDrawableAvailable: Bool = true
+    private var lastVisibilityCheckFrame: UInt64 = 0
+    private var lastVisibilityState: Bool = true
+    private var invisibleConsecutiveFrames: UInt64 = 0
+    private var invisibilityBeganTime: CFTimeInterval?
+    private var resourcesReleasedWhileInvisible: Bool = false
+    private let visibilityLightSkipThresholdFrames: UInt64 = 2          // start skipping heavy work almost immediately
+    private let visibilityReleaseResourcesThresholdSeconds: Double = 3.0 // after this many seconds invisible, release GPU
+    private var pendingVisibilityReinit: Bool = false
     
     // Explicit list of additional (non-stop) screensaver distributed notifications we want to observe.
     // We CANNOT use name: nil with DistributedNotificationCenter inside the sandbox; macOS will log:
@@ -96,6 +107,31 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         frameIndex &+= 1
+        
+        // Update / infer visibility each frame (or at least every few frames) to handle Tahoe changes
+        inferVisibilityState(frameIndex: frameIndex)
+        
+        // If not visible (or renderer not producing drawables) we skip heavy work.
+        if !shouldRenderCurrentFrame() {
+            if defaultsManager.debugOverlayEnabled && (frameIndex <= 5 || frameIndex % 120 == 0) {
+                os_log("animateOneFrame[#%{public}llu] skipped (invisible=%{public}@ drawableAvail=%{public}@ released=%{public}@)",
+                       log: log!, type: .info,
+                       frameIndex,
+                       lastVisibilityState ? "false" : "true",
+                       rendererDrawableAvailable ? "true" : "false",
+                       resourcesReleasedWhileInvisible ? "true" : "false")
+            }
+            return
+        }
+        
+        // If we became visible and resources were previously released, ensure they are recreated.
+        if pendingVisibilityReinit {
+            pendingVisibilityReinit = false
+            if resourcesReleasedWhileInvisible {
+                os_log("Visibility restored: recreating resources before rendering frame #%{public}llu", log: log!, type: .info, frameIndex)
+                recreateResourcesIfNeeded()
+            }
+        }
         
         // All animateOneFrame logging is now gated by debugOverlayEnabled.
         // We keep a reduced cadence: first 5 frames and then every 60th frame for routine status,
@@ -188,6 +224,7 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     override func stopAnimation() {
+        // NOTE: On macOS Tahoe this may no longer be called. Retained for backward compatibility.
         os_log("stopAnimation called", log: log!, type: .info)
         stoppedRunning = true
         super.stopAnimation()
@@ -237,6 +274,13 @@ class StarryExcuseForAView: ScreenSaverView {
                         satellites: self.defaultsManager.satellitesTrailHalfLifeSeconds,
                         shooting: self.defaultsManager.shootingStarsTrailHalfLifeSeconds
                     )
+                }
+                // Observe window occlusion changes to infer visibility
+                if let win = self.window {
+                    NotificationCenter.default.addObserver(self,
+                                                           selector: #selector(self.windowOcclusionChanged(_:)),
+                                                           name: NSWindow.didChangeOcclusionStateNotification,
+                                                           object: win)
                 }
             } else {
                 os_log("setupAnimation: reusing existing CAMetalLayer", log: self.log!, type: .info)
@@ -334,6 +378,22 @@ class StarryExcuseForAView: ScreenSaverView {
         engine = nil
     }
     
+    // Partial release when invisible (so we can recover quickly)
+    private func deallocateResourcesPartial(reason: String) {
+        guard !resourcesReleasedWhileInvisible else { return }
+        os_log("Partial resource release (invisible) reason=%{public}@ (engine kept, config preserved)", log: log!, type: .info, reason)
+        metalLayer?.removeFromSuperlayer()
+        metalLayer = nil
+        metalRenderer = nil
+        resourcesReleasedWhileInvisible = true
+    }
+    
+    private func recreateResourcesIfNeeded() {
+        guard resourcesReleasedWhileInvisible else { return }
+        resourcesReleasedWhileInvisible = false
+        Task { await setupAnimation() }
+    }
+    
     private func registerListeners() {
         os_log("Registering distributed screensaver listeners (sandbox-safe explicit set)", log: log!, type: .info)
         
@@ -361,6 +421,12 @@ class StarryExcuseForAView: ScreenSaverView {
             )
         }
         
+        // Observe renderer drawable availability notifications (new inference path)
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(rendererDrawableAvailabilityChanged(_:)),
+                                               name: StarryMetalRenderer.drawableAvailabilityNotification,
+                                               object: nil)
+        
         // NOTE: We intentionally do NOT call addObserver with name: nil because sandboxing
         // prohibits "all notifications" and produces:
         // "*** attempt to register for all distributed notifications thwarted by sandboxing."
@@ -387,5 +453,94 @@ class StarryExcuseForAView: ScreenSaverView {
         if let sheetParent = self.window {
             sheetParent.endSheet(sheetParent.attachedSheet ?? NSWindow())
         }
+    }
+    
+    // MARK: - Visibility Inference Logic
+    
+    @objc private func rendererDrawableAvailabilityChanged(_ note: Notification) {
+        if let available = note.userInfo?["available"] as? Bool {
+            rendererDrawableAvailable = available
+            if defaultsManager.debugOverlayEnabled {
+                os_log("Drawable availability changed -> %{public}@", log: log ?? .default, type: .info, available ? "AVAILABLE" : "UNAVAILABLE")
+            }
+            if available {
+                // Trigger reinit next frame if needed
+                pendingVisibilityReinit = true
+            }
+        }
+    }
+    
+    @objc private func windowOcclusionChanged(_ note: Notification) {
+        // Force immediate recalculation
+        inferVisibilityState(frameIndex: frameIndex, force: true)
+    }
+    
+    private func inferVisibilityState(frameIndex: UInt64, force: Bool = false) {
+        // Avoid doing heavy checks every single frame unless forced.
+        if !force && (frameIndex - lastVisibilityCheckFrame) < 1 {
+            return
+        }
+        lastVisibilityCheckFrame = frameIndex
+        
+        let visible = isEffectivelyVisible()
+        if visible != lastVisibilityState {
+            lastVisibilityState = visible
+            if visible {
+                invisibleConsecutiveFrames = 0
+                invisibilityBeganTime = nil
+                pendingVisibilityReinit = true
+                os_log("Visibility transition -> VISIBLE (frame #%{public}llu)", log: log!, type: .info, frameIndex)
+            } else {
+                invisibilityBeganTime = CACurrentMediaTime()
+                os_log("Visibility transition -> INVISIBLE (frame #%{public}llu)", log: log!, type: .info, frameIndex)
+            }
+        }
+        if !visible {
+            invisibleConsecutiveFrames &+= 1
+            if let start = invisibilityBeganTime {
+                let elapsed = CACurrentMediaTime() - start
+                if elapsed >= visibilityReleaseResourcesThresholdSeconds &&
+                    !resourcesReleasedWhileInvisible {
+                    deallocateResourcesPartial(reason: String(format: "Invisible %.2fs", elapsed))
+                }
+            }
+        }
+    }
+    
+    private func isEffectivelyVisible() -> Bool {
+        // If preview mode (System Settings / small preview), treat as visible; we rarely want to throttle there.
+        if isPreview {
+            if let win = window {
+                if win.occlusionState.contains(.occluded) { return false }
+                if !win.isVisible { return false }
+            }
+            return true
+        }
+        guard let win = window else { return false }
+        if !win.isVisible { return false }
+        if win.isMiniaturized { return false }
+        if win.occlusionState.contains(.occluded) { return false }
+        // Basic screen intersection check (guard against off-screen window)
+        let wf = win.frame
+        let intersects = NSScreen.screens.contains { NSIntersectsRect($0.frame, wf) }
+        if !intersects { return false }
+        return true
+    }
+    
+    private func shouldRenderCurrentFrame() -> Bool {
+        // Render only if:
+        //  - We believe we are visible
+        //  - Renderer claims it can get drawables
+        //  - Resources are present (or will be re-created)
+        if !lastVisibilityState {
+            // Quick skip pathway
+            if invisibleConsecutiveFrames >= visibilityLightSkipThresholdFrames {
+                return false
+            }
+        }
+        if !rendererDrawableAvailable {
+            return false
+        }
+        return true
     }
 }

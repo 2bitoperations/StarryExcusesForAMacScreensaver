@@ -42,6 +42,8 @@ final class StarryMetalRenderer {
         case other
     }
     
+    static let drawableAvailabilityNotification = Notification.Name("StarryDrawableAvailability")
+    
     private static let debugCompositeModeNotification = Notification.Name("StarryDebugCompositeMode")
     private static let diagnosticsNotification = Notification.Name("StarryDiagnostics")
     private static let clearNotification = Notification.Name("StarryClear")
@@ -116,6 +118,11 @@ final class StarryMetalRenderer {
     
     private var debugObserversInstalled: Bool = false
     private var dumpLayersNextFrame: Bool = false
+    
+    // Drawable availability inference (new: helps host view detect invisibility on macOS Tahoe)
+    private var consecutiveDrawableAcquireFailures: Int = 0
+    private var lastPostedDrawableAvailability: Bool? = nil
+    private let drawableFailureThreshold: Int = 45 // ~0.75s at 60fps
     
     private let notificationCenters: [NotificationCenter] = [
         NotificationCenter.default,
@@ -684,13 +691,18 @@ final class StarryMetalRenderer {
             drawData.clearAll == false &&
             !(debugOverlayEnabled && debugOverlayRenderer.hasOverlayTexture)
         if nothingToDraw {
+            // Still advance frame index (so diagnostics cadence matches)
+            frameIndex &+= 1
             return
         }
         
         // Per-frame diagnostics now gated by single overlay flag
         logFrameDiagnostics(prefix: "", drawData: drawData, dt: dt)
         
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            frameIndex &+= 1
+            return
+        }
         commandBuffer.label = "Starry Frame CommandBuffer"
         
         if moonAlbedoNeedsBlit,
@@ -722,11 +734,19 @@ final class StarryMetalRenderer {
                           headless: false)
         
         guard let drawable = metalLayer?.nextDrawable() else {
-            os_log("No CAMetalLayer drawable available this frame", log: log, type: .error)
+            consecutiveDrawableAcquireFailures += 1
+            if consecutiveDrawableAcquireFailures == 1 || consecutiveDrawableAcquireFailures % 60 == 0 {
+                os_log("No CAMetalLayer drawable available (failureCount=%d)", log: log, type: .error, consecutiveDrawableAcquireFailures)
+            }
+            evaluateDrawableAvailabilityPosting()
             commandBuffer.commit()
             frameIndex &+= 1
             return
         }
+        
+        // Success path
+        consecutiveDrawableAcquireFailures = 0
+        evaluateDrawableAvailabilityPosting()
         
         encodeCompositeAndMoon(commandBuffer: commandBuffer,
                                target: drawable.texture,
@@ -816,7 +836,39 @@ final class StarryMetalRenderer {
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
         
+        // Headless path does not affect drawable availability (no CAMetalLayer)
         return textureToImage(finalTarget)
+    }
+    
+    private func evaluateDrawableAvailabilityPosting() {
+        let available = (consecutiveDrawableAcquireFailures == 0)
+        // Only post when transitioning to unavailable after threshold or back to available.
+        if available {
+            if lastPostedDrawableAvailability == false {
+                NotificationCenter.default.post(name: Self.drawableAvailabilityNotification,
+                                                object: nil,
+                                                userInfo: ["available": true])
+                lastPostedDrawableAvailability = true
+                os_log("Drawable availability restored; notifying observers", log: log, type: .info)
+            } else if lastPostedDrawableAvailability == nil {
+                // Initial state: post availability = true once
+                NotificationCenter.default.post(name: Self.drawableAvailabilityNotification,
+                                                object: nil,
+                                                userInfo: ["available": true])
+                lastPostedDrawableAvailability = true
+            }
+        } else {
+            if consecutiveDrawableAcquireFailures >= drawableFailureThreshold {
+                if lastPostedDrawableAvailability != false {
+                    NotificationCenter.default.post(name: Self.drawableAvailabilityNotification,
+                                                    object: nil,
+                                                    userInfo: ["available": false])
+                    lastPostedDrawableAvailability = false
+                    os_log("Drawable unavailable threshold reached (%d failures) -> notifying observers",
+                           log: log, type: .info, consecutiveDrawableAcquireFailures)
+                }
+            }
+        }
     }
     
     private func encodeScenePasses(commandBuffer: MTLCommandBuffer,
