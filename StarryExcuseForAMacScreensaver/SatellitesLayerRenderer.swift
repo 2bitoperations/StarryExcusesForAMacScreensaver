@@ -211,8 +211,6 @@ final class SatellitesLayerRenderer {
     
     private func spawn() {
         guard isEnabled else { return }
-        // NOTE: Previously we enforced a maxConcurrent cap (default=1). That cap has been removed
-        // to allow multiple satellites to coexist naturally.
         let fromLeft = Bool.random(using: &rng)
         
         // Determine spawn band respecting flasher (if provided).
@@ -288,12 +286,10 @@ final class SatellitesLayerRenderer {
         var sprites: [SpriteInstance] = []
         sprites.reserveCapacity(satellites.count + (debugShowSpawnBounds ? 1 : 0))
         
-        // Emit only the head for each active satellite. The fading tail is produced
-        // by the renderer's persistent satellites texture with per-frame decay.
+        // Emit only the head for each active satellite.
         for sat in satellites {
             let half = Float(sat.size * 0.5)
             let b = Float(sat.brightness)
-            // Premultiplied RGBA gray (alpha=1). Use circle shape for a point-like look.
             let colorPremul = SIMD4<Float>(b, b, b, 1.0)
             sprites.append(
                 SpriteInstance(centerPx: SIMD2<Float>(Float(sat.x), Float(sat.y)),
@@ -303,16 +299,16 @@ final class SatellitesLayerRenderer {
             )
         }
         
-        // Debug vertical band bounds (y-range). Drawn every frame to counteract decay.
+        // Debug vertical band bounds (y-range).
         if debugShowSpawnBounds {
             let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx)
             let minY = min(bandMin, bandMax)
             let maxY = max(bandMin, bandMax)
             if maxY >= minY {
-                let cx: CGFloat = CGFloat(width) * 0.5
-                let cy: CGFloat = (minY + maxY) * 0.5
-                let halfW: CGFloat = CGFloat(width) * 0.5
-                let halfH: CGFloat = max(1.0, (maxY - minY) * 0.5)
+                let rect = CGRect(x: 0,
+                                  y: minY,
+                                  width: CGFloat(width),
+                                  height: max(1.0, maxY - minY))
                 // Cyan outline
                 let alpha: CGFloat = 0.70
                 let r: CGFloat = 0.05
@@ -322,10 +318,9 @@ final class SatellitesLayerRenderer {
                                           Float(g * alpha),
                                           Float(b * alpha),
                                           Float(alpha))
-                sprites.append(SpriteInstance(centerPx: SIMD2<Float>(Float(cx), Float(cy)),
-                                              halfSizePx: SIMD2<Float>(Float(halfW), Float(halfH)),
-                                              colorPremul: premul,
-                                              shape: .rectOutline))
+                if let sprite = makeRectOutlineSprite(rect: rect, colorPremul: premul) {
+                    sprites.append(sprite)
+                }
             }
         }
         

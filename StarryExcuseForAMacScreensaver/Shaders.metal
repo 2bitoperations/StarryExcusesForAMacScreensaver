@@ -54,6 +54,7 @@ struct SpriteUniforms {
 struct SpriteVarying {
     float4 position [[position]];
     float2 local;
+    float2 halfSizePx;
     float4 colorPremul;
     uint   shape;
 };
@@ -81,6 +82,7 @@ vertex SpriteVarying SpriteVertex(uint vid [[vertex_id]],
     
     out.position = float4(ndc, 0, 1);
     out.local = local;
+    out.halfSizePx = inst.halfSizePx;
     out.colorPremul = inst.colorPremul;
     out.shape = inst.shape;
     return out;
@@ -102,26 +104,39 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
         float a = 1.0 - smoothstep(0.98, 1.0, r);
         return float4(rgba.rgb * a, rgba.a * a);
     }
-    // Shape 2: hollow rectangle outline (debug)
-    // local in [-1,1]. We draw only pixels within a border band near |coord|==1.
+    // Shape 2: hollow rectangle outline (debug) with pixel-accurate 2 px stroke.
     else if (in.shape == 2) {
-        float ax = fabs(in.local.x);
-        float ay = fabs(in.local.y);
-        float edge = max(ax, ay);
-        if (edge > 1.0) {
+        // Convert local [-1,1] to pixel coordinates relative to center.
+        float2 posPxLocal = in.local * in.halfSizePx;
+        float2 distToEdgePx = in.halfSizePx - fabs(posPxLocal);   // distance to each edge
+        // If outside (should not happen due to vertex), discard.
+        if (distToEdgePx.x < 0.0 || distToEdgePx.y < 0.0) {
             discard_fragment();
         }
-        // Thickness in normalized local space (total quad width = 2.0).
-        const float outlineThickness = 0.15;   // Adjust for visibility.
-        const float feather = 0.02;            // Anti-alias feather.
+        float borderDistPx = min(distToEdgePx.x, distToEdgePx.y); // distance inward from nearest edge
         
-        // outer fade (against edge==1)
-        float outer = 1.0 - smoothstep(1.0 - feather, 1.0, edge);
-        // inner cut (fade from (1 - outlineThickness) inward)
-        float inner = smoothstep(1.0 - outlineThickness - feather,
-                                 1.0 - outlineThickness,
-                                 edge);
-        float a = outer * inner;
+        const float strokePx = 2.0;
+        const float featherPx = 1.0;      // inner fade
+        const float outerFeatherPx = 1.0; // outer edge AA
+        
+        // Reject pixels fully outside stroke band.
+        if (borderDistPx > strokePx + featherPx) {
+            discard_fragment();
+        }
+        
+        // Base alpha = 1 inside stroke core.
+        float a = 1.0;
+        
+        // Inner feather (fade to 0 as we go inward past strokePx)
+        if (borderDistPx > strokePx) {
+            float t = clamp((borderDistPx - strokePx) / featherPx, 0.0, 1.0);
+            a *= (1.0 - t);
+        }
+        // Outer feather near exact edge (borderDistPx ~ 0)
+        if (borderDistPx < outerFeatherPx) {
+            float t2 = clamp(borderDistPx / outerFeatherPx, 0.0, 1.0);
+            a *= t2;
+        }
         if (a <= 0.0) {
             discard_fragment();
         }
@@ -172,7 +187,6 @@ vertex MoonVarying MoonVertex(uint vid [[vertex_id]],
 fragment float4 MoonFragment(MoonVarying in [[stage_in]],
                              constant MoonUniforms &uni [[buffer(2)]],
                              texture2d<float, access::sample> albedoTex [[texture(0)]]) {
-    // Use linear + mip filtering to reduce shimmer during subpixel motion.
     constexpr sampler s(address::clamp_to_edge,
                         filter::linear,
                         mip_filter::linear,
@@ -186,17 +200,16 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
 
     float radiusPx = max(uni.params0.x, 1.0);
     float r = sqrt(r2);
-    // Slightly larger minimum feather for stability with linear filtering.
     float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
     float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
 
     float z = sqrt(max(0.0, 1.0 - r2));
     float3 n = normalize(float3(local.x, local.y, z));
 
-    float fIllum = clamp(uni.params0.y, 0.0, 1.0);          // illuminated fraction
-    float cosDelta = 1.0 - 2.0 * fIllum;                    // cos(delta), delta in [0, PI]
-    float delta = acos(clamp(cosDelta, -1.0, 1.0));         // 0=new .. PI=full
-    float waxingSign = uni.params1.y;                       // +1 (waxing) / -1 (waning)
+    float fIllum = clamp(uni.params0.y, 0.0, 1.0);
+    float cosDelta = 1.0 - 2.0 * fIllum;
+    float delta = acos(clamp(cosDelta, -1.0, 1.0));
+    float waxingSign = uni.params1.y;
     float phi = (waxingSign > 0.0) ? (PI - delta) : (delta - PI);
     float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
 

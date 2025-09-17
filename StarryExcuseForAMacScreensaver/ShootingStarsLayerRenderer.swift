@@ -161,23 +161,21 @@ final class ShootingStarsLayerRenderer {
     
     // Computes a conservative rectangle where shooting star heads can spawn while keeping tails on-screen.
     private func spawnBoundsSprite() -> SpriteInstance? {
-        // Use worst-case (longest) length to guarantee full path stays inside.
         let lenMax = baseLength * 1.15
         let margin: CGFloat = 4
         let minX = margin + lenMax
         let maxX = CGFloat(width) - margin - lenMax
         if minX >= maxX { return nil }
-        // For Y we emulate makeStar() logic:
         let minY = max(safeMinY + margin + lenMax, safeMinY + 8)
         let maxY = CGFloat(height) - margin - lenMax
         if minY >= maxY { return nil }
         
-        let cx = (minX + maxX) * 0.5
-        let cy = (minY + maxY) * 0.5
-        let halfW = (maxX - minX) * 0.5
-        let halfH = (maxY - minY) * 0.5
+        let rect = CGRect(x: minX,
+                          y: minY,
+                          width: maxX - minX,
+                          height: maxY - minY)
         
-        // Warm orange outline
+        // Warm orange outline (premultiplied)
         let alpha: CGFloat = 0.85
         let r: CGFloat = 1.0
         let g: CGFloat = 0.55
@@ -186,10 +184,7 @@ final class ShootingStarsLayerRenderer {
                                        Float(g * alpha),
                                        Float(b * alpha),
                                        Float(alpha))
-        return SpriteInstance(centerPx: SIMD2<Float>(Float(cx), Float(cy)),
-                              halfSizePx: SIMD2<Float>(Float(halfW), Float(halfH)),
-                              colorPremul: colorPremul,
-                              shape: .rectOutline)
+        return makeRectOutlineSprite(rect: rect, colorPremul: colorPremul)
     }
     
     // MARK: - Spawning
