@@ -511,7 +511,7 @@ class StarryExcuseForAView: ScreenSaverView {
         // If preview mode (System Settings / small preview), treat as visible; we rarely want to throttle there.
         if isPreview {
             if let win = window {
-                if win.occlusionState.contains(.occluded) { return false }
+                if !win.occlusionState.contains(.visible) { return false }
                 if !win.isVisible { return false }
             }
             return true
@@ -519,7 +519,7 @@ class StarryExcuseForAView: ScreenSaverView {
         guard let win = window else { return false }
         if !win.isVisible { return false }
         if win.isMiniaturized { return false }
-        if win.occlusionState.contains(.occluded) { return false }
+        if !win.occlusionState.contains(.visible) { return false }
         // Basic screen intersection check (guard against off-screen window)
         let wf = win.frame
         let intersects = NSScreen.screens.contains { NSIntersectsRect($0.frame, wf) }
