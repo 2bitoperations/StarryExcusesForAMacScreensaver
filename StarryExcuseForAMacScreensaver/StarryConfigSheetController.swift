@@ -381,7 +381,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             self.secsBetweenClears = tf
         }
         
-        // Building Height Slider
+        // Building Height Slider (initial value sourced from defaults to avoid hard-coded duplicate)
         let bhLabelRow = NSStackView()
         bhLabelRow.orientation = .horizontal
         bhLabelRow.alignment = .firstBaseline
@@ -392,7 +392,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.buildingHeightPreview = bhPreview
         bhLabelRow.addArrangedSubview(bhLabel)
         bhLabelRow.addArrangedSubview(bhPreview)
-        let bhSlider = NSSlider(value: 0.35, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(buildingHeightChanged(_:)))
+        let bhSlider = NSSlider(value: defaultsManager.buildingHeight,
+                                minValue: 0.0,
+                                maxValue: 1.0,
+                                target: self,
+                                action: #selector(buildingHeightChanged(_:)))
         bhSlider.translatesAutoresizingMaskIntoConstraints = false
         bhSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.buildingHeightSlider = bhSlider
@@ -415,7 +419,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.buildingFrequencyPreview = bfPreview
         bfLabelRow.addArrangedSubview(bfLabel)
         bfLabelRow.addArrangedSubview(bfPreview)
-        let bfSlider = NSSlider(value: 0.033, minValue: 0.001, maxValue: 1.0, target: self, action: #selector(buildingFrequencyChanged(_:)))
+        let bfSlider = NSSlider(value: defaultsManager.buildingFrequency,
+                                minValue: 0.001,
+                                maxValue: 1.0,
+                                target: self,
+                                action: #selector(buildingFrequencyChanged(_:)))
         bfSlider.translatesAutoresizingMaskIntoConstraints = false
         bfSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.buildingFrequencySlider = bfSlider
@@ -484,7 +492,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.moonSizePercentPreview = moonSizePreview
         moonLabelRow.addArrangedSubview(moonSizeLabel)
         moonLabelRow.addArrangedSubview(moonSizePreview)
-        let moonSlider = NSSlider(value: 0.02, minValue: 0.001, maxValue: 0.25, target: self, action: #selector(moonSliderChanged(_:)))
+        let moonSlider = NSSlider(value: defaultsManager.moonDiameterScreenWidthPercent,
+                                  minValue: 0.001,
+                                  maxValue: 0.25,
+                                  target: self,
+                                  action: #selector(moonSliderChanged(_:)))
         moonSlider.translatesAutoresizingMaskIntoConstraints = false
         moonSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.moonSizePercentSlider = moonSlider
@@ -507,7 +519,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.brightBrightnessPreview = brightPreview
         brightRow.addArrangedSubview(brightLabel)
         brightRow.addArrangedSubview(brightPreview)
-        let brightSlider = NSSlider(value: 1.0, minValue: 0.2, maxValue: 1.2, target: self, action: #selector(moonSliderChanged(_:)))
+        let brightSlider = NSSlider(value: defaultsManager.moonBrightBrightness,
+                                    minValue: 0.2,
+                                    maxValue: 1.2,
+                                    target: self,
+                                    action: #selector(moonSliderChanged(_:)))
         brightSlider.translatesAutoresizingMaskIntoConstraints = false
         brightSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.brightBrightnessSlider = brightSlider
@@ -530,7 +546,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.darkBrightnessPreview = darkPreview
         darkRow.addArrangedSubview(darkLabel)
         darkRow.addArrangedSubview(darkPreview)
-        let darkSlider = NSSlider(value: 0.15, minValue: 0.0, maxValue: 0.9, target: self, action: #selector(moonSliderChanged(_:)))
+        let darkSlider = NSSlider(value: defaultsManager.moonDarkBrightness,
+                                  minValue: 0.0,
+                                  maxValue: 0.9,
+                                  target: self,
+                                  action: #selector(moonSliderChanged(_:)))
         darkSlider.translatesAutoresizingMaskIntoConstraints = false
         darkSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.darkBrightnessSlider = darkSlider
@@ -567,7 +587,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.moonPhasePreview = phasePreview
         phaseRow.addArrangedSubview(phaseLabel)
         phaseRow.addArrangedSubview(phasePreview)
-        let phaseSlider = NSSlider(value: 0.0, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(moonPhaseSliderChanged(_:)))
+        let phaseSlider = NSSlider(value: defaultsManager.moonPhaseOverrideValue,
+                                   minValue: 0.0,
+                                   maxValue: 1.0,
+                                   target: self,
+                                   action: #selector(moonPhaseSliderChanged(_:)))
         phaseSlider.translatesAutoresizingMaskIntoConstraints = false
         phaseSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.moonPhaseSlider = phaseSlider
@@ -673,7 +697,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.shootingStarsLengthPreview = lengthPreview
         lengthLabelRow.addArrangedSubview(lengthLabel)
         lengthLabelRow.addArrangedSubview(lengthPreview)
-        let lengthSlider = NSSlider(value: 160, minValue: 40, maxValue: 300, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        let lengthSlider = NSSlider(value: defaultsManager.shootingStarsLength,
+                                    minValue: 40,
+                                    maxValue: 300,
+                                    target: self,
+                                    action: #selector(shootingStarsSliderChanged(_:)))
         lengthSlider.translatesAutoresizingMaskIntoConstraints = false
         lengthSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsLengthSlider = lengthSlider
@@ -696,7 +724,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.shootingStarsSpeedPreview = speedPreview
         speedLabelRow.addArrangedSubview(speedLabel)
         speedLabelRow.addArrangedSubview(speedPreview)
-        let speedSlider = NSSlider(value: 600, minValue: 200, maxValue: 1200, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        let speedSlider = NSSlider(value: defaultsManager.shootingStarsSpeed,
+                                   minValue: 200,
+                                   maxValue: 1200,
+                                   target: self,
+                                   action: #selector(shootingStarsSliderChanged(_:)))
         speedSlider.translatesAutoresizingMaskIntoConstraints = false
         speedSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsSpeedSlider = speedSlider
@@ -719,7 +751,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.shootingStarsThicknessPreview = thickPreview
         thickLabelRow.addArrangedSubview(thickLabel)
         thickLabelRow.addArrangedSubview(thickPreview)
-        let thickSlider = NSSlider(value: 2.0, minValue: 1.0, maxValue: 4.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        let thickSlider = NSSlider(value: defaultsManager.shootingStarsThickness,
+                                   minValue: 1.0,
+                                   maxValue: 4.0,
+                                   target: self,
+                                   action: #selector(shootingStarsSliderChanged(_:)))
         thickSlider.translatesAutoresizingMaskIntoConstraints = false
         thickSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsThicknessSlider = thickSlider
@@ -742,7 +778,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.shootingStarsBrightnessPreview = brightSSPreview
         brightSSLabelRow.addArrangedSubview(brightSSLabel)
         brightSSLabelRow.addArrangedSubview(brightSSPreview)
-        let brightSSSlider = NSSlider(value: 0.2, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        let brightSSSlider = NSSlider(value: defaultsManager.shootingStarsBrightness,
+                                      minValue: 0.0,
+                                      maxValue: 1.0,
+                                      target: self,
+                                      action: #selector(shootingStarsSliderChanged(_:)))
         brightSSSlider.translatesAutoresizingMaskIntoConstraints = false
         brightSSSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsBrightnessSlider = brightSSSlider
@@ -765,7 +805,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.shootingStarsTrailDecayPreview = hlPreview
         hlRow.addArrangedSubview(hlLabel)
         hlRow.addArrangedSubview(hlPreview)
-        let hlSlider = NSSlider(value: 0.18, minValue: 0.01, maxValue: 2.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
+        let hlSlider = NSSlider(value: defaultsManager.shootingStarsTrailHalfLifeSeconds,
+                                minValue: 0.01,
+                                maxValue: 2.0,
+                                target: self,
+                                action: #selector(shootingStarsSliderChanged(_:)))
         hlSlider.translatesAutoresizingMaskIntoConstraints = false
         hlSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsTrailDecaySlider = hlSlider
@@ -840,7 +884,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.satellitesSpeedPreview = satSpeedPreview
         satSpeedLabelRow.addArrangedSubview(satSpeedLabel)
         satSpeedLabelRow.addArrangedSubview(satSpeedPreview)
-        let satSpeedSlider = NSSlider(value: 30.0, minValue: 1.0, maxValue: 100.0, target: self, action: #selector(satellitesSliderChanged(_:)))
+        let satSpeedSlider = NSSlider(value: defaultsManager.satellitesSpeed,
+                                      minValue: 1.0,
+                                      maxValue: 100.0,
+                                      target: self,
+                                      action: #selector(satellitesSliderChanged(_:)))
         satSpeedSlider.translatesAutoresizingMaskIntoConstraints = false
         satSpeedSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.satellitesSpeedSlider = satSpeedSlider
@@ -863,7 +911,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.satellitesSizePreview = satSizePreview
         satSizeLabelRow.addArrangedSubview(satSizeLabel)
         satSizeLabelRow.addArrangedSubview(satSizePreview)
-        let satSizeSlider = NSSlider(value: 2.0, minValue: 1.0, maxValue: 6.0, target: self, action: #selector(satellitesSliderChanged(_:)))
+        let satSizeSlider = NSSlider(value: defaultsManager.satellitesSize,
+                                     minValue: 1.0,
+                                     maxValue: 6.0,
+                                     target: self,
+                                     action: #selector(satellitesSliderChanged(_:)))
         satSizeSlider.translatesAutoresizingMaskIntoConstraints = false
         satSizeSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.satellitesSizeSlider = satSizeSlider
@@ -886,7 +938,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.satellitesBrightnessPreview = satBrightnessPreview
         satBrightnessLabelRow.addArrangedSubview(satBrightnessLabel)
         satBrightnessLabelRow.addArrangedSubview(satBrightnessPreview)
-        let satBrightnessSlider = NSSlider(value: 0.5, minValue: 0.2, maxValue: 1.2, target: self, action: #selector(satellitesSliderChanged(_:)))
+        let satBrightnessSlider = NSSlider(value: defaultsManager.satellitesBrightness,
+                                           minValue: 0.2,
+                                           maxValue: 1.2,
+                                           target: self,
+                                           action: #selector(satellitesSliderChanged(_:)))
         satBrightnessSlider.translatesAutoresizingMaskIntoConstraints = false
         satBrightnessSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.satellitesBrightnessSlider = satBrightnessSlider
@@ -923,7 +979,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         self.satellitesTrailDecayPreview = satHLPreview
         satHLLabelRow.addArrangedSubview(satHLLabel)
         satHLLabelRow.addArrangedSubview(satHLPreview)
-        let satHLSlider = NSSlider(value: 0.10, minValue: 0.0, maxValue: 0.5, target: self, action: #selector(satellitesSliderChanged(_:)))
+        let satHLSlider = NSSlider(value: defaultsManager.satellitesTrailHalfLifeSeconds,
+                                   minValue: 0.0,
+                                   maxValue: 0.5,
+                                   target: self,
+                                   action: #selector(satellitesSliderChanged(_:)))
         satHLSlider.translatesAutoresizingMaskIntoConstraints = false
         satHLSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.satellitesTrailDecaySlider = satHLSlider
