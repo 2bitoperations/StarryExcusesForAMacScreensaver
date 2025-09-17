@@ -535,10 +535,6 @@ class StarryExcuseForAView: ScreenSaverView {
                 steps.append("miniaturized=true")
                 return finish(false, "preview-miniaturized")
             }
-            if win.occlusionState.contains(.occluded) {
-                steps.append("occlusionState=occluded")
-                return finish(false, "preview-occluded")
-            }
             if !win.isVisible {
                 steps.append("win.isVisible=false")
                 return finish(false, "preview-notVisible")
@@ -576,11 +572,7 @@ class StarryExcuseForAView: ScreenSaverView {
         let occ = win.occlusionState
         steps.append("occlusionState=\(describeOcclusion(occ))")
         
-        if occ.contains(.occluded) {
-            steps.append("occluded bit set")
-            return finish(false, "occlusionState-occluded")
-        }
-        
+        // If .visible not set we treat as ambiguous (older SDK may not provide .occluded)
         if !occ.contains(.visible) {
             steps.append(".visible bit NOT set -> ambiguous")
             if grace {
@@ -608,13 +600,12 @@ class StarryExcuseForAView: ScreenSaverView {
             return finish(false, "no-screen-intersection")
         }
         
-        return finish(true, "visible-occlusionState")
+        return finish(true, "visible-occlusionState-visibleBit")
     }
     
     private func describeOcclusion(_ state: NSWindow.OcclusionState) -> String {
         var parts: [String] = []
         if state.contains(.visible) { parts.append("visible") }
-        if state.contains(.occluded) { parts.append("occluded") }
         if parts.isEmpty { parts.append("none") }
         return parts.joined(separator: "|")
     }
