@@ -185,27 +185,41 @@ final class SatellitesLayerRenderer {
     }
     
     // Compute the current vertical spawn band (inclusive) taking flasher into account.
-    // Returns (minY, maxY). If flasher info is present, maxY is clamped to be
-    // strictly above the flasher top minus a small gap and satellite half-size.
+    // Returns (minY, maxY). Coordinate system origin is at top (y=0).
+    //
+    // REQUIREMENT: The entire band must be ABOVE (visually higher than) the flasher,
+    // meaning every possible satellite center Y we choose yields a satellite whose
+    // bottom edge remains strictly above (flasherTop - flasherVerticalGap).
+    //
+    // For a satellite of diameter D, its bottom edge = centerY + D/2.
+    // We enforce: centerY_max + D/2 <= flasherTop - gap  => centerY_max <= flasherTop - gap - D/2
+    // Additionally, we clamp yMin to never exceed that same limit so the whole band
+    // is above the flasher, not just its lower edge.
     private func currentSpawnBand(satelliteDiameter: CGFloat) -> (CGFloat, CGFloat) {
         // Legacy baseline band (was 30%..95%). We widen upward a bit to allow more sky if clamped.
-        var yMin = CGFloat(height) * 0.05      // allow higher portion of sky
-        var yMax = CGFloat(height) * 0.95
+        var yMin = CGFloat(height) * 0.05      // nearer the top of screen
+        var yMax = CGFloat(height) * 0.95      // nearer the bottom
         
         if let cy = flasherCenterY, let r = flasherRadius {
-            // Flasher top:
             let flasherTop = cy - r
-            // Ensure entire satellite circle stays above flasher top:
-            let adjustedMax = flasherTop - satelliteDiameter * 0.5 - flasherVerticalGap
-            yMax = min(yMax, adjustedMax)
-            if yMax < yMin {
-                // Degenerate case: flasher too close to top; collapse band to a thin line just below yMin.
-                yMax = yMin
+            // Max allowed center Y so entire satellite stays above flasher (plus gap):
+            let limitMaxCenter = flasherTop - satelliteDiameter * 0.5 - flasherVerticalGap
+            yMax = min(yMax, limitMaxCenter)
+            // Ensure upper edge (yMin) also lies above same limit; this collapses band upward if needed.
+            if yMin > yMax {
+                // Collapse to a single permissible line (degenerate band).
+                yMin = yMax
+            } else if yMin > limitMaxCenter {
+                yMin = limitMaxCenter
             }
         }
-        // Clamp to screen
+        // Clamp to screen bounds.
         yMin = max(0, min(CGFloat(height), yMin))
         yMax = max(0, min(CGFloat(height), yMax))
+        // Final safety: maintain ordering.
+        if yMin > yMax {
+            yMin = yMax
+        }
         return (yMin, yMax)
     }
     
