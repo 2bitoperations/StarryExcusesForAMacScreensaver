@@ -37,6 +37,8 @@ final class SatellitesLayerRenderer {
     private var trailing: Bool
     /// Per-second decay factor (0 = instant disappear, 0.999 ~ slow fade). Used to compute keep return value.
     private var trailDecay: CGFloat
+    /// Debug: show spawn vertical band bounds.
+    private var debugShowSpawnBounds: Bool
     
     /// Active satellites.
     private var satellites: [Satellite] = []
@@ -61,7 +63,8 @@ final class SatellitesLayerRenderer {
          size: CGFloat,
          brightness: CGFloat,
          trailing: Bool,
-         trailDecay: CGFloat) {
+         trailDecay: CGFloat,
+         debugShowSpawnBounds: Bool) {
         self.width = width
         self.height = height
         self.log = log
@@ -71,9 +74,10 @@ final class SatellitesLayerRenderer {
         self.brightness = min(max(0.0, brightness), 1.0)
         self.trailing = trailing
         self.trailDecay = min(max(0.0, trailDecay), 0.999)
+        self.debugShowSpawnBounds = debugShowSpawnBounds
         scheduleNextSpawn()
-        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f",
-               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay))
+        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f showBounds=%{public}@",
+               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay), debugShowSpawnBounds ? "true" : "false")
     }
     
     // MARK: - Public reconfiguration
@@ -112,7 +116,8 @@ final class SatellitesLayerRenderer {
                           size: CGFloat? = nil,
                           brightness: CGFloat? = nil,
                           trailing: Bool? = nil,
-                          trailDecay: CGFloat? = nil) {
+                          trailDecay: CGFloat? = nil,
+                          debugShowSpawnBounds: Bool? = nil) {
         var reschedule = false
         
         if let a = avgSpawnSeconds {
@@ -137,6 +142,9 @@ final class SatellitesLayerRenderer {
         }
         if let td = trailDecay {
             self.trailDecay = min(max(0.0, td), 0.999)
+        }
+        if let dbg = debugShowSpawnBounds {
+            self.debugShowSpawnBounds = dbg
         }
         if reschedule {
             scheduleNextSpawn()
@@ -216,7 +224,7 @@ final class SatellitesLayerRenderer {
         }
         
         var sprites: [SpriteInstance] = []
-        sprites.reserveCapacity(satellites.count)
+        sprites.reserveCapacity(satellites.count + (debugShowSpawnBounds ? 1 : 0))
         
         // Emit only the head for each active satellite. The fading tail is produced
         // by the renderer's persistent satellites texture with per-frame decay.
@@ -233,10 +241,37 @@ final class SatellitesLayerRenderer {
             )
         }
         
+        // Debug vertical band bounds (y-range). Drawn every frame to counteract decay.
+        if debugShowSpawnBounds {
+            let yMin = CGFloat(height) * 0.30
+            let yMax = CGFloat(height) * 0.95
+            let minY = min(yMin, yMax)
+            let maxY = max(yMin, yMax)
+            if maxY > minY {
+                let cx: CGFloat = CGFloat(width) * 0.5
+                let cy: CGFloat = (minY + maxY) * 0.5
+                let halfW: CGFloat = CGFloat(width) * 0.5
+                let halfH: CGFloat = (maxY - minY) * 0.5
+                // Cyan outline
+                let alpha: CGFloat = 0.70
+                let r: CGFloat = 0.05
+                let g: CGFloat = 0.85
+                let b: CGFloat = 1.0
+                let premul = SIMD4<Float>(Float(r * alpha),
+                                          Float(g * alpha),
+                                          Float(b * alpha),
+                                          Float(alpha))
+                sprites.append(SpriteInstance(centerPx: SIMD2<Float>(Float(cx), Float(cy)),
+                                              halfSizePx: SIMD2<Float>(Float(halfW), Float(halfH)),
+                                              colorPremul: premul,
+                                              shape: .rectOutline))
+            }
+        }
+        
         let keep: Float = trailing ? Float(pow(Double(trailDecay), dt)) : 0.0
         if logThis {
-            os_log("Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d",
-                   log: log, type: .info, satellites.count, sprites.count, Double(keep), removed)
+            os_log("Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d dbgBounds=%{public}@",
+                   log: log, type: .info, satellites.count, sprites.count, Double(keep), removed, debugShowSpawnBounds ? "yes" : "no")
         }
         return (sprites, max(0.0, min(1.0, keep)))
     }

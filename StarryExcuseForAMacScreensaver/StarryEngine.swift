@@ -28,7 +28,7 @@ struct StarryRuntimeConfig {
     var shootingStarsSpeed: Double
     var shootingStarsThickness: Double
     var shootingStarsBrightness: Double
-    var shootingStarsDebugShowSpawnBounds: Bool
+    var shootingStarsDebugShowSpawnBounds: Bool   // Used for BOTH shooting stars & satellites spawn bounds
 
     var satellitesEnabled: Bool = true
     var satellitesAvgSpawnSeconds: Double = 0.75
@@ -224,6 +224,11 @@ final class StarryEngine {
             applied.append("disableFlasherOnBase=\(b)")
             cfgChanged = true
         }
+        if let b: Bool = value("shootingStarsDebugShowSpawnBounds", from: ui), b != config.shootingStarsDebugShowSpawnBounds {
+            cfg.shootingStarsDebugShowSpawnBounds = b
+            applied.append("shootingStarsDebugShowSpawnBounds=\(b)")
+            cfgChanged = true
+        }
 
         if cfgChanged {
             updateConfig(cfg)
@@ -328,7 +333,9 @@ final class StarryEngine {
             config.satellitesSpeed != newConfig.satellitesSpeed ||
             config.satellitesSize != newConfig.satellitesSize ||
             config.satellitesBrightness != newConfig.satellitesBrightness ||
-            config.satellitesTrailing != newConfig.satellitesTrailing
+            config.satellitesTrailing != newConfig.satellitesTrailing ||
+            // Re-use the shootingStarsDebugShowSpawnBounds flag to also control satellite bounds
+            config.shootingStarsDebugShowSpawnBounds != newConfig.shootingStarsDebugShowSpawnBounds
 
         if satellitesAffecting {
             os_log("Config changed (satellites affecting) — resetting satellitesRenderer", log: log, type: .info)
@@ -456,7 +463,7 @@ final class StarryEngine {
             brightness: CGFloat(config.shootingStarsBrightness),
             trailDecay: 1.0,
             debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
-        os_log("ShootingStarsLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.shootingStarsEnabled ? "true" : "false", config.shootingStarsAvgSeconds)
+        os_log("ShootingStarsLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs showBounds=%{public}@)", log: log, type: .info, config.shootingStarsEnabled ? "true" : "false", config.shootingStarsAvgSeconds, config.shootingStarsDebugShowSpawnBounds ? "true" : "false")
     }
 
     private func ensureSatellitesRenderer() {
@@ -471,8 +478,9 @@ final class StarryEngine {
                                                      size: CGFloat(config.satellitesSize),
                                                      brightness: CGFloat(config.satellitesBrightness),
                                                      trailing: config.satellitesTrailing,
-                                                     trailDecay: 1.0)
-        os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs)", log: log, type: .info, config.satellitesEnabled ? "true" : "false", config.satellitesAvgSpawnSeconds)
+                                                     trailDecay: 1.0,
+                                                     debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
+        os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs showBounds=%{public}@)", log: log, type: .info, config.satellitesEnabled ? "true" : "false", config.satellitesAvgSpawnSeconds, config.shootingStarsDebugShowSpawnBounds ? "true" : "false")
     }
 
     func advanceFrameGPU() -> StarryDrawData {
@@ -565,14 +573,15 @@ final class StarryEngine {
         }
 
         if logThisFrame {
-            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f",
+            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f showSpawnBounds=%{public}@",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
                    moonParams != nil ? "yes" : "no",
                    clearAll ? "yes" : "no",
                    dt,
                    effectiveStarsPerSecond(),
-                   effectiveBuildingLightsPerSecond())
+                   effectiveBuildingLightsPerSecond(),
+                   config.shootingStarsDebugShowSpawnBounds ? "yes" : "no")
         }
 
         let drawData = StarryDrawData(
@@ -681,14 +690,15 @@ final class StarryEngine {
         }
 
         if logThisFrame {
-            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f",
+            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f showSpawnBounds=%{public}@",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
                    moonParams != nil ? "yes" : "no",
                    clearAll ? "yes" : "no",
                    dt,
                    effectiveStarsPerSecond(),
-                   effectiveBuildingLightsPerSecond())
+                   effectiveBuildingLightsPerSecond(),
+                   config.shootingStarsDebugShowSpawnBounds ? "yes" : "no")
         }
 
         let drawData = StarryDrawData(

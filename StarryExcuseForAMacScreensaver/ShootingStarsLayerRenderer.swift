@@ -90,8 +90,8 @@ final class ShootingStarsLayerRenderer {
         self.trailDecay = trailDecay
         self.debugShowSpawnBounds = debugShowSpawnBounds
         computeSafeMinY()
-        os_log("ShootingStarsLayerRenderer init: avg=%{public}.2fs speed=%{public}.1f len=%{public}.1f thick=%{public}.1f bright=%{public}.2f decay=%{public}.3f mode=%{public}d",
-               log: log, type: .info, avgSeconds, Double(speed), Double(length), Double(thickness), Double(brightness), Double(trailDecay), directionMode.rawValue)
+        os_log("ShootingStarsLayerRenderer init: avg=%{public}.2fs speed=%{public}.1f len=%{public}.1f thick=%{public}.1f bright=%{public}.2f decay=%{public}.3f mode=%{public}d showBounds=%{public}@",
+               log: log, type: .info, avgSeconds, Double(speed), Double(length), Double(thickness), Double(brightness), Double(trailDecay), directionMode.rawValue, debugShowSpawnBounds ? "true" : "false")
     }
     
     func reset() {
@@ -136,6 +136,13 @@ final class ShootingStarsLayerRenderer {
             appendStarSprites(s, into: &sprites)
         }
         
+        // Append debug spawn bounds outline (drawn every frame so stable brightness despite decay)
+        if debugShowSpawnBounds {
+            if let boundsSprite = spawnBoundsSprite() {
+                sprites.append(boundsSprite)
+            }
+        }
+        
         let keepFactor: Float
         if trailDecay <= 0 { keepFactor = 0 }
         else {
@@ -144,10 +151,45 @@ final class ShootingStarsLayerRenderer {
         }
         
         if logThis {
-            os_log("ShootingStars update: active=%{public}d spawnedSprites=%{public}d removed=%{public}d keep=%{public}.3f",
-                   log: log, type: .info, active.count, sprites.count, removed, Double(keepFactor))
+            os_log("ShootingStars update: active=%{public}d spawnedSprites=%{public}d removed=%{public}d keep=%{public}.3f dbgBounds=%{public}@",
+                   log: log, type: .info, active.count, sprites.count, removed, Double(keepFactor), debugShowSpawnBounds ? "yes" : "no")
         }
         return (sprites, keepFactor)
+    }
+    
+    // MARK: - Spawn Bounds (Debug)
+    
+    // Computes a conservative rectangle where shooting star heads can spawn while keeping tails on-screen.
+    private func spawnBoundsSprite() -> SpriteInstance? {
+        // Use worst-case (longest) length to guarantee full path stays inside.
+        let lenMax = baseLength * 1.15
+        let margin: CGFloat = 4
+        let minX = margin + lenMax
+        let maxX = CGFloat(width) - margin - lenMax
+        if minX >= maxX { return nil }
+        // For Y we emulate makeStar() logic:
+        let minY = max(safeMinY + margin + lenMax, safeMinY + 8)
+        let maxY = CGFloat(height) - margin - lenMax
+        if minY >= maxY { return nil }
+        
+        let cx = (minX + maxX) * 0.5
+        let cy = (minY + maxY) * 0.5
+        let halfW = (maxX - minX) * 0.5
+        let halfH = (maxY - minY) * 0.5
+        
+        // Warm orange outline
+        let alpha: CGFloat = 0.85
+        let r: CGFloat = 1.0
+        let g: CGFloat = 0.55
+        let b: CGFloat = 0.10
+        let colorPremul = SIMD4<Float>(Float(r * alpha),
+                                       Float(g * alpha),
+                                       Float(b * alpha),
+                                       Float(alpha))
+        return SpriteInstance(centerPx: SIMD2<Float>(Float(cx), Float(cy)),
+                              halfSizePx: SIMD2<Float>(Float(halfW), Float(halfH)),
+                              colorPremul: colorPremul,
+                              shape: .rectOutline)
     }
     
     // MARK: - Spawning
