@@ -65,6 +65,9 @@ final class ShootingStarsLayerRenderer {
     // Instrumentation
     private var updateCount: UInt64 = 0
     
+    // Debug overlay gating
+    private var debugOverlayEnabled: Bool
+    
     init(width: Int,
          height: Int,
          skyline: Skyline,
@@ -76,7 +79,8 @@ final class ShootingStarsLayerRenderer {
          thickness: CGFloat,
          brightness: CGFloat,
          trailDecay: CGFloat,
-         debugShowSpawnBounds: Bool) {
+         debugShowSpawnBounds: Bool,
+         debugOverlayEnabled: Bool) {
         self.width = width
         self.height = height
         self.skyline = skyline
@@ -89,6 +93,7 @@ final class ShootingStarsLayerRenderer {
         self.brightness = brightness
         self.trailDecay = trailDecay
         self.debugShowSpawnBounds = debugShowSpawnBounds
+        self.debugOverlayEnabled = debugOverlayEnabled
         computeSafeMinY()
         os_log("ShootingStarsLayerRenderer init: avg=%{public}.2fs speed=%{public}.1f len=%{public}.1f thick=%{public}.1f bright=%{public}.2f decay=%{public}.3f mode=%{public}d showBounds=%{public}@",
                log: log, type: .info, avgSeconds, Double(speed), Double(length), Double(thickness), Double(brightness), Double(trailDecay), directionMode.rawValue, debugShowSpawnBounds ? "true" : "false")
@@ -96,7 +101,13 @@ final class ShootingStarsLayerRenderer {
     
     func reset() {
         active.removeAll()
-        os_log("ShootingStarsLayerRenderer reset: cleared active stars", log: log, type: .info)
+        if debugOverlayEnabled {
+            os_log("ShootingStarsLayerRenderer reset: cleared active stars", log: log, type: .info)
+        }
+    }
+    
+    func setDebugOverlayEnabled(_ enabled: Bool) {
+        debugOverlayEnabled = enabled
     }
     
     private func computeSafeMinY() {
@@ -106,7 +117,9 @@ final class ShootingStarsLayerRenderer {
         } else {
             safeMinY = 0
         }
-        os_log("ShootingStarsLayerRenderer safeMinY set to %{public}.1f", log: log, type: .debug, Double(safeMinY))
+        if debugOverlayEnabled {
+            os_log("ShootingStarsLayerRenderer safeMinY set to %{public}.1f", log: log, type: .debug, Double(safeMinY))
+        }
     }
     
     // MARK: - Update
@@ -115,7 +128,7 @@ final class ShootingStarsLayerRenderer {
     // Returns (sprites, keepFactor) where keepFactor=trailDecay^dt, or 0 if trails disabled.
     func update(dt: CFTimeInterval) -> ([SpriteInstance], Float) {
         updateCount &+= 1
-        let logThis = (updateCount <= 5) || (updateCount % 120 == 0)
+        let logThis = debugOverlayEnabled && ((updateCount <= 5) || (updateCount % 120 == 0))
         
         spawnIfNeeded(dt: dt)
         
@@ -201,9 +214,11 @@ final class ShootingStarsLayerRenderer {
         for _ in 0..<spawnAttemptsPerFrame {
             if let star = makeStar() {
                 active.append(star)
-                os_log("ShootingStars spawn: y=%{public}.1f dir=(%{public}.2f,%{public}.2f) len=%{public}.1f speed=%{public}.1f",
-                       log: log, type: .debug,
-                       Double(star.head.y), Double(star.dir.dx), Double(star.dir.dy), Double(star.length), Double(star.speed))
+                if debugOverlayEnabled {
+                    os_log("ShootingStars spawn: y=%{public}.1f dir=(%{public}.2f,%{public}.2f) len=%{public}.1f speed=%{public}.1f",
+                           log: log, type: .debug,
+                           Double(star.head.y), Double(star.dir.dx), Double(star.dir.dy), Double(star.length), Double(star.speed))
+                }
                 break
             }
         }

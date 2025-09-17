@@ -79,6 +79,9 @@ final class SatellitesLayerRenderer {
     // Instrumentation
     private var updateCount: UInt64 = 0
     
+    // Debug overlay gating (provided by engine)
+    private var debugOverlayEnabled: Bool
+    
     // MARK: - Init
     
     init(width: Int,
@@ -92,7 +95,8 @@ final class SatellitesLayerRenderer {
          trailDecay: CGFloat,
          debugShowSpawnBounds: Bool,
          flasherCenterY: CGFloat?,
-         flasherRadius: CGFloat?) {
+         flasherRadius: CGFloat?,
+         debugOverlayEnabled: Bool) {
         self.width = width
         self.height = height
         self.log = log
@@ -105,6 +109,7 @@ final class SatellitesLayerRenderer {
         self.debugShowSpawnBounds = debugShowSpawnBounds
         self.flasherCenterY = flasherCenterY
         self.flasherRadius = flasherRadius.map { max(0.0, $0) }
+        self.debugOverlayEnabled = debugOverlayEnabled
         scheduleNextSpawn()
         os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f showBounds=%{public}@ flasher=%{public}@",
                log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay), debugShowSpawnBounds ? "true" : "false", (self.flasherCenterY != nil && self.flasherRadius != nil) ? "yes" : "no")
@@ -118,25 +123,38 @@ final class SatellitesLayerRenderer {
         isEnabled = enabled
         if !enabled {
             satellites.removeAll()
-            os_log("Satellites disabled: clearing active satellites", log: log, type: .info)
+            if debugOverlayEnabled {
+                os_log("Satellites disabled: clearing active satellites", log: log, type: .info)
+            }
         } else {
-            os_log("Satellites enabled", log: log, type: .info)
+            if debugOverlayEnabled {
+                os_log("Satellites enabled", log: log, type: .info)
+            }
             scheduleNextSpawn()
         }
+    }
+    
+    /// Update debug overlay gating
+    func setDebugOverlayEnabled(_ enabled: Bool) {
+        debugOverlayEnabled = enabled
     }
     
     /// Convenience to fully reset, disable, and clear state.
     func resetAndDisable() {
         satellites.removeAll()
         isEnabled = false
-        os_log("Satellites resetAndDisable: cleared and disabled", log: log, type: .info)
+        if debugOverlayEnabled {
+            os_log("Satellites resetAndDisable: cleared and disabled", log: log, type: .info)
+        }
     }
     
     /// Reset satellites and timers (preserves current parameter values and enabled state).
     func reset() {
         satellites.removeAll()
         scheduleNextSpawn()
-        os_log("Satellites reset: cleared and rescheduled next spawn", log: log, type: .info)
+        if debugOverlayEnabled {
+            os_log("Satellites reset: cleared and rescheduled next spawn", log: log, type: .info)
+        }
     }
     
     /// Update runtime parameters. Any nil parameter is left unchanged.
@@ -156,7 +174,9 @@ final class SatellitesLayerRenderer {
             if clamped != self.avgSpawnSeconds {
                 self.avgSpawnSeconds = clamped
                 reschedule = true
-                os_log("Satellites param changed: avgSpawnSeconds=%{public}.2f", log: log, type: .info, clamped)
+                if debugOverlayEnabled {
+                    os_log("Satellites param changed: avgSpawnSeconds=%{public}.2f", log: log, type: .info, clamped)
+                }
             }
         }
         if let s = speed {
@@ -189,7 +209,9 @@ final class SatellitesLayerRenderer {
         // Exponential distribution with mean avgSpawnSeconds.
         let u = Double.random(in: 0.00001...0.99999, using: &rng)
         timeUntilNextSpawn = -Darwin.log(1 - u) * avgSpawnSeconds
-        os_log("Satellites: next spawn in %{public}.2fs", log: log, type: .debug, timeUntilNextSpawn)
+        if debugOverlayEnabled {
+            os_log("Satellites: next spawn in %{public}.2fs", log: log, type: .debug, timeUntilNextSpawn)
+        }
     }
     
     // Compute the current vertical spawn band (inclusive) taking flasher into account.
@@ -241,7 +263,9 @@ final class SatellitesLayerRenderer {
         let fromLeft = Bool.random(using: &rng)
         
         guard let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx) else {
-            os_log("Satellites spawn suppressed: no vertical space above flasher (visual)", log: log, type: .debug)
+            if debugOverlayEnabled {
+                os_log("Satellites spawn suppressed: no vertical space above flasher (visual)", log: log, type: .debug)
+            }
             return
         }
         
@@ -260,15 +284,17 @@ final class SatellitesLayerRenderer {
                           size: sizePx,
                           brightness: brightness * CGFloat.random(in: 0.8...1.05, using: &rng))
         satellites.append(s)
-        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherPresent=%{public}@ (visual above)",
-               log: log, type: .debug,
-               fromLeft ? "L→R" : "R→L",
-               Double(y),
-               Double(bandMin), Double(bandMax),
-               Double(speed),
-               Double(sizePx),
-               satellites.count,
-               (flasherCenterY != nil && flasherRadius != nil) ? "yes" : "no")
+        if debugOverlayEnabled {
+            os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherPresent=%{public}@ (visual above)",
+                   log: log, type: .debug,
+                   fromLeft ? "L→R" : "R→L",
+                   Double(y),
+                   Double(bandMin), Double(bandMax),
+                   Double(speed),
+                   Double(sizePx),
+                   satellites.count,
+                   (flasherCenterY != nil && flasherRadius != nil) ? "yes" : "no")
+        }
     }
     
     // MARK: - Emission to GPU
@@ -277,7 +303,7 @@ final class SatellitesLayerRenderer {
     // keepFactor = trailing ? (trailDecay^dt) : 0
     func update(dt: CFTimeInterval) -> ([SpriteInstance], Float) {
         updateCount &+= 1
-        let logThis = (updateCount <= 5) || (updateCount % 120 == 0)
+        let logThis = debugOverlayEnabled && ((updateCount <= 5) || (updateCount % 120 == 0))
         
         // If disabled, just clear state and request texture clear (keep 0)
         guard isEnabled else {

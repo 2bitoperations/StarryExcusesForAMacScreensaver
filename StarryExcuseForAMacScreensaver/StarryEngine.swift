@@ -369,6 +369,12 @@ final class StarryEngine {
             // Update per-second rates on existing renderer (will convert if zeros present)
             sr.updateRates(starsPerSecond: effectiveStarsPerSecond(), buildingLightsPerSecond: effectiveBuildingLightsPerSecond())
         }
+        
+        // Propagate overlay gating to layer renderers if necessary
+        if overlayChanged {
+            shootingStarsRenderer?.setDebugOverlayEnabled(config.debugOverlayEnabled)
+            satellitesRenderer?.setDebugOverlayEnabled(config.debugOverlayEnabled)
+        }
 
         if skylineAffecting || shootingStarsAffecting || satellitesAffecting {
             forceClearOnNextFrame = true
@@ -462,7 +468,8 @@ final class StarryEngine {
             thickness: CGFloat(config.shootingStarsThickness),
             brightness: CGFloat(config.shootingStarsBrightness),
             trailDecay: 1.0,
-            debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
+            debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds,
+            debugOverlayEnabled: config.debugOverlayEnabled)
         os_log("ShootingStarsLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs showBounds=%{public}@)", log: log, type: .info, config.shootingStarsEnabled ? "true" : "false", config.shootingStarsAvgSeconds, config.shootingStarsDebugShowSpawnBounds ? "true" : "false")
     }
 
@@ -484,7 +491,8 @@ final class StarryEngine {
                                                      trailDecay: 1.0,
                                                      debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds,
                                                      flasherCenterY: flasherCenterY,
-                                                     flasherRadius: flasherRadius)
+                                                     flasherRadius: flasherRadius,
+                                                     debugOverlayEnabled: config.debugOverlayEnabled)
         os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs showBounds=%{public}@ flasher=%{public}@)",
                log: log, type: .info,
                config.satellitesEnabled ? "true" : "false",
