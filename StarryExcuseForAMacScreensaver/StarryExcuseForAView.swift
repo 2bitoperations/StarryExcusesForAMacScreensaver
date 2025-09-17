@@ -1,4 +1,3 @@
-
 //
 //  StarryExcuseForAView.swift
 //  StarryExcuseForAMacScreensaver
@@ -37,7 +36,6 @@ class StarryExcuseForAView: ScreenSaverView {
     private var invisibleConsecutiveFrames: UInt64 = 0
     private var invisibilityBeganTime: CFTimeInterval?
     private var resourcesReleasedWhileInvisible: Bool = false
-    private let visibilityLightSkipThresholdFrames: UInt64 = 2
     private let visibilityReleaseResourcesThresholdSeconds: Double = 3.0
     private var pendingVisibilityReinit: Bool = false
     
@@ -115,6 +113,8 @@ class StarryExcuseForAView: ScreenSaverView {
         frameIndex &+= 1
         inferVisibilityState(frameIndex: frameIndex)
         
+        // New rule: if not currently visible (and thus not transitioning to visible in this frame),
+        // do NOT advance the engine or render.
         if !shouldRenderCurrentFrame() {
             if defaultsManager.debugOverlayEnabled && (frameIndex <= 5 || frameIndex % 120 == 0) {
                 os_log("animateOneFrame[#%{public}llu] skipped (visible=%{public}@ drawable=%{public}@ released=%{public}@ reason=%{public}@ path=%{public}@)",
@@ -629,14 +629,8 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     private func shouldRenderCurrentFrame() -> Bool {
-        if !lastVisibilityState {
-            if invisibleConsecutiveFrames >= visibilityLightSkipThresholdFrames {
-                return false
-            }
-        }
-        if !rendererDrawableAvailable {
-            return false
-        }
+        if !lastVisibilityState { return false }
+        if !rendererDrawableAvailable { return false }
         return true
     }
 }
