@@ -86,6 +86,11 @@ final class StarryMetalRenderer {
     private var moonAlbedoNeedsBlit: Bool = false
     private var moonAlbedoHasMipmaps: Bool = false
     
+    // CPU-side persistent cache of the last uploaded moon albedo (to survive deep GPU clears)
+    private var cachedMoonAlbedoBytes: [UInt8]? = nil
+    private var cachedMoonAlbedoWidth: Int = 0
+    private var cachedMoonAlbedoHeight: Int = 0
+    
     private var offscreenComposite: MTLTexture?
     private var offscreenSize: CGSize = .zero
     
@@ -162,7 +167,7 @@ final class StarryMetalRenderer {
             return nil
         }
         self.device = device
-               self.commandQueue = device.makeCommandQueue()!
+        self.commandQueue = device.makeCommandQueue()!
         self.metalLayer = nil
         self.log = log
         
@@ -545,7 +550,7 @@ final class StarryMetalRenderer {
                log: log, type: .info, satellitesHalfLifeSeconds, shootingHalfLifeSeconds)
     }
     
-    // MARK: - Moon Albedo (Mipmapped) Upload
+    // MARK: - Moon Albedo (Mipmapped) Upload + Persistence
     
     func setMoonAlbedo(image: CGImage) {
         let width = image.width
@@ -613,15 +618,74 @@ final class StarryMetalRenderer {
                             withBytes: uploadBytes,
                             bytesPerRow: bytesPerRow)
             
+            // Persist CPU-side copy so we can recreate after deep GPU clears.
+            cachedMoonAlbedoBytes = uploadBytes
+            cachedMoonAlbedoWidth = width
+            cachedMoonAlbedoHeight = height
+            
             moonAlbedoStagingTexture = staging
             moonAlbedoNeedsBlit = true
         }
+    }
+    
+    // Recreate GPU moon albedo texture from cached CPU copy if needed (after deep clear)
+    private func ensureMoonAlbedoTextureFromCacheIfNeeded() {
+        guard moonAlbedoTexture == nil,
+              moonAlbedoStagingTexture == nil,         // no upload already pending
+              moonAlbedoNeedsBlit == false,
+              let bytes = cachedMoonAlbedoBytes,
+              cachedMoonAlbedoWidth > 0,
+              cachedMoonAlbedoHeight > 0 else { return }
+        
+        let width = cachedMoonAlbedoWidth
+        let height = cachedMoonAlbedoHeight
+        
+        let dstDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
+                                                               width: width,
+                                                               height: height,
+                                                               mipmapped: true)
+        dstDesc.usage = [.shaderRead]
+        dstDesc.storageMode = .private
+        moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
+        moonAlbedoTexture?.label = "MoonAlbedo (recreated,mips)"
+        moonAlbedoHasMipmaps = true
+        
+        if moonAlbedoTexture == nil {
+            os_log("ensureMoonAlbedoTextureFromCacheIfNeeded: failed to recreate destination texture", log: log, type: .error)
+            return
+        }
+        
+        let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
+                                                                   width: width,
+                                                                   height: height,
+                                                                   mipmapped: false)
+        stagingDesc.storageMode = .shared
+        stagingDesc.usage = []
+        guard let staging = device.makeTexture(descriptor: stagingDesc) else {
+            os_log("ensureMoonAlbedoTextureFromCacheIfNeeded: failed to create staging texture", log: log, type: .error)
+            moonAlbedoTexture = nil
+            return
+        }
+        staging.label = "MoonAlbedo (staging,recreate)"
+        staging.replace(region: MTLRegionMake2D(0, 0, width, height),
+                        mipmapLevel: 0,
+                        withBytes: bytes,
+                        bytesPerRow: width)
+        
+        moonAlbedoStagingTexture = staging
+        moonAlbedoNeedsBlit = true
+        os_log("Recreated moon albedo texture from cached CPU copy (%dx%d)", log: log, type: .info, width, height)
     }
     
     func render(drawData: StarryDrawData) {
         if let img = drawData.moonAlbedoImage {
             setMoonAlbedo(image: img)
         }
+        // If we need a moon and lost the GPU texture (after deep clear) recreate from CPU cache.
+        if drawData.moon != nil {
+            ensureMoonAlbedoTextureFromCacheIfNeeded()
+        }
+        
         if drawData.size.width >= 1, drawData.size.height >= 1, drawData.size != layerTex.size {
             allocateTextures(size: drawData.size)
             clearOffscreenTextures(reason: "Allocate on render()")
@@ -629,13 +693,16 @@ final class StarryMetalRenderer {
         if drawData.clearAll {
             os_log("Render: Clear requested via drawData.clearAll (deep release)", log: log, type: .info)
             clearOffscreenTextures(reason: "UserClearAll", releaseMemory: true)
+            // After releasing, if moon is needed, attempt immediate recreate (engine may not resend)
+            if drawData.moon != nil {
+                ensureMoonAlbedoTextureFromCacheIfNeeded()
+            }
         }
         
         // Update engine-derived overlay flag, then recompute effective
         engineOverlayEnabled = drawData.debugOverlayEnabled
         recomputeEffectiveOverlayEnabled()
         
-        // (Do not overwrite userOverlayEnabled here; we maintain both)
         if effectiveOverlayEnabled && !drawData.debugOverlayEnabled && userOverlayEnabled {
             os_log("Overlay active via user override (engine reports disabled)", log: log, type: .info)
         } else if drawData.debugOverlayEnabled {
@@ -658,7 +725,6 @@ final class StarryMetalRenderer {
             drawData.clearAll == false &&
             !(effectiveOverlayEnabled && overlayTexture != nil)
         if nothingToDraw {
-            // Early out only if overlay is not (yet) drawable
             return
         }
         
@@ -721,6 +787,9 @@ final class StarryMetalRenderer {
         if let img = drawData.moonAlbedoImage {
             setMoonAlbedo(image: img)
         }
+        if drawData.moon != nil {
+            ensureMoonAlbedoTextureFromCacheIfNeeded()
+        }
         if drawData.size.width >= 1, drawData.size.height >= 1, drawData.size != layerTex.size {
             allocateTextures(size: drawData.size)
             clearOffscreenTextures(reason: "Allocate on renderToImage()")
@@ -728,6 +797,9 @@ final class StarryMetalRenderer {
         if drawData.clearAll {
             os_log("RenderToImage: Clear requested via drawData.clearAll (deep release)", log: log, type: .info)
             clearOffscreenTextures(reason: "UserClearAll(headless)", releaseMemory: true)
+            if drawData.moon != nil {
+                ensureMoonAlbedoTextureFromCacheIfNeeded()
+            }
         }
         ensureOffscreenComposite(size: drawData.size)
         guard let finalTarget = offscreenComposite else { return nil }
@@ -1096,6 +1168,7 @@ final class StarryMetalRenderer {
         overlayTexture = nil
         overlayQuadVertexBuffer = nil
         
+        // Intentionally keep cachedMoonAlbedoBytes so we can restore later.
         moonAlbedoTexture = nil
         moonAlbedoStagingTexture = nil
         moonAlbedoNeedsBlit = false
@@ -1103,7 +1176,6 @@ final class StarryMetalRenderer {
         
         freeSpriteBuffers()
         
-        // When size is reset to .zero, next render() call with a non-zero drawData.size will allocate anew.
         os_log("GPU resources released (reason=%@). Next frame will reallocate as needed.", log: log, type: .info, reason)
     }
     
@@ -1357,12 +1429,9 @@ final class StarryMetalRenderer {
             ctx.setFillColor(NSColor(calibratedRed: 0.05, green: 0.0, blue: 0.08, alpha: 0.55).cgColor)
             ctx.fill(CGRect(x: 0, y: 0, width: overlayWidthPx, height: overlayHeightPx))
             
-            // IMPORTANT: AppKit text drawing APIs require an NSGraphicsContext bound to the CGContext.
-            // Without this, the previous implementation produced only the background rectangle (no text).
             let nsGC = NSGraphicsContext(cgContext: ctx, flipped: false)
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = nsGC
-            // Draw text
             let textOrigin = CGPoint(x: padH, y: padV)
             (overlayStr as NSString).draw(at: textOrigin, withAttributes: attributes)
             NSGraphicsContext.restoreGraphicsState()
