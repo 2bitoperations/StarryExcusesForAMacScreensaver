@@ -48,6 +48,7 @@ class StarryExcuseForAView: ScreenSaverView {
     private var cachedCGWindowOnscreen: Bool = true
     private let cgWindowRecheckIntervalFrames: UInt64 = 30     // ~0.5s at 60 FPS
     private var lastVisibilityReason: String = "initial"
+    private var lastVisibilityDecisionPath: String = "initial"
     
     // Explicit list of additional screensaver notifications we want to observe.
     private let otherScreensaverNotificationNames: [Notification.Name] = [
@@ -116,13 +117,14 @@ class StarryExcuseForAView: ScreenSaverView {
         
         if !shouldRenderCurrentFrame() {
             if defaultsManager.debugOverlayEnabled && (frameIndex <= 5 || frameIndex % 120 == 0) {
-                os_log("animateOneFrame[#%{public}llu] skipped (visible=%{public}@ drawable=%{public}@ released=%{public}@ reason=%{public}@)",
+                os_log("animateOneFrame[#%{public}llu] skipped (visible=%{public}@ drawable=%{public}@ released=%{public}@ reason=%{public}@ path=%{public}@)",
                        log: log!, type: .info,
                        frameIndex,
                        lastVisibilityState ? "yes" : "no",
                        rendererDrawableAvailable ? "yes" : "no",
                        resourcesReleasedWhileInvisible ? "yes" : "no",
-                       lastVisibilityReason)
+                       lastVisibilityReason,
+                       lastVisibilityDecisionPath)
             }
             return
         }
@@ -473,24 +475,28 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         lastVisibilityCheckFrame = frameIndex
         
-        let (visible, reason) = isEffectivelyVisibleWithReason()
-        if visible != lastVisibilityState {
+        let prevVisible = lastVisibilityState
+        let prevReason = lastVisibilityReason
+        let (visible, reason, path) = visibilityDecision()
+        
+        if visible != prevVisible {
             // Suppress logging an "INVISIBLE" transition inside the initial grace period.
             let inGrace = inInitialGracePeriod()
             if visible {
                 invisibleConsecutiveFrames = 0
                 invisibilityBeganTime = nil
                 pendingVisibilityReinit = true
-                os_log("Visibility transition -> VISIBLE (frame #%{public}llu) reason=%{public}@",
-                       log: log!, type: .info, frameIndex, reason)
+                os_log("Visibility transition -> VISIBLE (frame #%{public}llu) reason=%{public}@ prevReason=%{public}@ decisionPath=%{public}@",
+                       log: log!, type: .info, frameIndex, reason, prevReason, path)
             } else if !inGrace {
                 invisibilityBeganTime = CACurrentMediaTime()
-                os_log("Visibility transition -> INVISIBLE (frame #%{public}llu) reason=%{public}@",
-                       log: log!, type: .info, frameIndex, reason)
+                os_log("Visibility transition -> INVISIBLE (frame #%{public}llu) reason=%{public}@ prevReason=%{public}@ decisionPath=%{public}@",
+                       log: log!, type: .info, frameIndex, reason, prevReason, path)
             }
             lastVisibilityState = visible
         }
         lastVisibilityReason = reason
+        lastVisibilityDecisionPath = path
         
         if !lastVisibilityState {
             invisibleConsecutiveFrames &+= 1
@@ -509,58 +515,108 @@ class StarryExcuseForAView: ScreenSaverView {
         return (CACurrentMediaTime() - t0) < initialVisibilityGraceSeconds
     }
     
-    // Returns (visible, reason)
-    private func isEffectivelyVisibleWithReason() -> (Bool, String) {
-        // Preview mode: treat as visible unless explicitly occluded/minimized or window absent.
-        if isPreview {
-            guard let win = window else { return (true, "preview-no-window-assume") }
-            if win.isMiniaturized { return (false, "preview-miniaturized") }
-            if win.occlusionState.contains(.occluded) { return (false, "preview-occluded") }
-            if !win.isVisible { return (false, "preview-notVisible") }
-            return (true, "preview-visible")
+    // Build a decision with a detailed path of evaluated checks.
+    private func visibilityDecision() -> (Bool, String, String) {
+        var steps: [String] = []
+        
+        func finish(_ visible: Bool, _ reason: String) -> (Bool, String, String) {
+            steps.append("FINAL=\(visible ? "VISIBLE" : "INVISIBLE") reason=\(reason)")
+            return (visible, reason, steps.joined(separator: " -> "))
         }
         
-        // Grace period: optimistic unless we have a hard negative.
+        steps.append("BEGIN")
+        if isPreview {
+            steps.append("mode=preview")
+            guard let win = window else {
+                steps.append("window=nil -> assume visible preview")
+                return finish(true, "preview-no-window-assume")
+            }
+            if win.isMiniaturized {
+                steps.append("miniaturized=true")
+                return finish(false, "preview-miniaturized")
+            }
+            if win.occlusionState.contains(.occluded) {
+                steps.append("occlusionState=occluded")
+                return finish(false, "preview-occluded")
+            }
+            if !win.isVisible {
+                steps.append("win.isVisible=false")
+                return finish(false, "preview-notVisible")
+            }
+            steps.append("preview-visible=true")
+            return finish(true, "preview-visible")
+        }
+        
         let grace = inInitialGracePeriod()
+        steps.append("grace=\(grace)")
         
         guard let win = window else {
-            return grace ? (true, "grace-no-window") : (false, "no-window")
-        }
-        if win.isMiniaturized {
-            return (false, "miniaturized")
-        }
-        if !win.isVisible {
-            // During grace period still treat as visible unless explicitly occluded
+            steps.append("window=nil")
             if grace {
-                return (true, "grace-notVisibleFlag")
+                steps.append("grace optimistic -> visible")
+                return finish(true, "grace-no-window")
             }
-            return (false, "window-notVisible-flag")
+            return finish(false, "no-window")
+        }
+        
+        if win.isMiniaturized {
+            steps.append("miniaturized=true")
+            return finish(false, "miniaturized")
+        }
+        
+        if !win.isVisible {
+            steps.append("win.isVisible=false")
+            if grace {
+                steps.append("grace optimistic -> visible")
+                return finish(true, "grace-notVisibleFlag")
+            }
+            return finish(false, "window-notVisible-flag")
         }
         
         let occ = win.occlusionState
+        steps.append("occlusionState=\(describeOcclusion(occ))")
         
-        // If occlusionState does not yet contain .visible (ambiguous early), use CGWindow heuristic.
+        if occ.contains(.occluded) {
+            steps.append("occluded bit set")
+            return finish(false, "occlusionState-occluded")
+        }
+        
         if !occ.contains(.visible) {
+            steps.append(".visible bit NOT set -> ambiguous")
             if grace {
-                return (true, "grace-ambiguous-occlusion")
+                steps.append("grace optimistic -> visible")
+                return finish(true, "grace-ambiguous-occlusion")
             }
-            // Ambiguous: consult CGWindow (throttled)
             let cgOnscreen = cgWindowIsOnScreenThrottled(frameIndex: frameIndex)
+            steps.append("CGWindow onscreen=\(cgOnscreen)")
             if cgOnscreen {
-                return (true, "cgWindow-onscreen-ambiguousOcc")
+                return finish(true, "cgWindow-onscreen-ambiguousOcc")
             } else {
-                return (false, "cgWindow-offscreen-ambiguousOcc")
+                return finish(false, "cgWindow-offscreen-ambiguousOcc")
             }
         }
         
-        // Screen intersection check
+        // Screen intersection
         let wf = win.frame
         let intersects = NSScreen.screens.contains { NSIntersectsRect($0.frame, wf) }
+        steps.append("screenIntersect=\(intersects)")
         if !intersects {
-            return grace ? (true, "grace-offscreen-frame") : (false, "no-screen-intersection")
+            if grace {
+                steps.append("grace optimistic -> visible")
+                return finish(true, "grace-offscreen-frame")
+            }
+            return finish(false, "no-screen-intersection")
         }
         
-        return (true, "visible-occlusionState")
+        return finish(true, "visible-occlusionState")
+    }
+    
+    private func describeOcclusion(_ state: NSWindow.OcclusionState) -> String {
+        var parts: [String] = []
+        if state.contains(.visible) { parts.append("visible") }
+        if state.contains(.occluded) { parts.append("occluded") }
+        if parts.isEmpty { parts.append("none") }
+        return parts.joined(separator: "|")
     }
     
     private func cgWindowIsOnScreenThrottled(frameIndex: UInt64) -> Bool {
