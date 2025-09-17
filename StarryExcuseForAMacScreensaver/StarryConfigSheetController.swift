@@ -459,7 +459,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         spawnBoundsSwitch.target = self
         spawnBoundsSwitch.action = #selector(shootingStarsDebugSpawnBoundsToggled(_:))
         self.shootingStarsDebugSpawnBoundsCheckbox = spawnBoundsSwitch
-        let spawnBoundsLabel = makeLabel("Show satellite/shooting star spawn bounds")
+        let spawnBoundsLabel = makeLabel("Show spawn bounds")
         spawnBoundsRow.addArrangedSubview(spawnBoundsSwitch)
         spawnBoundsRow.addArrangedSubview(spawnBoundsLabel)
         

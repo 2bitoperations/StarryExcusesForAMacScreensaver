@@ -24,6 +24,6 @@ func makeRectOutlineSprite(rect: CGRect,
 
 private extension CGRect {
     var isFinite: Bool {
-        return x.isFinite && y.isFinite && width.isFinite && height.isFinite
+        return minX.isFinite && minY.isFinite && width.isFinite && height.isFinite
     }
 }
