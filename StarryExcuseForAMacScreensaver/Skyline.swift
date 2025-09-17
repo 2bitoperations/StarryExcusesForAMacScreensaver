@@ -208,5 +208,14 @@ class Skyline {
         }
     }
     
+    /// Returns static flasher geometry if available.
+    /// centerX / centerY represent the center of the flasher (not the top).
+    /// radius matches the configured flasherRadius used during initialization.
+    /// Returns nil if no flasher was created (e.g., no buildings).
+    func getFlasherDetails() -> (centerX: Int, centerY: Int, radius: Int)? {
+        guard let p = flasherPosition else { return nil }
+        return (p.xPos, p.yPos, flasherRadius)
+    }
+    
     func getMoon() -> Moon? { moon }
 }
