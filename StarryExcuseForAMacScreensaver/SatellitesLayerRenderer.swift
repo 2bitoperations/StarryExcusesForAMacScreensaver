@@ -185,40 +185,43 @@ final class SatellitesLayerRenderer {
     }
     
     // Compute the current vertical spawn band (inclusive) taking flasher into account.
-    // Returns (minY, maxY). Coordinate system origin is at top (y=0).
+    // Returns (minY, maxY) or nil if there is NO valid vertical space such that
+    // the ENTIRE satellite (bottom edge) stays strictly above flasherTop - gap.
     //
-    // REQUIREMENT: The entire band must be ABOVE (visually higher than) the flasher,
-    // meaning every possible satellite center Y we choose yields a satellite whose
-    // bottom edge remains strictly above (flasherTop - flasherVerticalGap).
+    // Coordinate system origin: top (y=0). "Higher" means smaller y.
     //
-    // For a satellite of diameter D, its bottom edge = centerY + D/2.
-    // We enforce: centerY_max + D/2 <= flasherTop - gap  => centerY_max <= flasherTop - gap - D/2
-    // Additionally, we clamp yMin to never exceed that same limit so the whole band
-    // is above the flasher, not just its lower edge.
-    private func currentSpawnBand(satelliteDiameter: CGFloat) -> (CGFloat, CGFloat) {
-        // Legacy baseline band (was 30%..95%). We widen upward a bit to allow more sky if clamped.
-        var yMin = CGFloat(height) * 0.05      // nearer the top of screen
-        var yMax = CGFloat(height) * 0.95      // nearer the bottom
+    // Invariant we must maintain:
+    //   For any returned centerY in [minY, maxY],
+    //       centerY + D/2 <= flasherTop - flasherVerticalGap
+    //
+    // Legacy baseline band (no flasher): [0.05H, 0.95H]
+    private func currentSpawnBand(satelliteDiameter: CGFloat) -> (CGFloat, CGFloat)? {
+        var yMin = CGFloat(height) * 0.05
+        var yMax = CGFloat(height) * 0.95
         
         if let cy = flasherCenterY, let r = flasherRadius {
             let flasherTop = cy - r
-            // Max allowed center Y so entire satellite stays above flasher (plus gap):
-            let limitMaxCenter = flasherTop - satelliteDiameter * 0.5 - flasherVerticalGap
+            // Highest permissible center (greatest y) so bottom edge + gap stays above flasher top
+            let limitMaxCenter = flasherTop - flasherVerticalGap - satelliteDiameter * 0.5
+            
+            // If the limit is below the top of the screen (< 0), there is no room to spawn.
+            if limitMaxCenter < 0 {
+                return nil
+            }
             yMax = min(yMax, limitMaxCenter)
-            // Ensure upper edge (yMin) also lies above same limit; this collapses band upward if needed.
             if yMin > yMax {
-                // Collapse to a single permissible line (degenerate band).
+                // Collapse band to single line at yMax.
                 yMin = yMax
-            } else if yMin > limitMaxCenter {
-                yMin = limitMaxCenter
             }
         }
-        // Clamp to screen bounds.
+        
+        // Clamp to valid screen region (note: yMax is guaranteed >= 0 here if flasher restricted).
         yMin = max(0, min(CGFloat(height), yMin))
         yMax = max(0, min(CGFloat(height), yMax))
-        // Final safety: maintain ordering.
+        
         if yMin > yMax {
-            yMin = yMax
+            // Degenerate (should not happen after logic above); treat as no band.
+            return nil
         }
         return (yMin, yMax)
     }
@@ -227,13 +230,16 @@ final class SatellitesLayerRenderer {
         guard isEnabled else { return }
         let fromLeft = Bool.random(using: &rng)
         
-        // Determine spawn band respecting flasher (if provided).
-        let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx)
+        guard let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx) else {
+            os_log("Satellites spawn suppressed: no vertical space above flasher", log: log, type: .debug)
+            return
+        }
+        
         let y: CGFloat
         if bandMax >= bandMin {
             y = CGFloat.random(in: bandMin...bandMax, using: &rng)
         } else {
-            y = bandMin   // fallback (should not happen)
+            y = bandMin   // (Should not occur; bandMin==bandMax collapse case)
         }
         
         let x = fromLeft ? -sizePx : CGFloat(width) + sizePx
@@ -244,12 +250,11 @@ final class SatellitesLayerRenderer {
                           size: sizePx,
                           brightness: brightness * CGFloat.random(in: 0.8...1.05, using: &rng))
         satellites.append(s)
-        let (finalMin, finalMax) = (bandMin, bandMax)
-        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherTop=%{public}@",
+        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherPresent=%{public}@",
                log: log, type: .debug,
                fromLeft ? "L→R" : "R→L",
                Double(y),
-               Double(finalMin), Double(finalMax),
+               Double(bandMin), Double(bandMax),
                Double(speed),
                Double(sizePx),
                satellites.count,
@@ -315,25 +320,31 @@ final class SatellitesLayerRenderer {
         
         // Debug vertical band bounds (y-range).
         if debugShowSpawnBounds {
-            let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx)
-            let minY = min(bandMin, bandMax)
-            let maxY = max(bandMin, bandMax)
-            if maxY >= minY {
-                let rect = CGRect(x: 0,
-                                  y: minY,
-                                  width: CGFloat(width),
-                                  height: max(1.0, maxY - minY))
-                // Cyan outline
-                let alpha: CGFloat = 0.70
-                let r: CGFloat = 0.05
-                let g: CGFloat = 0.85
-                let b: CGFloat = 1.0
-                let premul = SIMD4<Float>(Float(r * alpha),
-                                          Float(g * alpha),
-                                          Float(b * alpha),
-                                          Float(alpha))
-                if let sprite = makeRectOutlineSprite(rect: rect, colorPremul: premul) {
-                    sprites.append(sprite)
+            if let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx) {
+                let minY = min(bandMin, bandMax)
+                let maxY = max(bandMin, bandMax)
+                if maxY >= minY {
+                    let rect = CGRect(x: 0,
+                                      y: minY,
+                                      width: CGFloat(width),
+                                      height: max(1.0, maxY - minY))
+                    // Cyan outline
+                    let alpha: CGFloat = 0.70
+                    let r: CGFloat = 0.05
+                    let g: CGFloat = 0.85
+                    let b: CGFloat = 1.0
+                    let premul = SIMD4<Float>(Float(r * alpha),
+                                              Float(g * alpha),
+                                              Float(b * alpha),
+                                              Float(alpha))
+                    if let sprite = makeRectOutlineSprite(rect: rect, colorPremul: premul) {
+                        sprites.append(sprite)
+                    }
+                }
+            } else {
+                // Optionally could log occasionally; avoid spamming.
+                if logThis {
+                    os_log("Satellites debug: no valid spawn band (flasher constrains all space)", log: log, type: .info)
                 }
             }
         }
