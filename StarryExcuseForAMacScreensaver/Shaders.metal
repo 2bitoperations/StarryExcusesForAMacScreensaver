@@ -88,13 +88,9 @@ vertex SpriteVarying SpriteVertex(uint vid [[vertex_id]],
 
 fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
     float4 rgba = in.colorPremul;
-    
-    // Shape 0: filled rect
     if (in.shape == 0) {
         return rgba;
-    }
-    // Shape 1: circle (soft edge)
-    else if (in.shape == 1) {
+    } else {
         float r = length(in.local);
         if (r > 1.0) {
             discard_fragment();
@@ -102,34 +98,6 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
         float a = 1.0 - smoothstep(0.98, 1.0, r);
         return float4(rgba.rgb * a, rgba.a * a);
     }
-    // Shape 2: hollow rectangle outline (debug)
-    // local in [-1,1]. We draw only pixels within a border band near |coord|==1.
-    else if (in.shape == 2) {
-        float ax = fabs(in.local.x);
-        float ay = fabs(in.local.y);
-        float edge = max(ax, ay);
-        if (edge > 1.0) {
-            discard_fragment();
-        }
-        // Thickness in normalized local space (total quad width = 2.0).
-        const float outlineThickness = 0.15;   // Adjust for visibility.
-        const float feather = 0.02;            // Anti-alias feather.
-        
-        // outer fade (against edge==1)
-        float outer = 1.0 - smoothstep(1.0 - feather, 1.0, edge);
-        // inner cut (fade from (1 - outlineThickness) inward)
-        float inner = smoothstep(1.0 - outlineThickness - feather,
-                                 1.0 - outlineThickness,
-                                 edge);
-        float a = outer * inner;
-        if (a <= 0.0) {
-            discard_fragment();
-        }
-        return float4(rgba.rgb * a, rgba.a * a);
-    }
-    
-    // Unknown shape fallback: do not draw
-    discard_fragment();
 }
 
 // Moon shading uniforms:

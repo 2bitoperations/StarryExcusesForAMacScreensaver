@@ -6,8 +6,6 @@ import CoreGraphics
 public enum SpriteShape: UInt32 {
     case rect = 0
     case circle = 1
-    // New: hollow rectangle outline (for debug visuals like spawn bounds)
-    case rectOutline = 2
 }
 
 // One instance == one quad on screen with a shape and color
