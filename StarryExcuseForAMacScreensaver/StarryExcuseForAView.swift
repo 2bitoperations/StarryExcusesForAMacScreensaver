@@ -86,7 +86,7 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         frameIndex &+= 1
-        let verbose = (frameIndex <= 5) || (frameIndex % 60 == 0)
+        let verbose = defaultsManager.debugOverlayEnabled && (frameIndex <= 5) || (frameIndex % 60 == 0)
         if verbose {
             os_log("animateOneFrame #%{public}llu begin", log: log!, type: .info, frameIndex)
         }
