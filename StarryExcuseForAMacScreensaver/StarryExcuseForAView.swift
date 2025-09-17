@@ -538,9 +538,6 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         let occ = win.occlusionState
-        if occ.contains(.occluded) {
-            return (false, "occlusionState-occluded")
-        }
         
         // If occlusionState does not yet contain .visible (ambiguous early), use CGWindow heuristic.
         if !occ.contains(.visible) {
