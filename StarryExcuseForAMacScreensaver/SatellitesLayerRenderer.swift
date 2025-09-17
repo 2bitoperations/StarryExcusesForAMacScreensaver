@@ -7,12 +7,12 @@ import simd
 
 // Simple satellite renderer: spawns small bright points that traverse the sky
 // horizontally (either direction) at a fixed speed, at random vertical positions
-// above the skyline (upper ~70% of screen). Layer emits one "head" sprite per
+// across much of the screen. Layer emits one "head" sprite per
 // active satellite per frame; persistent trail is produced by GPU decay.
 //
-// 2025 Update: Flasher geometry (centerY & radius) is now provided once at
-// construction time instead of through dynamic setters. Spawn vertical band is
-// statically clamped so satellites always spawn ABOVE the top of the flasher.
+// 2025 Update (modified for test): Flasher geometry (centerY & radius) is provided once at
+// construction time. Spawn vertical band is statically clamped so satellites now
+// spawn entirely BELOW the flasher (their top edge is at or below flasherBottom + gap).
 // If no flasher info is supplied (nil), legacy band behavior is used.
 //
 // To change flasher-constrained behavior at runtime you must recreate the
@@ -48,10 +48,10 @@ final class SatellitesLayerRenderer {
     /// Debug: show spawn vertical band bounds.
     private var debugShowSpawnBounds: Bool
     
-    /// Static flasher information (used to ensure satellites spawn above flasher top).
+    /// Static flasher information (used to ensure satellites spawn below flasher bottom).
     private let flasherCenterY: CGFloat?
     private let flasherRadius: CGFloat?
-    /// Extra vertical gap (pixels) to keep between flasher top and satellite spawn area.
+    /// Extra vertical gap (pixels) to keep between flasher bottom and satellite spawn area.
     private let flasherVerticalGap: CGFloat = 4.0
     
     /// Active satellites.
@@ -182,13 +182,13 @@ final class SatellitesLayerRenderer {
     
     // Compute the current vertical spawn band (inclusive) taking flasher into account.
     // Returns (minY, maxY) or nil if there is NO valid vertical space such that
-    // the ENTIRE satellite (bottom edge) stays strictly above flasherTop - gap.
+    // the ENTIRE satellite (top edge) stays at or below (greater-or-equal y) flasherBottom + gap.
     //
-    // Coordinate system origin: top (y=0). "Higher" means smaller y.
+    // Coordinate system origin: top (y=0). Larger y means visually lower.
     //
-    // Invariant we must maintain:
+    // Invariant we must maintain (when flasher provided):
     //   For any returned centerY in [minY, maxY],
-    //       centerY + D/2 <= flasherTop - flasherVerticalGap
+    //       centerY - D/2 >= flasherBottom + flasherVerticalGap
     //
     // Legacy baseline band (no flasher): [0.05H, 0.95H]
     private func currentSpawnBand(satelliteDiameter: CGFloat) -> (CGFloat, CGFloat)? {
@@ -196,27 +196,27 @@ final class SatellitesLayerRenderer {
         var yMax = CGFloat(height) * 0.95
         
         if let cy = flasherCenterY, let r = flasherRadius {
-            let flasherTop = cy - r
-            // Highest permissible center (greatest y) so bottom edge + gap stays above flasher top
-            let limitMaxCenter = flasherTop - flasherVerticalGap - satelliteDiameter * 0.5
+            let flasherBottom = cy + r
+            // Lowest permissible center (smallest y) so that top edge is below (>=) flasher bottom + gap.
+            // centerY - D/2 >= flasherBottom + gap  => centerY >= flasherBottom + gap + D/2
+            let limitMinCenter = flasherBottom + flasherVerticalGap + satelliteDiameter * 0.5
             
-            // If the limit is below the top of the screen (< 0), there is no room to spawn.
-            if limitMaxCenter < 0 {
+            if limitMinCenter > CGFloat(height) {
+                // No room: required minimum center is off-screen.
                 return nil
             }
-            yMax = min(yMax, limitMaxCenter)
+            yMin = max(yMin, limitMinCenter)
             if yMin > yMax {
-                // Collapse band to single line at yMax.
-                yMin = yMax
+                // No valid band
+                return nil
             }
         }
         
-        // Clamp to valid screen region (note: yMax is guaranteed >= 0 here if flasher restricted).
+        // Clamp to screen
         yMin = max(0, min(CGFloat(height), yMin))
         yMax = max(0, min(CGFloat(height), yMax))
         
         if yMin > yMax {
-            // Degenerate (should not happen after logic above); treat as no band.
             return nil
         }
         return (yMin, yMax)
@@ -227,7 +227,7 @@ final class SatellitesLayerRenderer {
         let fromLeft = Bool.random(using: &rng)
         
         guard let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx) else {
-            os_log("Satellites spawn suppressed: no vertical space above flasher", log: log, type: .debug)
+            os_log("Satellites spawn suppressed: no vertical space below flasher", log: log, type: .debug)
             return
         }
         
@@ -235,7 +235,7 @@ final class SatellitesLayerRenderer {
         if bandMax >= bandMin {
             y = CGFloat.random(in: bandMin...bandMax, using: &rng)
         } else {
-            y = bandMin   // (Should not occur; bandMin==bandMax collapse case)
+            y = bandMin   // (Should not occur; defensive)
         }
         
         let x = fromLeft ? -sizePx : CGFloat(width) + sizePx
@@ -339,7 +339,7 @@ final class SatellitesLayerRenderer {
                 }
             } else {
                 if logThis {
-                    os_log("Satellites debug: no valid spawn band (flasher constrains all space)", log: log, type: .info)
+                    os_log("Satellites debug: no valid spawn band (flasher constrains all space below)", log: log, type: .info)
                 }
             }
         }
@@ -348,8 +348,8 @@ final class SatellitesLayerRenderer {
         if logThis {
             let flasherState: String
             if let cy = flasherCenterY, let r = flasherRadius {
-                let top = cy - r
-                flasherState = String(format: "yes(top=%.1f)", Double(top))
+                let bottom = cy + r
+                flasherState = String(format: "yes(bottom=%.1f)", Double(bottom))
             } else {
                 flasherState = "no"
             }
