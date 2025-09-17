@@ -12,52 +12,96 @@ import os
 class StarryDefaultsManager {
     var defaults: UserDefaults
     
-    // Default fallback constants (single source of truth)
+    // MARK: - Public range constants (single source of truth for UI components)
+    // Stars / Building Lights
+    static let starsPerSecondMin: Double = 0.0
+    static let buildingLightsPerSecondMin: Double = 0.0
+    
+    // Clears
+    static let secsBetweenClearsMin: Double = 1.0
+    
+    // Building geometry / spawning
+    static let buildingHeightMin: Double = 0.0
+    static let buildingHeightMax: Double = 1.0
+    static let buildingFrequencyMin: Double = 0.001
+    static let buildingFrequencyMax: Double = 1.0
+    
+    // Moon
+    static let moonDiameterPercentMin: Double = 0.001
+    static let moonDiameterPercentMax: Double = 0.25
+    static let moonBrightBrightnessMin: Double = 0.2
+    static let moonBrightBrightnessMax: Double = 1.2
+    static let moonDarkBrightnessMin: Double = 0.0
+    static let moonDarkBrightnessMax: Double = 0.9
+    static let moonPhaseValueMin: Double = 0.0
+    static let moonPhaseValueMax: Double = 1.0
+    static let moonTraversalMinutesMin: Int = 1
+    static let moonTraversalMinutesMax: Int = 720
+    
+    // Shooting Stars
+    static let shootingStarsAvgSecondsMin: Double = 0.5
+    static let shootingStarsAvgSecondsMax: Double = 600.0
+    static let shootingStarsLengthMin: Double = 40.0
+    static let shootingStarsLengthMax: Double = 300.0
+    static let shootingStarsSpeedMin: Double = 200.0
+    static let shootingStarsSpeedMax: Double = 1200.0
+    static let shootingStarsThicknessMin: Double = 1.0
+    static let shootingStarsThicknessMax: Double = 4.0
+    static let shootingStarsBrightnessMin: Double = 0.0
+    static let shootingStarsBrightnessMax: Double = 1.0
+    static let shootingStarsTrailHalfLifeMin: Double = 0.01
+    static let shootingStarsTrailHalfLifeMax: Double = 2.0
+    static let shootingStarsDirectionModeMin: Int = 0
+    static let shootingStarsDirectionModeMax: Int = 4
+    
+    // Satellites
+    static let satellitesAvgSpawnSecondsMin: Double = 0.2
+    static let satellitesAvgSpawnSecondsMax: Double = 120.0
+    static let satellitesSpeedMin: Double = 1.0
+    static let satellitesSpeedMax: Double = 100.0
+    static let satellitesSizeMin: Double = 1.0
+    static let satellitesSizeMax: Double = 6.0
+    static let satellitesBrightnessMin: Double = 0.2
+    static let satellitesBrightnessMax: Double = 1.2
+    static let satellitesTrailHalfLifeMin: Double = 0.0
+    static let satellitesTrailHalfLifeMax: Double = 0.5
+    
+    // Default fallback constants (single source of truth for values)
     private let defaultStarsPerUpdate = 80                // legacy
     private let defaultStarsPerSecond = 800.0             // new authoritative (≈ 80 * 10fps legacy assumption)
-    // Legacy per-update building lights (used to derive per-second if not explicitly set)
     private let defaultBuildingLightsPerUpdate = 15
-    // Target visual density originally: 15 / update @ 10 FPS => 150 lights / second
     private let defaultBuildingLightsPerSecond = 150.0
     
     private let defaultBuildingHeight = 0.35
     private let defaultSecsBetweenClears = 120.0
     private let defaultMoonTraversalMinutes = 60
     private let defaultBuildingFrequency = 0.033
-    // New unified moon size setting (% of screen width) ~80px on 3000px screen.
     private let defaultMoonDiameterScreenWidthPercent = 80.0 / 3000.0
     private let defaultMoonBrightBrightness = 1.0
     private let defaultMoonDarkBrightness = 0.15
     private let defaultMoonPhaseOverrideEnabled = false
-    // 0 = New, 0.25 ≈ First Quarter, 0.5 = Full, 0.75 ≈ Last Quarter, 1.0 = New
     private let defaultMoonPhaseOverrideValue = 0.0
-    // Debug toggle defaults
     private let defaultShowLightAreaTextureFillMask = false
     private let defaultDebugOverlayEnabled = false
     
     // Shooting Stars defaults
     private let defaultShootingStarsEnabled = true
     private let defaultShootingStarsAvgSeconds = 7.0
-    // Direction mode raw mapping:
-    // 0 Random, 1 LtoR, 2 RtoL, 3 TL->BR, 4 TR->BL
     private let defaultShootingStarsDirectionMode = 0
     private let defaultShootingStarsLength: Double = 160
     private let defaultShootingStarsSpeed: Double = 600
     private let defaultShootingStarsThickness: Double = 2
-    // UPDATED: brightness now 0.0 ... 1.0 with default 0.2
     private let defaultShootingStarsBrightness: Double = 0.2
-    // shooting star trail half-life seconds (0.01 .. 2.0)
     private let defaultShootingStarsTrailHalfLifeSeconds: Double = 0.18
     private let defaultShootingStarsDebugSpawnBounds = false
     
-    // Satellites defaults (UPDATED 2025-09 per new requirements)
+    // Satellites defaults
     private let defaultSatellitesEnabled = true
     private let defaultSatellitesAvgSpawnSeconds = 0.75
-    private let defaultSatellitesSpeed = 30.0               // px/sec (was 90.0)
-    private let defaultSatellitesSize = 2.0                 // px
-    private let defaultSatellitesBrightness = 0.5           // (was 0.9)
+    private let defaultSatellitesSpeed = 30.0
+    private let defaultSatellitesSize = 2.0
+    private let defaultSatellitesBrightness = 0.5
     private let defaultSatellitesTrailing = true
-    // Trail half-life range now 0.0 ... 0.5 (was 0.01 ... 2.0); default 0.10 (was 0.18)
     private let defaultSatellitesTrailHalfLifeSeconds = 0.10
     
     init() {
@@ -69,7 +113,6 @@ class StarryDefaultsManager {
     // MARK: - Migration
     
     private func migrateLegacyKeysIfNeeded() {
-        // Legacy key: ShowCrescentClipMask -> ShowLightAreaTextureFillMask
         if defaults.object(forKey: "ShowLightAreaTextureFillMask") == nil,
            defaults.object(forKey: "ShowCrescentClipMask") != nil {
             let legacy = defaults.bool(forKey: "ShowCrescentClipMask")
@@ -77,14 +120,12 @@ class StarryDefaultsManager {
             defaults.removeObject(forKey: "ShowCrescentClipMask")
             defaults.synchronize()
         }
-        // Remove deprecated oversize keys if present
         if defaults.object(forKey: "DarkMinorityOversizeOverrideEnabled") != nil {
             defaults.removeObject(forKey: "DarkMinorityOversizeOverrideEnabled")
         }
         if defaults.object(forKey: "DarkMinorityOversizeOverrideValue") != nil {
             defaults.removeObject(forKey: "DarkMinorityOversizeOverrideValue")
         }
-        // Remove old per-pixel moon size keys (now superseded by percent).
         if defaults.object(forKey: "MoonMinRadius") != nil {
             defaults.removeObject(forKey: "MoonMinRadius")
         }
@@ -92,13 +133,14 @@ class StarryDefaultsManager {
             defaults.removeObject(forKey: "MoonMaxRadius")
         }
         
-        // MIGRATION: Shooting stars legacy factor (per-frame keep 0.85..0.99) -> half-life seconds.
         if defaults.object(forKey: "ShootingStarsTrailHalfLifeSeconds") == nil {
             if let _ = defaults.object(forKey: "ShootingStarsTrailDecay") {
                 let factor = defaults.double(forKey: "ShootingStarsTrailDecay")
                 let fps = 60.0
                 let f = max(0.0001, min(0.9999, factor))
-                let hl = max(0.01, min(2.0, log(0.5) / (fps * log(f))))
+                let hl = max(Self.shootingStarsTrailHalfLifeMin,
+                             min(Self.shootingStarsTrailHalfLifeMax,
+                                 log(0.5) / (fps * log(f))))
                 defaults.set(hl, forKey: "ShootingStarsTrailHalfLifeSeconds")
             } else {
                 defaults.set(defaultShootingStarsTrailHalfLifeSeconds, forKey: "ShootingStarsTrailHalfLifeSeconds")
@@ -106,14 +148,14 @@ class StarryDefaultsManager {
             defaults.synchronize()
         } else {
             let hl = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
-            let clamped = max(0.01, min(2.0, hl))
+            let clamped = max(Self.shootingStarsTrailHalfLifeMin,
+                              min(Self.shootingStarsTrailHalfLifeMax, hl))
             if clamped != hl {
                 defaults.set(clamped, forKey: "ShootingStarsTrailHalfLifeSeconds")
             }
             defaults.synchronize()
         }
         
-        // MIGRATION: Satellites legacy conversions -> half-life (original migration to 0.01..2.0)
         if defaults.object(forKey: "SatellitesTrailHalfLifeSeconds") == nil {
             if let _ = defaults.object(forKey: "SatellitesTrailDecay") {
                 let v = defaults.double(forKey: "SatellitesTrailDecay")
@@ -121,35 +163,32 @@ class StarryDefaultsManager {
                 if v > 0.0 && v <= 1.0 {
                     let fps = 60.0
                     let f = max(0.0001, min(0.9999, v))
-                    hl = max(0.01, min(2.0, log(0.5) / (fps * log(f))))
+                    hl = max(Self.shootingStarsTrailHalfLifeMin, min(Self.shootingStarsTrailHalfLifeMax, log(0.5) / (fps * log(f))))
                 } else {
                     let t = max(0.01, min(120.0, v))
                     hl = t * log(2.0) / log(100.0)
-                    hl = max(0.01, min(2.0, hl))
+                    hl = max(Self.shootingStarsTrailHalfLifeMin, min(Self.shootingStarsTrailHalfLifeMax, hl))
                 }
                 defaults.set(hl, forKey: "SatellitesTrailHalfLifeSeconds")
             } else {
                 defaults.set(defaultSatellitesTrailHalfLifeSeconds, forKey: "SatellitesTrailHalfLifeSeconds")
             }
             defaults.synchronize()
-        } else {
-            // Existing value: will clamp later to new range below.
         }
         
-        // NEW RANGE MIGRATION (2025-09): clamp satellites trail half-life to 0.0 ... 0.5 (default 0.10)
         let oldHL = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
-        if oldHL.isNaN || oldHL < 0.0 || oldHL > 0.5 {
-            let clamped = max(0.0, min(0.5, oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : oldHL))
+        if oldHL.isNaN || oldHL < Self.satellitesTrailHalfLifeMin || oldHL > Self.satellitesTrailHalfLifeMax {
+            let clamped = max(Self.satellitesTrailHalfLifeMin,
+                              min(Self.satellitesTrailHalfLifeMax,
+                                  oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : oldHL))
             defaults.set(clamped == oldHL ? clamped : (oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : clamped),
                          forKey: "SatellitesTrailHalfLifeSeconds")
             defaults.synchronize()
         }
         
-        // MIGRATION (2025): introduce StarsPerSecond (authoritative)
         if defaults.object(forKey: "StarsPerSecond") == nil {
             if defaults.object(forKey: "StarsPerUpdate") != nil {
                 let legacy = max(0, defaults.integer(forKey: "StarsPerUpdate"))
-                // Legacy assumed 10 FPS
                 defaults.set(Double(legacy) * 10.0, forKey: "StarsPerSecond")
             } else {
                 defaults.set(defaultStarsPerSecond, forKey: "StarsPerSecond")
@@ -157,7 +196,6 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         
-        // NEW (2025): building lights per second (already handled previously)
         if defaults.object(forKey: "BuildingLightsPerSecond") == nil {
             if defaults.object(forKey: "BuildingLightsPerUpdate") != nil {
                 let legacy = max(0, defaults.integer(forKey: "BuildingLightsPerUpdate"))
@@ -171,18 +209,15 @@ class StarryDefaultsManager {
     
     // MARK: - Stored properties (with range enforcement)
     
-    // NEW authoritative stars-per-second configuration.
     var starsPerSecond: Double {
         set {
-            let clamped = max(0.0, newValue)
+            let clamped = max(Self.starsPerSecondMin, newValue)
             defaults.set(clamped, forKey: "StarsPerSecond")
-            // Keep legacy key loosely synchronized (divide by assumed 10 FPS) for any old code still reading it.
             defaults.set(Int(round(clamped / 10.0)), forKey: "StarsPerUpdate")
             defaults.synchronize()
         }
         get {
             if defaults.object(forKey: "StarsPerSecond") == nil {
-                // Derive a default if migration somehow failed
                 if defaults.object(forKey: "StarsPerUpdate") != nil {
                     let legacy = max(0, defaults.integer(forKey: "StarsPerUpdate"))
                     return Double(legacy) * 10.0
@@ -194,20 +229,15 @@ class StarryDefaultsManager {
         }
     }
     
-    // LEGACY (deprecated): stars per update. Derived from starsPerSecond / assumed 10 FPS.
-    // Retained for backward compatibility with older runtime components.
     var starsPerUpdate: Int {
         set {
             let val = max(0, newValue)
             defaults.set(val, forKey: "StarsPerUpdate")
-            // Keep new key aligned (multiply by 10 legacy FPS assumption) only if user has not explicitly
-            // set StarsPerSecond separately; we overwrite anyway for simplicity.
             defaults.set(Double(val) * 10.0, forKey: "StarsPerSecond")
             defaults.synchronize()
         }
         get {
             if defaults.object(forKey: "StarsPerUpdate") == nil {
-                // Derive from starsPerSecond
                 return Int(max(0, round(starsPerSecond / 10.0)))
             }
             let v = defaults.integer(forKey: "StarsPerUpdate")
@@ -215,7 +245,6 @@ class StarryDefaultsManager {
         }
     }
     
-    // Legacy: building lights per update (kept for backward compatibility / conversion)
     var buildingLightsPerUpdate: Int {
         set { defaults.set(newValue, forKey: "BuildingLightsPerUpdate"); defaults.synchronize() }
         get {
@@ -227,10 +256,9 @@ class StarryDefaultsManager {
         }
     }
     
-    // Preferred new setting: building lights per second (time-based spawning).
     var buildingLightsPerSecond: Double {
         set {
-            let clamped = max(0.0, newValue)
+            let clamped = max(Self.buildingLightsPerSecondMin, newValue)
             defaults.set(clamped, forKey: "BuildingLightsPerSecond")
             defaults.synchronize()
         }
@@ -247,7 +275,7 @@ class StarryDefaultsManager {
         set { defaults.set(newValue, forKey: "BuildingHeight"); defaults.synchronize() }
         get {
             let v = defaults.double(forKey: "BuildingHeight")
-            return (v > 0 && v < 1) ? v : defaultBuildingHeight
+            return (v > Self.buildingHeightMin && v < Self.buildingHeightMax) ? v : defaultBuildingHeight
         }
     }
     
@@ -255,27 +283,25 @@ class StarryDefaultsManager {
         set { defaults.set(newValue, forKey: "SecsBetweenClears"); defaults.synchronize() }
         get {
             let v = defaults.double(forKey: "SecsBetweenClears")
-            return v > 0 ? v : defaultSecsBetweenClears
+            return v > Self.secsBetweenClearsMin ? v : defaultSecsBetweenClears
         }
     }
     
-    // Moon traversal duration (minutes). 1 .. 720 (12h).
     var moonTraversalMinutes: Int {
         set {
-            let clamped = max(1, min(720, newValue))
+            let clamped = max(Self.moonTraversalMinutesMin, min(Self.moonTraversalMinutesMax, newValue))
             defaults.set(clamped, forKey: "MoonTraversalMinutes")
             defaults.synchronize()
         }
         get {
             let v = defaults.integer(forKey: "MoonTraversalMinutes")
-            return (1...720).contains(v) ? v : defaultMoonTraversalMinutes
+            return (Self.moonTraversalMinutesMin...Self.moonTraversalMinutesMax).contains(v) ? v : defaultMoonTraversalMinutes
         }
     }
     
-    // Building frequency
     var buildingFrequency: Double {
         set {
-            let clamped = max(0.001, min(1.0, newValue))
+            let clamped = max(Self.buildingFrequencyMin, min(Self.buildingFrequencyMax, newValue))
             defaults.set(clamped, forKey: "BuildingFrequency")
             defaults.synchronize()
         }
@@ -286,16 +312,15 @@ class StarryDefaultsManager {
         }
     }
     
-    // Unified moon size: diameter as % of screen width.
     var moonDiameterScreenWidthPercent: Double {
         set {
-            let clamped = max(0.001, min(0.25, newValue))
+            let clamped = max(Self.moonDiameterPercentMin, min(Self.moonDiameterPercentMax, newValue))
             defaults.set(clamped, forKey: "MoonDiameterScreenWidthPercent")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "MoonDiameterScreenWidthPercent")
-            if v.isNaN || v < 0.001 || v > 0.25 {
+            if v.isNaN || v < Self.moonDiameterPercentMin || v > Self.moonDiameterPercentMax {
                 return defaultMoonDiameterScreenWidthPercent
             }
             return v
@@ -304,25 +329,25 @@ class StarryDefaultsManager {
     
     var moonBrightBrightness: Double {
         set {
-            let clamped = max(0.2, min(1.2, newValue))
+            let clamped = max(Self.moonBrightBrightnessMin, min(Self.moonBrightBrightnessMax, newValue))
             defaults.set(clamped, forKey: "MoonBrightBrightness")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "MoonBrightBrightness")
-            return (v >= 0.2 && v <= 1.2) ? v : defaultMoonBrightBrightness
+            return (v >= Self.moonBrightBrightnessMin && v <= Self.moonBrightBrightnessMax) ? v : defaultMoonBrightBrightness
         }
     }
     
     var moonDarkBrightness: Double {
         set {
-            let clamped = max(0.0, min(0.9, newValue))
+            let clamped = max(Self.moonDarkBrightnessMin, min(Self.moonDarkBrightnessMax, newValue))
             defaults.set(clamped, forKey: "MoonDarkBrightness")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "MoonDarkBrightness")
-            return (v >= 0.0 && v <= 0.9) ? v : defaultMoonDarkBrightness
+            return (v >= Self.moonDarkBrightnessMin && v <= Self.moonDarkBrightnessMax) ? v : defaultMoonDarkBrightness
         }
     }
     
@@ -341,13 +366,13 @@ class StarryDefaultsManager {
     
     var moonPhaseOverrideValue: Double {
         set {
-            let clamped = max(0.0, min(1.0, newValue))
+            let clamped = max(Self.moonPhaseValueMin, min(Self.moonPhaseValueMax, newValue))
             defaults.set(clamped, forKey: "MoonPhaseOverrideValue")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "MoonPhaseOverrideValue")
-            if v.isNaN || v < 0.0 || v > 1.0 {
+            if v.isNaN || v < Self.moonPhaseValueMin || v > Self.moonPhaseValueMax {
                 return defaultMoonPhaseOverrideValue
             }
             return v
@@ -394,79 +419,79 @@ class StarryDefaultsManager {
     
     var shootingStarsAvgSeconds: Double {
         set {
-            let clamped = max(0.5, min(600.0, newValue))
+            let clamped = max(Self.shootingStarsAvgSecondsMin, min(Self.shootingStarsAvgSecondsMax, newValue))
             defaults.set(clamped, forKey: "ShootingStarsAvgSeconds")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "ShootingStarsAvgSeconds")
-            return (v >= 0.5 && v <= 600) ? v : defaultShootingStarsAvgSeconds
+            return (v >= Self.shootingStarsAvgSecondsMin && v <= Self.shootingStarsAvgSecondsMax) ? v : defaultShootingStarsAvgSeconds
         }
     }
     
     var shootingStarsDirectionMode: Int {
         set {
-            let clamped = max(0, min(4, newValue))
+            let clamped = max(Self.shootingStarsDirectionModeMin, min(Self.shootingStarsDirectionModeMax, newValue))
             defaults.set(clamped, forKey: "ShootingStarsDirectionMode")
             defaults.synchronize()
         }
         get {
             let v = defaults.integer(forKey: "ShootingStarsDirectionMode")
-            return (0...4).contains(v) ? v : defaultShootingStarsDirectionMode
+            return (Self.shootingStarsDirectionModeMin...Self.shootingStarsDirectionModeMax).contains(v) ? v : defaultShootingStarsDirectionMode
         }
     }
     
     var shootingStarsLength: Double {
         set {
-            let clamped = max(40, min(300, newValue))
+            let clamped = max(Self.shootingStarsLengthMin, min(Self.shootingStarsLengthMax, newValue))
             defaults.set(clamped, forKey: "ShootingStarsLength")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "ShootingStarsLength")
-            return (v >= 40 && v <= 300) ? v : defaultShootingStarsLength
+            return (v >= Self.shootingStarsLengthMin && v <= Self.shootingStarsLengthMax) ? v : defaultShootingStarsLength
         }
     }
     
     var shootingStarsSpeed: Double {
         set {
-            let clamped = max(200, min(1200, newValue))
+            let clamped = max(Self.shootingStarsSpeedMin, min(Self.shootingStarsSpeedMax, newValue))
             defaults.set(clamped, forKey: "ShootingStarsSpeed")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "ShootingStarsSpeed")
-            return (v >= 200 && v <= 1200) ? v : defaultShootingStarsSpeed
+            return (v >= Self.shootingStarsSpeedMin && v <= Self.shootingStarsSpeedMax) ? v : defaultShootingStarsSpeed
         }
     }
     
     var shootingStarsThickness: Double {
         set {
-            let clamped = max(1, min(4, newValue))
+            let clamped = max(Self.shootingStarsThicknessMin, min(Self.shootingStarsThicknessMax, newValue))
             defaults.set(clamped, forKey: "ShootingStarsThickness")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "ShootingStarsThickness")
-            return (v >= 1 && v <= 4) ? v : defaultShootingStarsThickness
+            return (v >= Self.shootingStarsThicknessMin && v <= Self.shootingStarsThicknessMax) ? v : defaultShootingStarsThickness
         }
     }
     
     var shootingStarsBrightness: Double {
         set {
-            let clamped = max(0.0, min(1.0, newValue))
+            let clamped = max(Self.shootingStarsBrightnessMin, min(Self.shootingStarsBrightnessMax, newValue))
             defaults.set(clamped, forKey: "ShootingStarsBrightness")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "ShootingStarsBrightness")
-            return (v >= 0.0 && v <= 1.0) ? v : defaultShootingStarsBrightness
+            return (v >= Self.shootingStarsBrightnessMin && v <= Self.shootingStarsBrightnessMax) ? v : defaultShootingStarsBrightness
         }
     }
     
     var shootingStarsTrailHalfLifeSeconds: Double {
         set {
-            let clamped = max(0.01, min(2.0, newValue))
+            let clamped = max(Self.shootingStarsTrailHalfLifeMin, min(Self.shootingStarsTrailHalfLifeMax, newValue))
             defaults.set(clamped, forKey: "ShootingStarsTrailHalfLifeSeconds")
             defaults.synchronize()
         }
@@ -475,7 +500,7 @@ class StarryDefaultsManager {
                 return defaultShootingStarsTrailHalfLifeSeconds
             }
             let v = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
-            return max(0.01, min(2.0, v))
+            return max(Self.shootingStarsTrailHalfLifeMin, min(Self.shootingStarsTrailHalfLifeMax, v))
         }
     }
     
@@ -506,13 +531,13 @@ class StarryDefaultsManager {
     
     var satellitesAvgSpawnSeconds: Double {
         set {
-            let clamped = max(0.2, min(120.0, newValue))
+            let clamped = max(Self.satellitesAvgSpawnSecondsMin, min(Self.satellitesAvgSpawnSecondsMax, newValue))
             defaults.set(clamped, forKey: "SatellitesAvgSpawnSeconds")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "SatellitesAvgSpawnSeconds")
-            if v.isNaN || v < 0.2 || v > 120.0 {
+            if v.isNaN || v < Self.satellitesAvgSpawnSecondsMin || v > Self.satellitesAvgSpawnSecondsMax {
                 return defaultSatellitesAvgSpawnSeconds
             }
             return v
@@ -521,37 +546,37 @@ class StarryDefaultsManager {
     
     var satellitesSpeed: Double {
         set {
-            let clamped = max(1.0, min(100.0, newValue))
+            let clamped = max(Self.satellitesSpeedMin, min(Self.satellitesSpeedMax, newValue))
             defaults.set(clamped, forKey: "SatellitesSpeed")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "SatellitesSpeed")
-            return (v >= 1.0 && v <= 100.0) ? v : defaultSatellitesSpeed
+            return (v >= Self.satellitesSpeedMin && v <= Self.satellitesSpeedMax) ? v : defaultSatellitesSpeed
         }
     }
     
     var satellitesSize: Double {
         set {
-            let clamped = max(1.0, min(6.0, newValue))
+            let clamped = max(Self.satellitesSizeMin, min(Self.satellitesSizeMax, newValue))
             defaults.set(clamped, forKey: "SatellitesSize")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "SatellitesSize")
-            return (v >= 1.0 && v <= 6.0) ? v : defaultSatellitesSize
+            return (v >= Self.satellitesSizeMin && v <= Self.satellitesSizeMax) ? v : defaultSatellitesSize
         }
     }
     
     var satellitesBrightness: Double {
         set {
-            let clamped = max(0.2, min(1.2, newValue))
+            let clamped = max(Self.satellitesBrightnessMin, min(Self.satellitesBrightnessMax, newValue))
             defaults.set(clamped, forKey: "SatellitesBrightness")
             defaults.synchronize()
         }
         get {
             let v = defaults.double(forKey: "SatellitesBrightness")
-            return (v >= 0.2 && v <= 1.2) ? v : defaultSatellitesBrightness
+            return (v >= Self.satellitesBrightnessMin && v <= Self.satellitesBrightnessMax) ? v : defaultSatellitesBrightness
         }
     }
     
@@ -567,7 +592,7 @@ class StarryDefaultsManager {
     
     var satellitesTrailHalfLifeSeconds: Double {
         set {
-            let clamped = max(0.0, min(0.5, newValue))
+            let clamped = max(Self.satellitesTrailHalfLifeMin, min(Self.satellitesTrailHalfLifeMax, newValue))
             defaults.set(clamped, forKey: "SatellitesTrailHalfLifeSeconds")
             defaults.synchronize()
         }
@@ -576,11 +601,12 @@ class StarryDefaultsManager {
                 return defaultSatellitesTrailHalfLifeSeconds
             }
             let v = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
-            return max(0.0, min(0.5, v))
+            return max(Self.satellitesTrailHalfLifeMin, min(Self.satellitesTrailHalfLifeMax, v))
         }
     }
     
-    // MARK: - Runtime validation (screensaver start-time)
+    // MARK: - Runtime validation
+    
     func validateAndCorrectMoonSettings(log: OSLog) {
         var corrected = false
         
@@ -595,7 +621,7 @@ class StarryDefaultsManager {
         }
         
         let phaseOverride = defaults.double(forKey: "MoonPhaseOverrideValue")
-        if phaseOverride.isNaN || phaseOverride < 0.0 || phaseOverride > 1.0 {
+        if phaseOverride.isNaN || phaseOverride < Self.moonPhaseValueMin || phaseOverride > Self.moonPhaseValueMax {
             os_log("Out-of-range MoonPhaseOverrideValue %.3f detected. Resetting to %.3f.",
                    log: log, type: .error, phaseOverride, defaultMoonPhaseOverrideValue)
             defaults.set(defaultMoonPhaseOverrideValue, forKey: "MoonPhaseOverrideValue")
@@ -603,7 +629,7 @@ class StarryDefaultsManager {
         }
         
         let percent = defaults.double(forKey: "MoonDiameterScreenWidthPercent")
-        if percent.isNaN || percent < 0.001 || percent > 0.25 {
+        if percent.isNaN || percent < Self.moonDiameterPercentMin || percent > Self.moonDiameterPercentMax {
             os_log("Out-of-range MoonDiameterScreenWidthPercent %.5f detected. Resetting to default %.5f.",
                    log: log, type: .error, percent, defaultMoonDiameterScreenWidthPercent)
             defaults.set(defaultMoonDiameterScreenWidthPercent, forKey: "MoonDiameterScreenWidthPercent")
