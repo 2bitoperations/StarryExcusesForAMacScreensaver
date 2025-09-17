@@ -493,6 +493,11 @@ final class StarryEngine {
                (flasherCenterY != nil && flasherRadius != nil) ? "yes" : "no")
     }
 
+    // Decision helper: frame-level logs (per-frame or periodic) are only emitted when overlay is enabled.
+    private func shouldEmitFrameLogs() -> Bool {
+        return config.debugOverlayEnabled
+    }
+    
     func advanceFrameGPU() -> StarryDrawData {
         engineFrameIndex &+= 1
 
@@ -503,9 +508,10 @@ final class StarryEngine {
             os_log("advanceFrameGPU: DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
         }
 
-        let logEveryFrame = config.debugOverlayEnabled || config.debugLogEveryFrame
-        let periodicLogThisFrame = (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
-        let logThisFrame = logEveryFrame || (verboseLogging && periodicLogThisFrame)
+        // Per-frame / periodic frame logs only when overlay enabled
+        let allowFrameLogging = shouldEmitFrameLogs()
+        let periodicLogThisFrame = allowFrameLogging && (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
+        let logThisFrame = allowFrameLogging && (config.debugLogEveryFrame || (verboseLogging && periodicLogThisFrame))
         if logThisFrame {
             os_log("advanceFrameGPU: begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
@@ -526,6 +532,7 @@ final class StarryEngine {
         if let skyline = skyline,
            let skylineRenderer = skylineRenderer {
             if skyline.shouldClearNow() {
+                // Always log clears (asynchronous events) regardless of overlay state
                 os_log("advanceFrameGPU: skyline requested clear — resetting state", log: log, type: .info)
                 skylineRenderer.resetFrameCounter()
                 satellitesRenderer?.reset()
@@ -540,7 +547,9 @@ final class StarryEngine {
 
             baseSprites = skylineRenderer.generateSprites(dtSeconds: dt)
             if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
-                os_log("advanceFrameGPU: DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
+                if allowFrameLogging {
+                    os_log("advanceFrameGPU: DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
+                }
                 baseSprites.removeAll()
             }
 
@@ -562,6 +571,7 @@ final class StarryEngine {
         }
 
         if forceClearOnNextFrame {
+            // Always log forced clears
             os_log("advanceFrameGPU: forceClearOnNextFrame active — will clear accumulation textures", log: log, type: .info)
             clearAll = true
             forceClearOnNextFrame = false
@@ -582,8 +592,7 @@ final class StarryEngine {
                                     waxingSign: waxSign)
         }
 
-        let logThisFrame2 = logEveryFrame || (verboseLogging && periodicLogThisFrame)
-        if logThisFrame2 {
+        if logThisFrame {
             os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f showSpawnBounds=%{public}@",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
@@ -608,7 +617,7 @@ final class StarryEngine {
             debugFPS: Float(currentFPS),
             debugCPUPercent: Float(currentCPUPercent)
         )
-        if moonAlbedoDirty && logThisFrame2 {
+        if moonAlbedoDirty && logThisFrame {
             os_log("advanceFrameGPU: moon albedo image attached for upload", log: log, type: .info)
         }
         moonAlbedoDirty = false
@@ -626,9 +635,9 @@ final class StarryEngine {
             os_log("advanceFrame(headless): DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
         }
 
-        let logEveryFrame = config.debugOverlayEnabled || config.debugLogEveryFrame
-        let periodicLogThisFrame = (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
-        let logThisFrame = logEveryFrame || (verboseLogging && periodicLogThisFrame)
+        let allowFrameLogging = shouldEmitFrameLogs()
+        let periodicLogThisFrame = allowFrameLogging && (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
+        let logThisFrame = allowFrameLogging && (config.debugLogEveryFrame || (verboseLogging && periodicLogThisFrame))
         if logThisFrame {
             os_log("advanceFrame (headless): begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
@@ -663,7 +672,9 @@ final class StarryEngine {
 
             baseSprites = skylineRenderer.generateSprites(dtSeconds: dt)
             if config.debugDropBaseEveryNFrames > 0 && (engineFrameIndex % UInt64(config.debugDropBaseEveryNFrames) == 0) {
-                os_log("advanceFrame(headless): DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
+                if allowFrameLogging {
+                    os_log("advanceFrame(headless): DIAG dropping baseSprites this frame (N=%{public}d)", log: log, type: .info, config.debugDropBaseEveryNFrames)
+                }
                 baseSprites.removeAll()
             }
 
@@ -799,7 +810,10 @@ final class StarryEngine {
             currentFPS = currentFPS * 0.6 + fps * 0.4
             fpsAccumulatedTime = 0
             fpsFrameCount = 0
-            os_log("Stats: FPS=%.1f CPU=%.1f%%", log: log, type: .debug, currentFPS, currentCPUPercent)
+            // FPS log considered periodic per-frame -> gate by overlay enablement
+            if config.debugOverlayEnabled {
+                os_log("Stats: FPS=%.1f CPU=%.1f%%", log: log, type: .debug, currentFPS, currentCPUPercent)
+            }
         }
     }
 

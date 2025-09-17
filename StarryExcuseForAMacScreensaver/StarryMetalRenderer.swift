@@ -691,8 +691,10 @@ final class StarryMetalRenderer {
         recomputeEffectiveOverlayEnabled()
         
         if effectiveOverlayEnabled && !drawData.debugOverlayEnabled && userOverlayEnabled {
+            // Overlay active via user override; keep as asynchronous style log (only when state changed)
             os_log("Overlay active via user override (engine reports disabled)", log: log, type: .info)
-        } else if drawData.debugOverlayEnabled {
+        } else if drawData.debugOverlayEnabled && effectiveOverlayEnabled {
+            // Only log once per change; current simple approach logs when enabled
             os_log("Overlay active via engine flag", log: log, type: .debug)
         }
         
@@ -715,6 +717,7 @@ final class StarryMetalRenderer {
             return
         }
         
+        // Per-frame diagnostics now gated by overlay
         logFrameDiagnostics(prefix: "", drawData: drawData, dt: dt)
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
@@ -1295,7 +1298,10 @@ final class StarryMetalRenderer {
         let halfLife: Double = (which == .satellites) ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
         let keep = decayKeep(forHalfLife: halfLife, dt: dt)
         
-        if diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
+        // Gate periodic decay logging behind overlay flag (per-frame style)
+        if effectiveOverlayEnabled &&
+            diagnosticsEnabled &&
+            frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
             os_log("Decay in-place %@ keep=%.4f (halfLife=%.3f dt=%.4f)",
                    log: log, type: .debug,
                    (which == .satellites ? "satellites" : "shooting"),
@@ -1525,7 +1531,9 @@ final class StarryMetalRenderer {
         return nil
     }
     
+    // Per-frame diagnostics gated by overlay enablement.
     private func logFrameDiagnostics(prefix: String, drawData: StarryDrawData, dt: CFTimeInterval?) {
+        guard effectiveOverlayEnabled else { return }
         guard diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 else { return }
         let satCount = drawData.satellitesSprites.count
         let shootCount = drawData.shootingSprites.count
