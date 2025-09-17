@@ -1064,8 +1064,12 @@ final class StarryMetalRenderer {
         if let ov = overlayTexture {
             clear(texture: ov)
         }
-        if let moon = moonAlbedoTexture {
-            clear(texture: moon)
+        // IMPORTANT: We intentionally do NOT clear moonAlbedoTexture during routine clears.
+        // Its albedo is uploaded once (or rarely). Clearing it to zeros caused the moon
+        // to render as a black disc until a new upload occurred. If releaseMemory=true
+        // the texture will be released below anyway, so no explicit clear is needed.
+        if !releaseMemory, moonAlbedoTexture != nil {
+            os_log("ClearOffscreenTextures: preserving moonAlbedoTexture contents (reason=%@)", log: log, type: .debug, reason)
         }
         
         commandBuffer.commit()
