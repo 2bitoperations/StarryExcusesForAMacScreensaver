@@ -483,8 +483,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         let moonSizePreview = makeSmallLabel("0.00%")
         self.moonSizePercentPreview = moonSizePreview
         moonLabelRow.addArrangedSubview(moonSizeLabel)
-        moonLabelRow.addArrangedSubview(moonSizePreview
-        )
+        moonLabelRow.addArrangedSubview(moonSizePreview)
         let moonSlider = NSSlider(value: 0.02, minValue: 0.001, maxValue: 0.25, target: self, action: #selector(moonSliderChanged(_:)))
         moonSlider.translatesAutoresizingMaskIntoConstraints = false
         moonSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -510,6 +509,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         brightRow.addArrangedSubview(brightPreview)
         let brightSlider = NSSlider(value: 1.0, minValue: 0.2, maxValue: 1.2, target: self, action: #selector(moonSliderChanged(_:)))
         brightSlider.translatesAutoresizingMaskIntoConstraints = false
+        brightSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.brightBrightnessSlider = brightSlider
         let brightSliderRow = NSStackView(views: [brightSlider])
         brightSliderRow.orientation = .horizontal
@@ -532,6 +532,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         darkRow.addArrangedSubview(darkPreview)
         let darkSlider = NSSlider(value: 0.15, minValue: 0.0, maxValue: 0.9, target: self, action: #selector(moonSliderChanged(_:)))
         darkSlider.translatesAutoresizingMaskIntoConstraints = false
+        darkSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.darkBrightnessSlider = darkSlider
         let darkSliderRow = NSStackView(views: [darkSlider])
         darkSliderRow.orientation = .horizontal
@@ -568,6 +569,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         phaseRow.addArrangedSubview(phasePreview)
         let phaseSlider = NSSlider(value: 0.0, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(moonPhaseSliderChanged(_:)))
         phaseSlider.translatesAutoresizingMaskIntoConstraints = false
+        phaseSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.moonPhaseSlider = phaseSlider
         let phaseSliderRow = NSStackView(views: [phaseSlider])
         phaseSliderRow.orientation = .horizontal
@@ -606,6 +608,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         moonBox.contentView?.addSubview(moonStack)
         if let moonContent = moonBox.contentView {
             pinToEdges(moonStack, in: moonContent, inset: 12)
+        }
+        
+        // Enforce full-width for moon slider rows (excluding label-only rows if not desired)
+        for row in [moonSliderRow, brightSliderRow, darkSliderRow, phaseSliderRow] {
+            row.leadingAnchor.constraint(equalTo: moonStack.leadingAnchor).isActive = true
+            row.trailingAnchor.constraint(equalTo: moonStack.trailingAnchor).isActive = true
         }
         
         // SHOOTING STARS
@@ -667,6 +675,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         lengthLabelRow.addArrangedSubview(lengthPreview)
         let lengthSlider = NSSlider(value: 160, minValue: 40, maxValue: 300, target: self, action: #selector(shootingStarsSliderChanged(_:)))
         lengthSlider.translatesAutoresizingMaskIntoConstraints = false
+        lengthSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsLengthSlider = lengthSlider
         let lengthSliderRow = NSStackView(views: [lengthSlider])
         lengthSliderRow.orientation = .horizontal
@@ -689,6 +698,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         speedLabelRow.addArrangedSubview(speedPreview)
         let speedSlider = NSSlider(value: 600, minValue: 200, maxValue: 1200, target: self, action: #selector(shootingStarsSliderChanged(_:)))
         speedSlider.translatesAutoresizingMaskIntoConstraints = false
+        speedSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsSpeedSlider = speedSlider
         let speedSliderRow = NSStackView(views: [speedSlider])
         speedSliderRow.orientation = .horizontal
@@ -711,6 +721,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         thickLabelRow.addArrangedSubview(thickPreview)
         let thickSlider = NSSlider(value: 2.0, minValue: 1.0, maxValue: 4.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
         thickSlider.translatesAutoresizingMaskIntoConstraints = false
+        thickSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsThicknessSlider = thickSlider
         let thickSliderRow = NSStackView(views: [thickSlider])
         thickSliderRow.orientation = .horizontal
@@ -733,6 +744,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         brightSSLabelRow.addArrangedSubview(brightSSPreview)
         let brightSSSlider = NSSlider(value: 0.2, minValue: 0.0, maxValue: 1.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
         brightSSSlider.translatesAutoresizingMaskIntoConstraints = false
+        brightSSSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsBrightnessSlider = brightSSSlider
         let brightSSSliderRow = NSStackView(views: [brightSSSlider])
         brightSSSliderRow.orientation = .horizontal
@@ -755,6 +767,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         hlRow.addArrangedSubview(hlPreview)
         let hlSlider = NSSlider(value: 0.18, minValue: 0.01, maxValue: 2.0, target: self, action: #selector(shootingStarsSliderChanged(_:)))
         hlSlider.translatesAutoresizingMaskIntoConstraints = false
+        hlSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.shootingStarsTrailDecaySlider = hlSlider
         let hlSliderRow = NSStackView(views: [hlSlider])
         hlSliderRow.orientation = .horizontal
@@ -781,6 +794,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         shootingBox.contentView?.addSubview(shootingStack)
         if let shootingContent = shootingBox.contentView {
             pinToEdges(shootingStack, in: shootingContent, inset: 12)
+        }
+        
+        // Enforce full-width for shooting star slider rows
+        for row in [lengthSliderRow, speedSliderRow, thickSliderRow, brightSSSliderRow, hlSliderRow] {
+            row.leadingAnchor.constraint(equalTo: shootingStack.leadingAnchor).isActive = true
+            row.trailingAnchor.constraint(equalTo: shootingStack.trailingAnchor).isActive = true
         }
         
         // SATELLITES
@@ -823,6 +842,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satSpeedLabelRow.addArrangedSubview(satSpeedPreview)
         let satSpeedSlider = NSSlider(value: 30.0, minValue: 1.0, maxValue: 100.0, target: self, action: #selector(satellitesSliderChanged(_:)))
         satSpeedSlider.translatesAutoresizingMaskIntoConstraints = false
+        satSpeedSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.satellitesSpeedSlider = satSpeedSlider
         let satSpeedSliderRow = NSStackView(views: [satSpeedSlider])
         satSpeedSliderRow.orientation = .horizontal
@@ -845,6 +865,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satSizeLabelRow.addArrangedSubview(satSizePreview)
         let satSizeSlider = NSSlider(value: 2.0, minValue: 1.0, maxValue: 6.0, target: self, action: #selector(satellitesSliderChanged(_:)))
         satSizeSlider.translatesAutoresizingMaskIntoConstraints = false
+        satSizeSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.satellitesSizeSlider = satSizeSlider
         let satSizeSliderRow = NSStackView(views: [satSizeSlider])
         satSizeSliderRow.orientation = .horizontal
@@ -867,6 +888,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satBrightnessLabelRow.addArrangedSubview(satBrightnessPreview)
         let satBrightnessSlider = NSSlider(value: 0.5, minValue: 0.2, maxValue: 1.2, target: self, action: #selector(satellitesSliderChanged(_:)))
         satBrightnessSlider.translatesAutoresizingMaskIntoConstraints = false
+        satBrightnessSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.satellitesBrightnessSlider = satBrightnessSlider
         let satBrightnessSliderRow = NSStackView(views: [satBrightnessSlider])
         satBrightnessSliderRow.orientation = .horizontal
@@ -903,6 +925,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         satHLLabelRow.addArrangedSubview(satHLPreview)
         let satHLSlider = NSSlider(value: 0.10, minValue: 0.0, maxValue: 0.5, target: self, action: #selector(satellitesSliderChanged(_:)))
         satHLSlider.translatesAutoresizingMaskIntoConstraints = false
+        satHLSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
         self.satellitesTrailDecaySlider = satHLSlider
         let satHLSliderRow = NSStackView(views: [satHLSlider])
         satHLSliderRow.orientation = .horizontal
@@ -930,6 +953,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             pinToEdges(satellitesStack, in: satContent, inset: 12)
         }
         
+        // Enforce full-width for satellite slider rows
+        for row in [satSpeedSliderRow, satSizeSliderRow, satBrightnessSliderRow, satHLSliderRow] {
+            row.leadingAnchor.constraint(equalTo: satellitesStack.leadingAnchor).isActive = true
+            row.trailingAnchor.constraint(equalTo: satellitesStack.trailingAnchor).isActive = true
+        }
+        
         // Add sections
         sectionsStack.addArrangedSubview(generalBox)
         sectionsStack.addArrangedSubview(moonBox)
@@ -942,7 +971,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         for box in boxesToExpand {
             box.setContentHuggingPriority(.defaultLow, for: .horizontal)
             box.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            // Match stack width (stack itself is pinned with trailing = docView.trailing - 12)
             box.widthAnchor.constraint(equalTo: sectionsStack.widthAnchor).isActive = true
         }
         
@@ -1119,7 +1147,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         NSLayoutConstraint.activate([
             view.topAnchor.constraint(equalTo: superview.topAnchor, constant: inset),
             view.leadingAnchor.constraint(equalTo: superview.leadingAnchor, constant: inset),
-            view.trailingAnchor.constraint(lessThanOrEqualTo: superview.trailingAnchor, constant: -inset),
+            view.trailingAnchor.constraint(equalTo: superview.trailingAnchor, constant: -inset),
             view.bottomAnchor.constraint(lessThanOrEqualTo: superview.bottomAnchor, constant: -inset)
         ])
     }
