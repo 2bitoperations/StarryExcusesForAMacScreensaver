@@ -280,6 +280,18 @@ class StarryExcuseForAView: ScreenSaverView {
         }
     }
     
+    // New generic handler that logs ANY com.apple.screensaver.* notification
+    @objc func anyScreensaverNotification(_ note: Notification) {
+        let name = note.name.rawValue
+        guard name.hasPrefix("com.apple.screensaver.") else { return }
+        os_log("Received screensaver notification %{public}@ (object=%{public}@ userInfoKeys=%{public}@)",
+               log: log ?? .default,
+               type: .info,
+               name,
+               String(describing: note.object),
+               note.userInfo?.keys.map { "\($0)" }.joined(separator: ",") ?? "none")
+    }
+    
     private func deallocateResources() {
         os_log("Deallocating resources: tearing down renderer, layer, engine", log: log!, type: .info)
         metalLayer?.removeFromSuperlayer()
@@ -300,6 +312,13 @@ class StarryExcuseForAView: ScreenSaverView {
             self,
             selector: #selector(self.willStopHandler(_:)),
             name: Notification.Name("com.apple.screensaver.didstop"),
+            object: nil
+        )
+        // Register a catch‑all observer for ANY notification; filter by prefix in handler.
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.anyScreensaverNotification(_:)),
+            name: nil,          // nil => receive all distributed notifications
             object: nil
         )
     }
