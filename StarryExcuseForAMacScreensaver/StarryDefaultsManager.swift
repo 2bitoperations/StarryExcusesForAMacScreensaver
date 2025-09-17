@@ -1,10 +1,3 @@
-﻿//
-//  StarryConfigSheetManager.swift
-//  StarryExcuseForAMacScreensaver
-//
-//  Created by Andrew Malota on 5/2/19.
-//
-
 import Foundation
 import ScreenSaver
 import os
@@ -110,6 +103,63 @@ class StarryDefaultsManager {
         migrateLegacyKeysIfNeeded()
     }
     
+    // MARK: - Defensive helpers
+    
+    // Returns NSNumber strictly (rejects strings, etc.)
+    private func safeNumber(_ key: String) -> NSNumber? {
+        guard let obj = defaults.object(forKey: key) else { return nil }
+        if let num = obj as? NSNumber {
+            let d = num.doubleValue
+            if d.isNaN || d.isInfinite {
+                return nil
+            }
+            return num
+        }
+        return nil
+    }
+    
+    private func safeDouble(_ key: String) -> Double? {
+        guard let n = safeNumber(key) else { return nil }
+        return n.doubleValue
+    }
+    
+    private func safeInt(_ key: String) -> Int? {
+        guard let n = safeNumber(key) else { return nil }
+        return n.intValue
+    }
+    
+    private func safeBool(_ key: String) -> Bool? {
+        guard let obj = defaults.object(forKey: key) else { return nil }
+        if let b = obj as? Bool { return b }
+        if let n = obj as? NSNumber { return n.boolValue }
+        return nil
+    }
+    
+    // Generic validation (range inclusive). If invalid or out-of-range → defaultValue.
+    private func validatedDouble(_ value: Double?, min: Double, max: Double, defaultValue: Double) -> Double {
+        guard let v = value, !v.isNaN, !v.isInfinite else { return defaultValue }
+        if v < min || v > max { return defaultValue }
+        return v
+    }
+    
+    private func validatedInt(_ value: Int?, min: Int, max: Int, defaultValue: Int) -> Int {
+        guard let v = value else { return defaultValue }
+        if v < min || v > max { return defaultValue }
+        return v
+    }
+    
+    private func setClampedDouble(_ value: Double, key: String, min: Double, max: Double) {
+        let clamped = max(min, min(max, value))
+        defaults.set(clamped, forKey: key)
+        defaults.synchronize()
+    }
+    
+    private func setClampedInt(_ value: Int, key: String, min: Int, max: Int) {
+        let clamped = max(min, min(max, value))
+        defaults.set(clamped, forKey: key)
+        defaults.synchronize()
+    }
+    
     // MARK: - Migration
     
     private func migrateLegacyKeysIfNeeded() {
@@ -207,25 +257,25 @@ class StarryDefaultsManager {
         }
     }
     
-    // MARK: - Stored properties (with range enforcement)
+    // MARK: - Stored properties (defensive getters)
     
     var starsPerSecond: Double {
         set {
-            let clamped = max(Self.starsPerSecondMin, newValue)
-            defaults.set(clamped, forKey: "StarsPerSecond")
-            defaults.set(Int(round(clamped / 10.0)), forKey: "StarsPerUpdate")
+            let v = max(Self.starsPerSecondMin, newValue)
+            defaults.set(v, forKey: "StarsPerSecond")
+            // Keep legacy key in sync (rounded)
+            defaults.set(Int(round(v / 10.0)), forKey: "StarsPerUpdate")
             defaults.synchronize()
         }
         get {
-            if defaults.object(forKey: "StarsPerSecond") == nil {
-                if defaults.object(forKey: "StarsPerUpdate") != nil {
-                    let legacy = max(0, defaults.integer(forKey: "StarsPerUpdate"))
-                    return Double(legacy) * 10.0
-                }
-                return defaultStarsPerSecond
+            if let v = safeDouble("StarsPerSecond"), v >= Self.starsPerSecondMin {
+                return v
             }
-            let v = defaults.double(forKey: "StarsPerSecond")
-            return v >= 0 ? v : defaultStarsPerSecond
+            // legacy fallback
+            if let legacy = safeInt("StarsPerUpdate"), legacy >= 0 {
+                return Double(legacy) * 10.0
+            }
+            return defaultStarsPerSecond
         }
     }
     
@@ -237,117 +287,118 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         get {
-            if defaults.object(forKey: "StarsPerUpdate") == nil {
-                return Int(max(0, round(starsPerSecond / 10.0)))
+            if let v = safeInt("StarsPerUpdate"), v >= 0 {
+                return v
             }
-            let v = defaults.integer(forKey: "StarsPerUpdate")
-            return v > 0 ? v : Int(max(0, round(starsPerSecond / 10.0)))
+            // derive from starsPerSecond (which already defends)
+            return Int(max(0, round(starsPerSecond / 10.0)))
         }
     }
     
     var buildingLightsPerUpdate: Int {
-        set { defaults.set(newValue, forKey: "BuildingLightsPerUpdate"); defaults.synchronize() }
+        set {
+            let v = max(0, newValue)
+            defaults.set(v, forKey: "BuildingLightsPerUpdate")
+            defaults.synchronize()
+        }
         get {
-            if defaults.object(forKey: "BuildingLightsPerUpdate") == nil {
-                return defaultBuildingLightsPerUpdate
+            if let v = safeInt("BuildingLightsPerUpdate"), v >= 0 {
+                return v
             }
-            let v = defaults.integer(forKey: "BuildingLightsPerUpdate")
-            return v > 0 ? v : defaultBuildingLightsPerUpdate
+            return defaultBuildingLightsPerUpdate
         }
     }
     
     var buildingLightsPerSecond: Double {
         set {
-            let clamped = max(Self.buildingLightsPerSecondMin, newValue)
-            defaults.set(clamped, forKey: "BuildingLightsPerSecond")
+            let v = max(Self.buildingLightsPerSecondMin, newValue)
+            defaults.set(v, forKey: "BuildingLightsPerSecond")
             defaults.synchronize()
         }
         get {
-            if defaults.object(forKey: "BuildingLightsPerSecond") == nil {
-                return Double(buildingLightsPerUpdate) * 10.0
+            if let v = safeDouble("BuildingLightsPerSecond"), v >= Self.buildingLightsPerSecondMin {
+                return v
             }
-            let v = defaults.double(forKey: "BuildingLightsPerSecond")
-            return v > 0 ? v : defaultBuildingLightsPerSecond
+            // legacy fallback
+            return Double(buildingLightsPerUpdate) * 10.0
         }
     }
     
     var buildingHeight: Double {
-        set { defaults.set(newValue, forKey: "BuildingHeight"); defaults.synchronize() }
+        set { setClampedDouble(newValue, key: "BuildingHeight", min: Self.buildingHeightMin, max: Self.buildingHeightMax) }
         get {
-            let v = defaults.double(forKey: "BuildingHeight")
-            return (v > Self.buildingHeightMin && v < Self.buildingHeightMax) ? v : defaultBuildingHeight
-        }
-    }
-    
-    var secsBetweenClears: Double {
-        set { defaults.set(newValue, forKey: "SecsBetweenClears"); defaults.synchronize() }
-        get {
-            let v = defaults.double(forKey: "SecsBetweenClears")
-            return v > Self.secsBetweenClearsMin ? v : defaultSecsBetweenClears
-        }
-    }
-    
-    var moonTraversalMinutes: Int {
-        set {
-            let clamped = max(Self.moonTraversalMinutesMin, min(Self.moonTraversalMinutesMax, newValue))
-            defaults.set(clamped, forKey: "MoonTraversalMinutes")
-            defaults.synchronize()
-        }
-        get {
-            let v = defaults.integer(forKey: "MoonTraversalMinutes")
-            return (Self.moonTraversalMinutesMin...Self.moonTraversalMinutesMax).contains(v) ? v : defaultMoonTraversalMinutes
-        }
-    }
-    
-    var buildingFrequency: Double {
-        set {
-            let clamped = max(Self.buildingFrequencyMin, min(Self.buildingFrequencyMax, newValue))
-            defaults.set(clamped, forKey: "BuildingFrequency")
-            defaults.synchronize()
-        }
-        get {
-            let v = defaults.double(forKey: "BuildingFrequency")
-            if v.isNaN || v <= 0 { return defaultBuildingFrequency }
+            let v = validatedDouble(safeDouble("BuildingHeight"),
+                                    min: Self.buildingHeightMin,
+                                    max: Self.buildingHeightMax,
+                                    defaultValue: defaultBuildingHeight)
             return v
         }
     }
     
-    var moonDiameterScreenWidthPercent: Double {
+    var secsBetweenClears: Double {
         set {
-            let clamped = max(Self.moonDiameterPercentMin, min(Self.moonDiameterPercentMax, newValue))
-            defaults.set(clamped, forKey: "MoonDiameterScreenWidthPercent")
+            let v = max(Self.secsBetweenClearsMin, newValue)
+            defaults.set(v, forKey: "SecsBetweenClears")
             defaults.synchronize()
         }
         get {
-            let v = defaults.double(forKey: "MoonDiameterScreenWidthPercent")
-            if v.isNaN || v < Self.moonDiameterPercentMin || v > Self.moonDiameterPercentMax {
-                return defaultMoonDiameterScreenWidthPercent
+            if let v = safeDouble("SecsBetweenClears"), v >= Self.secsBetweenClearsMin {
+                return v
             }
+            return defaultSecsBetweenClears
+        }
+    }
+    
+    var moonTraversalMinutes: Int {
+        set { setClampedInt(newValue, key: "MoonTraversalMinutes", min: Self.moonTraversalMinutesMin, max: Self.moonTraversalMinutesMax) }
+        get {
+            return validatedInt(safeInt("MoonTraversalMinutes"),
+                                min: Self.moonTraversalMinutesMin,
+                                max: Self.moonTraversalMinutesMax,
+                                defaultValue: defaultMoonTraversalMinutes)
+        }
+    }
+    
+    var buildingFrequency: Double {
+        set { setClampedDouble(newValue, key: "BuildingFrequency", min: Self.buildingFrequencyMin, max: Self.buildingFrequencyMax) }
+        get {
+            let v = safeDouble("BuildingFrequency")
+            if let val = v, !val.isNaN, !val.isInfinite,
+               val >= Self.buildingFrequencyMin, val <= Self.buildingFrequencyMax {
+                return val
+            }
+            return defaultBuildingFrequency
+        }
+    }
+    
+    var moonDiameterScreenWidthPercent: Double {
+        set { setClampedDouble(newValue, key: "MoonDiameterScreenWidthPercent", min: Self.moonDiameterPercentMin, max: Self.moonDiameterPercentMax) }
+        get {
+            let v = validatedDouble(safeDouble("MoonDiameterScreenWidthPercent"),
+                                    min: Self.moonDiameterPercentMin,
+                                    max: Self.moonDiameterPercentMax,
+                                    defaultValue: defaultMoonDiameterScreenWidthPercent)
             return v
         }
     }
     
     var moonBrightBrightness: Double {
-        set {
-            let clamped = max(Self.moonBrightBrightnessMin, min(Self.moonBrightBrightnessMax, newValue))
-            defaults.set(clamped, forKey: "MoonBrightBrightness")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "MoonBrightBrightness", min: Self.moonBrightBrightnessMin, max: Self.moonBrightBrightnessMax) }
         get {
-            let v = defaults.double(forKey: "MoonBrightBrightness")
-            return (v >= Self.moonBrightBrightnessMin && v <= Self.moonBrightBrightnessMax) ? v : defaultMoonBrightBrightness
+            return validatedDouble(safeDouble("MoonBrightBrightness"),
+                                   min: Self.moonBrightBrightnessMin,
+                                   max: Self.moonBrightBrightnessMax,
+                                   defaultValue: defaultMoonBrightBrightness)
         }
     }
     
     var moonDarkBrightness: Double {
-        set {
-            let clamped = max(Self.moonDarkBrightnessMin, min(Self.moonDarkBrightnessMax, newValue))
-            defaults.set(clamped, forKey: "MoonDarkBrightness")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "MoonDarkBrightness", min: Self.moonDarkBrightnessMin, max: Self.moonDarkBrightnessMax) }
         get {
-            let v = defaults.double(forKey: "MoonDarkBrightness")
-            return (v >= Self.moonDarkBrightnessMin && v <= Self.moonDarkBrightnessMax) ? v : defaultMoonDarkBrightness
+            return validatedDouble(safeDouble("MoonDarkBrightness"),
+                                   min: Self.moonDarkBrightnessMin,
+                                   max: Self.moonDarkBrightnessMax,
+                                   defaultValue: defaultMoonDarkBrightness)
         }
     }
     
@@ -357,25 +408,17 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         get {
-            if defaults.object(forKey: "MoonPhaseOverrideEnabled") == nil {
-                return defaultMoonPhaseOverrideEnabled
-            }
-            return defaults.bool(forKey: "MoonPhaseOverrideEnabled")
+            return safeBool("MoonPhaseOverrideEnabled") ?? defaultMoonPhaseOverrideEnabled
         }
     }
     
     var moonPhaseOverrideValue: Double {
-        set {
-            let clamped = max(Self.moonPhaseValueMin, min(Self.moonPhaseValueMax, newValue))
-            defaults.set(clamped, forKey: "MoonPhaseOverrideValue")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "MoonPhaseOverrideValue", min: Self.moonPhaseValueMin, max: Self.moonPhaseValueMax) }
         get {
-            let v = defaults.double(forKey: "MoonPhaseOverrideValue")
-            if v.isNaN || v < Self.moonPhaseValueMin || v > Self.moonPhaseValueMax {
-                return defaultMoonPhaseOverrideValue
-            }
-            return v
+            return validatedDouble(safeDouble("MoonPhaseOverrideValue"),
+                                   min: Self.moonPhaseValueMin,
+                                   max: Self.moonPhaseValueMax,
+                                   defaultValue: defaultMoonPhaseOverrideValue)
         }
     }
     
@@ -385,10 +428,7 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         get {
-            if defaults.object(forKey: "ShowLightAreaTextureFillMask") == nil {
-                return defaultShowLightAreaTextureFillMask
-            }
-            return defaults.bool(forKey: "ShowLightAreaTextureFillMask")
+            return safeBool("ShowLightAreaTextureFillMask") ?? defaultShowLightAreaTextureFillMask
         }
     }
     
@@ -398,10 +438,7 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         get {
-            if defaults.object(forKey: "DebugOverlayEnabled") == nil {
-                return defaultDebugOverlayEnabled
-            }
-            return defaults.bool(forKey: "DebugOverlayEnabled")
+            return safeBool("DebugOverlayEnabled") ?? defaultDebugOverlayEnabled
         }
     }
     
@@ -409,203 +446,147 @@ class StarryDefaultsManager {
     
     var shootingStarsEnabled: Bool {
         set { defaults.set(newValue, forKey: "ShootingStarsEnabled"); defaults.synchronize() }
-        get {
-            if defaults.object(forKey: "ShootingStarsEnabled") == nil {
-                return defaultShootingStarsEnabled
-            }
-            return defaults.bool(forKey: "ShootingStarsEnabled")
-        }
+        get { safeBool("ShootingStarsEnabled") ?? defaultShootingStarsEnabled }
     }
     
     var shootingStarsAvgSeconds: Double {
-        set {
-            let clamped = max(Self.shootingStarsAvgSecondsMin, min(Self.shootingStarsAvgSecondsMax, newValue))
-            defaults.set(clamped, forKey: "ShootingStarsAvgSeconds")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "ShootingStarsAvgSeconds", min: Self.shootingStarsAvgSecondsMin, max: Self.shootingStarsAvgSecondsMax) }
         get {
-            let v = defaults.double(forKey: "ShootingStarsAvgSeconds")
-            return (v >= Self.shootingStarsAvgSecondsMin && v <= Self.shootingStarsAvgSecondsMax) ? v : defaultShootingStarsAvgSeconds
+            return validatedDouble(safeDouble("ShootingStarsAvgSeconds"),
+                                   min: Self.shootingStarsAvgSecondsMin,
+                                   max: Self.shootingStarsAvgSecondsMax,
+                                   defaultValue: defaultShootingStarsAvgSeconds)
         }
     }
     
     var shootingStarsDirectionMode: Int {
-        set {
-            let clamped = max(Self.shootingStarsDirectionModeMin, min(Self.shootingStarsDirectionModeMax, newValue))
-            defaults.set(clamped, forKey: "ShootingStarsDirectionMode")
-            defaults.synchronize()
-        }
+        set { setClampedInt(newValue, key: "ShootingStarsDirectionMode", min: Self.shootingStarsDirectionModeMin, max: Self.shootingStarsDirectionModeMax) }
         get {
-            let v = defaults.integer(forKey: "ShootingStarsDirectionMode")
-            return (Self.shootingStarsDirectionModeMin...Self.shootingStarsDirectionModeMax).contains(v) ? v : defaultShootingStarsDirectionMode
+            return validatedInt(safeInt("ShootingStarsDirectionMode"),
+                                min: Self.shootingStarsDirectionModeMin,
+                                max: Self.shootingStarsDirectionModeMax,
+                                defaultValue: defaultShootingStarsDirectionMode)
         }
     }
     
     var shootingStarsLength: Double {
-        set {
-            let clamped = max(Self.shootingStarsLengthMin, min(Self.shootingStarsLengthMax, newValue))
-            defaults.set(clamped, forKey: "ShootingStarsLength")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "ShootingStarsLength", min: Self.shootingStarsLengthMin, max: Self.shootingStarsLengthMax) }
         get {
-            let v = defaults.double(forKey: "ShootingStarsLength")
-            return (v >= Self.shootingStarsLengthMin && v <= Self.shootingStarsLengthMax) ? v : defaultShootingStarsLength
+            return validatedDouble(safeDouble("ShootingStarsLength"),
+                                   min: Self.shootingStarsLengthMin,
+                                   max: Self.shootingStarsLengthMax,
+                                   defaultValue: defaultShootingStarsLength)
         }
     }
     
     var shootingStarsSpeed: Double {
-        set {
-            let clamped = max(Self.shootingStarsSpeedMin, min(Self.shootingStarsSpeedMax, newValue))
-            defaults.set(clamped, forKey: "ShootingStarsSpeed")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "ShootingStarsSpeed", min: Self.shootingStarsSpeedMin, max: Self.shootingStarsSpeedMax) }
         get {
-            let v = defaults.double(forKey: "ShootingStarsSpeed")
-            return (v >= Self.shootingStarsSpeedMin && v <= Self.shootingStarsSpeedMax) ? v : defaultShootingStarsSpeed
+            return validatedDouble(safeDouble("ShootingStarsSpeed"),
+                                   min: Self.shootingStarsSpeedMin,
+                                   max: Self.shootingStarsSpeedMax,
+                                   defaultValue: defaultShootingStarsSpeed)
         }
     }
     
     var shootingStarsThickness: Double {
-        set {
-            let clamped = max(Self.shootingStarsThicknessMin, min(Self.shootingStarsThicknessMax, newValue))
-            defaults.set(clamped, forKey: "ShootingStarsThickness")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "ShootingStarsThickness", min: Self.shootingStarsThicknessMin, max: Self.shootingStarsThicknessMax) }
         get {
-            let v = defaults.double(forKey: "ShootingStarsThickness")
-            return (v >= Self.shootingStarsThicknessMin && v <= Self.shootingStarsThicknessMax) ? v : defaultShootingStarsThickness
+            return validatedDouble(safeDouble("ShootingStarsThickness"),
+                                   min: Self.shootingStarsThicknessMin,
+                                   max: Self.shootingStarsThicknessMax,
+                                   defaultValue: defaultShootingStarsThickness)
         }
     }
     
     var shootingStarsBrightness: Double {
-        set {
-            let clamped = max(Self.shootingStarsBrightnessMin, min(Self.shootingStarsBrightnessMax, newValue))
-            defaults.set(clamped, forKey: "ShootingStarsBrightness")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "ShootingStarsBrightness", min: Self.shootingStarsBrightnessMin, max: Self.shootingStarsBrightnessMax) }
         get {
-            let v = defaults.double(forKey: "ShootingStarsBrightness")
-            return (v >= Self.shootingStarsBrightnessMin && v <= Self.shootingStarsBrightnessMax) ? v : defaultShootingStarsBrightness
+            return validatedDouble(safeDouble("ShootingStarsBrightness"),
+                                   min: Self.shootingStarsBrightnessMin,
+                                   max: Self.shootingStarsBrightnessMax,
+                                   defaultValue: defaultShootingStarsBrightness)
         }
     }
     
     var shootingStarsTrailHalfLifeSeconds: Double {
-        set {
-            let clamped = max(Self.shootingStarsTrailHalfLifeMin, min(Self.shootingStarsTrailHalfLifeMax, newValue))
-            defaults.set(clamped, forKey: "ShootingStarsTrailHalfLifeSeconds")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "ShootingStarsTrailHalfLifeSeconds", min: Self.shootingStarsTrailHalfLifeMin, max: Self.shootingStarsTrailHalfLifeMax) }
         get {
-            if defaults.object(forKey: "ShootingStarsTrailHalfLifeSeconds") == nil {
-                return defaultShootingStarsTrailHalfLifeSeconds
-            }
-            let v = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
-            return max(Self.shootingStarsTrailHalfLifeMin, min(Self.shootingStarsTrailHalfLifeMax, v))
+            return validatedDouble(safeDouble("ShootingStarsTrailHalfLifeSeconds"),
+                                   min: Self.shootingStarsTrailHalfLifeMin,
+                                   max: Self.shootingStarsTrailHalfLifeMax,
+                                   defaultValue: defaultShootingStarsTrailHalfLifeSeconds)
         }
     }
     
     var shootingStarsDebugShowSpawnBounds: Bool {
-        set {
-            defaults.set(newValue, forKey: "ShootingStarsDebugShowSpawnBounds")
-            defaults.synchronize()
-        }
-        get {
-            if defaults.object(forKey: "ShootingStarsDebugShowSpawnBounds") == nil {
-                return defaultShootingStarsDebugSpawnBounds
-            }
-            return defaults.bool(forKey: "ShootingStarsDebugShowSpawnBounds")
-        }
+        set { defaults.set(newValue, forKey: "ShootingStarsDebugShowSpawnBounds"); defaults.synchronize() }
+        get { safeBool("ShootingStarsDebugShowSpawnBounds") ?? defaultShootingStarsDebugSpawnBounds }
     }
     
     // MARK: - Satellites Settings
     
     var satellitesEnabled: Bool {
         set { defaults.set(newValue, forKey: "SatellitesEnabled"); defaults.synchronize() }
-        get {
-            if defaults.object(forKey: "SatellitesEnabled") == nil {
-                return defaultSatellitesEnabled
-            }
-            return defaults.bool(forKey: "SatellitesEnabled")
-        }
+        get { safeBool("SatellitesEnabled") ?? defaultSatellitesEnabled }
     }
     
     var satellitesAvgSpawnSeconds: Double {
-        set {
-            let clamped = max(Self.satellitesAvgSpawnSecondsMin, min(Self.satellitesAvgSpawnSecondsMax, newValue))
-            defaults.set(clamped, forKey: "SatellitesAvgSpawnSeconds")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "SatellitesAvgSpawnSeconds", min: Self.satellitesAvgSpawnSecondsMin, max: Self.satellitesAvgSpawnSecondsMax) }
         get {
-            let v = defaults.double(forKey: "SatellitesAvgSpawnSeconds")
-            if v.isNaN || v < Self.satellitesAvgSpawnSecondsMin || v > Self.satellitesAvgSpawnSecondsMax {
-                return defaultSatellitesAvgSpawnSeconds
-            }
-            return v
+            return validatedDouble(safeDouble("SatellitesAvgSpawnSeconds"),
+                                   min: Self.satellitesAvgSpawnSecondsMin,
+                                   max: Self.satellitesAvgSpawnSecondsMax,
+                                   defaultValue: defaultSatellitesAvgSpawnSeconds)
         }
     }
     
     var satellitesSpeed: Double {
-        set {
-            let clamped = max(Self.satellitesSpeedMin, min(Self.satellitesSpeedMax, newValue))
-            defaults.set(clamped, forKey: "SatellitesSpeed")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "SatellitesSpeed", min: Self.satellitesSpeedMin, max: Self.satellitesSpeedMax) }
         get {
-            let v = defaults.double(forKey: "SatellitesSpeed")
-            return (v >= Self.satellitesSpeedMin && v <= Self.satellitesSpeedMax) ? v : defaultSatellitesSpeed
+            return validatedDouble(safeDouble("SatellitesSpeed"),
+                                   min: Self.satellitesSpeedMin,
+                                   max: Self.satellitesSpeedMax,
+                                   defaultValue: defaultSatellitesSpeed)
         }
     }
     
     var satellitesSize: Double {
-        set {
-            let clamped = max(Self.satellitesSizeMin, min(Self.satellitesSizeMax, newValue))
-            defaults.set(clamped, forKey: "SatellitesSize")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "SatellitesSize", min: Self.satellitesSizeMin, max: Self.satellitesSizeMax) }
         get {
-            let v = defaults.double(forKey: "SatellitesSize")
-            return (v >= Self.satellitesSizeMin && v <= Self.satellitesSizeMax) ? v : defaultSatellitesSize
+            return validatedDouble(safeDouble("SatellitesSize"),
+                                   min: Self.satellitesSizeMin,
+                                   max: Self.satellitesSizeMax,
+                                   defaultValue: defaultSatellitesSize)
         }
     }
     
     var satellitesBrightness: Double {
-        set {
-            let clamped = max(Self.satellitesBrightnessMin, min(Self.satellitesBrightnessMax, newValue))
-            defaults.set(clamped, forKey: "SatellitesBrightness")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "SatellitesBrightness", min: Self.satellitesBrightnessMin, max: Self.satellitesBrightnessMax) }
         get {
-            let v = defaults.double(forKey: "SatellitesBrightness")
-            return (v >= Self.satellitesBrightnessMin && v <= Self.satellitesBrightnessMax) ? v : defaultSatellitesBrightness
+            return validatedDouble(safeDouble("SatellitesBrightness"),
+                                   min: Self.satellitesBrightnessMin,
+                                   max: Self.satellitesBrightnessMax,
+                                   defaultValue: defaultSatellitesBrightness)
         }
     }
     
     var satellitesTrailing: Bool {
         set { defaults.set(newValue, forKey: "SatellitesTrailing"); defaults.synchronize() }
-        get {
-            if defaults.object(forKey: "SatellitesTrailing") == nil {
-                return defaultSatellitesTrailing
-            }
-            return defaults.bool(forKey: "SatellitesTrailing")
-        }
+        get { safeBool("SatellitesTrailing") ?? defaultSatellitesTrailing }
     }
     
     var satellitesTrailHalfLifeSeconds: Double {
-        set {
-            let clamped = max(Self.satellitesTrailHalfLifeMin, min(Self.satellitesTrailHalfLifeMax, newValue))
-            defaults.set(clamped, forKey: "SatellitesTrailHalfLifeSeconds")
-            defaults.synchronize()
-        }
+        set { setClampedDouble(newValue, key: "SatellitesTrailHalfLifeSeconds", min: Self.satellitesTrailHalfLifeMin, max: Self.satellitesTrailHalfLifeMax) }
         get {
-            if defaults.object(forKey: "SatellitesTrailHalfLifeSeconds") == nil {
-                return defaultSatellitesTrailHalfLifeSeconds
-            }
-            let v = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
-            return max(Self.satellitesTrailHalfLifeMin, min(Self.satellitesTrailHalfLifeMax, v))
+            return validatedDouble(safeDouble("SatellitesTrailHalfLifeSeconds"),
+                                   min: Self.satellitesTrailHalfLifeMin,
+                                   max: Self.satellitesTrailHalfLifeMax,
+                                   defaultValue: defaultSatellitesTrailHalfLifeSeconds)
         }
     }
     
-    // MARK: - Runtime validation
+    // MARK: - Runtime validation (kept, but getters are already defensive)
     
     func validateAndCorrectMoonSettings(log: OSLog) {
         var corrected = false
