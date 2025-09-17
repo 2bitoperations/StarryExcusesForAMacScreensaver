@@ -96,12 +96,9 @@ final class StarryMetalRenderer {
     
     private var lastAppliedDrawableSize: CGSize = .zero
     
-    // Renderer-side explicit overlay toggle (e.g. from preview UI)
-    private var userOverlayEnabled: Bool = false
-    // Value coming from the engine draw data each frame
-    private var engineOverlayEnabled: Bool = false
-    // Effective OR of the two (used for actual drawing)
-    private var effectiveOverlayEnabled: Bool = false
+    // Single overlay concept: debugOverlayEnabled (driven ONLY by drawData.debugOverlayEnabled)
+    private var debugOverlayEnabled: Bool = false
+    private var lastOverlayLoggedState: Bool = false
     
     private var satellitesHalfLifeSeconds: Double = 0.5
     private var shootingHalfLifeSeconds: Double = 0.5
@@ -224,7 +221,7 @@ final class StarryMetalRenderer {
             static let everyNFrames = "everyNFrames"
             static let debugLogEveryN = "debugLogEveryN"
             static let skipSat = "skipSatellitesDraw"
-            static let overlay = "overlayEnabled"
+            // overlayEnabled intentionally ignored now (single overlay concept driven by drawData)
             static let satHalf = "satellitesHalfLifeSeconds"
             static let shootHalf = "shootingHalfLifeSeconds"
             static let dropBaseN = "dropBaseEveryN"
@@ -237,7 +234,8 @@ final class StarryMetalRenderer {
             "gpuCaptureStart",
             "gpuCaptureStop",
             "gpuCaptureFrames",
-            "gpuCapturePath"
+            "gpuCapturePath",
+            "overlayEnabled" // ignored after overlay unification
         ]
         
         if let v: Bool = value(Keys.enabled, from: ui) {
@@ -252,10 +250,7 @@ final class StarryMetalRenderer {
             debugSkipSatellitesDraw = v
             applied.append("skipSatellitesDraw=\(v)")
         }
-        if let v: Bool = value(Keys.overlay, from: ui) {
-            userOverlayEnabled = v
-            applied.append("userOverlayEnabled=\(v)")
-        }
+        // overlayEnabled key intentionally ignored (cannot override frame-driven overlay)
         if let d: Double = value(Keys.satHalf, from: ui) {
             satellitesHalfLifeSeconds = max(1e-6, d)
             applied.append(String(format: "satellitesHalfLife=%.4f", satellitesHalfLifeSeconds))
@@ -293,7 +288,7 @@ final class StarryMetalRenderer {
     
     private func processClear(userInfo ui: [AnyHashable: Any]?) {
         let target: String = (ui?["target"] as? String)?.lowercased() ?? "all"
-        let deep = (ui?["releaseMemory"] as? Bool) == true || (ui?["deep"] as? Bool) == true
+        	let deep = (ui?["releaseMemory"] as? Bool) == true || (ui?["deep"] as? Bool) == true
         if target == "all" {
             clearOffscreenTextures(reason: "Notification(all)", releaseMemory: deep)
             return
@@ -485,27 +480,6 @@ final class StarryMetalRenderer {
         }
     }
     
-    // External (UI) toggle (preview sheet)
-    func setDebugOverlayEnabled(_ enabled: Bool) {
-        if userOverlayEnabled != enabled {
-            os_log("Renderer user overlay toggle now %{public}@", log: log, type: .info, enabled ? "ENABLED" : "disabled")
-        }
-        userOverlayEnabled = enabled
-        recomputeEffectiveOverlayEnabled()
-    }
-    
-    private func recomputeEffectiveOverlayEnabled() {
-        let previous = effectiveOverlayEnabled
-        effectiveOverlayEnabled = (engineOverlayEnabled || userOverlayEnabled)
-        if previous != effectiveOverlayEnabled {
-            os_log("Effective overlay visibility now %{public}@ (engine=%{public}@ user=%{public}@)",
-                   log: log, type: .info,
-                   effectiveOverlayEnabled ? "ON" : "off",
-                   engineOverlayEnabled ? "ON" : "off",
-                   userOverlayEnabled ? "ON" : "off")
-        }
-    }
-    
     func setDiagnostics(enabled: Bool, everyNFrames: Int = 60) {
         diagnosticsEnabled = enabled
         diagnosticsEveryNFrames = max(1, everyNFrames)
@@ -687,18 +661,14 @@ final class StarryMetalRenderer {
             }
         }
         
-        engineOverlayEnabled = drawData.debugOverlayEnabled
-        recomputeEffectiveOverlayEnabled()
-        
-        if effectiveOverlayEnabled && !drawData.debugOverlayEnabled && userOverlayEnabled {
-            // Overlay active via user override; keep as asynchronous style log (only when state changed)
-            os_log("Overlay active via user override (engine reports disabled)", log: log, type: .info)
-        } else if drawData.debugOverlayEnabled && effectiveOverlayEnabled {
-            // Only log once per change; current simple approach logs when enabled
-            os_log("Overlay active via engine flag", log: log, type: .debug)
+        // Single overlay state updated per frame from draw data.
+        let previousOverlay = debugOverlayEnabled
+        debugOverlayEnabled = drawData.debugOverlayEnabled
+        if previousOverlay != debugOverlayEnabled {
+            os_log("Overlay state changed -> %{public}@", log: log, type: .info, debugOverlayEnabled ? "ON" : "off")
         }
         
-        debugOverlayRenderer.update(drawData: drawData, effectiveEnabled: effectiveOverlayEnabled)
+        debugOverlayRenderer.update(drawData: drawData, effectiveEnabled: debugOverlayEnabled)
         
         let now = CACurrentMediaTime()
         let dt: CFTimeInterval? = lastRenderTime.map { now - $0 }
@@ -712,12 +682,12 @@ final class StarryMetalRenderer {
             drawData.moon == nil &&
             !willDecay &&
             drawData.clearAll == false &&
-            !(effectiveOverlayEnabled && debugOverlayRenderer.hasOverlayTexture)
+            !(debugOverlayEnabled && debugOverlayRenderer.hasOverlayTexture)
         if nothingToDraw {
             return
         }
         
-        // Per-frame diagnostics now gated by overlay
+        // Per-frame diagnostics now gated by single overlay flag
         logFrameDiagnostics(prefix: "", drawData: drawData, dt: dt)
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return }
@@ -794,12 +764,12 @@ final class StarryMetalRenderer {
         ensureOffscreenComposite(size: drawData.size)
         guard let finalTarget = offscreenComposite else { return nil }
         
-        engineOverlayEnabled = drawData.debugOverlayEnabled
-        recomputeEffectiveOverlayEnabled()
-        if effectiveOverlayEnabled && !drawData.debugOverlayEnabled && userOverlayEnabled {
-            os_log("Overlay active via user override (headless)", log: log, type: .info)
+        let previousOverlay = debugOverlayEnabled
+        debugOverlayEnabled = drawData.debugOverlayEnabled
+        if previousOverlay != debugOverlayEnabled {
+            os_log("[Headless] Overlay state changed -> %{public}@", log: log, type: .info, debugOverlayEnabled ? "ON" : "off")
         }
-        debugOverlayRenderer.update(drawData: drawData, effectiveEnabled: effectiveOverlayEnabled)
+        debugOverlayRenderer.update(drawData: drawData, effectiveEnabled: debugOverlayEnabled)
         
         guard let commandBuffer = commandQueue.makeCommandBuffer() else { return nil }
         commandBuffer.label = "Starry Headless CommandBuffer"
@@ -998,9 +968,9 @@ final class StarryMetalRenderer {
                                                  pipeline: compositePipeline,
                                                  frameIndex: frameIndex,
                                                  drawData: drawData,
-                                                 effectiveOverlayEnabled: effectiveOverlayEnabled,
-                                                 engineOverlayEnabled: engineOverlayEnabled,
-                                                 userOverlayEnabled: userOverlayEnabled)
+                                                 effectiveOverlayEnabled: debugOverlayEnabled,
+                                                 engineOverlayEnabled: debugOverlayEnabled,
+                                                 userOverlayEnabled: debugOverlayEnabled)
         
         encoder.popDebugGroup()
         encoder.endEncoding()
@@ -1298,8 +1268,8 @@ final class StarryMetalRenderer {
         let halfLife: Double = (which == .satellites) ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
         let keep = decayKeep(forHalfLife: halfLife, dt: dt)
         
-        // Gate periodic decay logging behind overlay flag (per-frame style)
-        if effectiveOverlayEnabled &&
+        // Periodic decay logging gated by overlay flag
+        if debugOverlayEnabled &&
             diagnosticsEnabled &&
             frameIndex % UInt64(diagnosticsEveryNFrames) == 0 {
             os_log("Decay in-place %@ keep=%.4f (halfLife=%.3f dt=%.4f)",
@@ -1533,7 +1503,7 @@ final class StarryMetalRenderer {
     
     // Per-frame diagnostics gated by overlay enablement.
     private func logFrameDiagnostics(prefix: String, drawData: StarryDrawData, dt: CFTimeInterval?) {
-        guard effectiveOverlayEnabled else { return }
+        guard debugOverlayEnabled else { return }
         guard diagnosticsEnabled && frameIndex % UInt64(diagnosticsEveryNFrames) == 0 else { return }
         let satCount = drawData.satellitesSprites.count
         let shootCount = drawData.shootingSprites.count
@@ -1544,12 +1514,10 @@ final class StarryMetalRenderer {
         for i in 0..<min(3, satCount) {
             alphaSamples.append(drawData.satellitesSprites[i].colorPremul.w)
         }
-        os_log("%@Frame #%llu dt=%.4f s | satSprites=%d alphaSamples=%@ shootSprites=%d keep(sat)=%.4f keep(shoot)=%.4f overlay(eff=%{public}@ engine=%{public}@ user=%{public}@ tex=%{public}@)",
+        os_log("%@Frame #%llu dt=%.4f s | satSprites=%d alphaSamples=%@ shootSprites=%d keep(sat)=%.4f keep(shoot)=%.4f overlay=%{public}@ tex=%{public}@",
                log: log, type: .debug,
                prefix, frameIndex, dtSec, satCount, alphaSamples.description, shootCount, keepSat, keepShoot,
-               (effectiveOverlayEnabled ? "ON" : "off"),
-               (engineOverlayEnabled ? "ON" : "off"),
-               (userOverlayEnabled ? "ON" : "off"),
+               (debugOverlayEnabled ? "ON" : "off"),
                (debugOverlayRenderer.hasOverlayTexture ? "yes" : "no"))
     }
 }
