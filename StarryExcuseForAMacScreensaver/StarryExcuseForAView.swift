@@ -30,21 +30,26 @@ class StarryExcuseForAView: ScreenSaverView {
     private var frameIndex: UInt64 = 0
     private var stoppedRunning: Bool = false   // Tracks whether stopAnimation has been invoked (legacy path)
     
-    // New: inferred visibility / availability state (to cope with macOS Tahoe not calling stopAnimation / notifications)
+    // Inferred visibility / availability state
     private var rendererDrawableAvailable: Bool = true
     private var lastVisibilityCheckFrame: UInt64 = 0
     private var lastVisibilityState: Bool = true
     private var invisibleConsecutiveFrames: UInt64 = 0
     private var invisibilityBeganTime: CFTimeInterval?
     private var resourcesReleasedWhileInvisible: Bool = false
-    private let visibilityLightSkipThresholdFrames: UInt64 = 2          // start skipping heavy work almost immediately
-    private let visibilityReleaseResourcesThresholdSeconds: Double = 3.0 // after this many seconds invisible, release GPU
+    private let visibilityLightSkipThresholdFrames: UInt64 = 2
+    private let visibilityReleaseResourcesThresholdSeconds: Double = 3.0
     private var pendingVisibilityReinit: Bool = false
     
-    // Explicit list of additional (non-stop) screensaver distributed notifications we want to observe.
-    // We CANNOT use name: nil with DistributedNotificationCenter inside the sandbox; macOS will log:
-    // "*** attempt to register for all distributed notifications thwarted by sandboxing."
-    // Add more names here if needed (only those that actually exist); unknown names are harmless.
+    // New heuristic support
+    private var firstAnimationWallTime: CFTimeInterval?
+    private let initialVisibilityGraceSeconds: Double = 1.5   // optimistic visibility during startup flicker
+    private var lastCGWindowCheckFrame: UInt64 = 0
+    private var cachedCGWindowOnscreen: Bool = true
+    private let cgWindowRecheckIntervalFrames: UInt64 = 30     // ~0.5s at 60 FPS
+    private var lastVisibilityReason: String = "initial"
+    
+    // Explicit list of additional screensaver notifications we want to observe.
     private let otherScreensaverNotificationNames: [Notification.Name] = [
         Notification.Name("com.apple.screensaver.willstart"),
         Notification.Name("com.apple.screensaver.didstart")
@@ -66,12 +71,13 @@ class StarryExcuseForAView: ScreenSaverView {
         if log == nil {
             log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         }
-        os_log("StarryExcuseForAView internal init (preview=%{public}@) bounds=%{public}@", log: log!, type: .info, isPreview ? "true" : "false", NSStringFromRect(bounds))
+        os_log("StarryExcuseForAView internal init (preview=%{public}@) bounds=%{public}@",
+               log: log!, type: .info, isPreview ? "true" : "false", NSStringFromRect(bounds))
         
         defaultsManager.validateAndCorrectMoonSettings(log: log!)
-        // Set target ~60 FPS
         animationTimeInterval = 1.0 / 60.0
-        os_log("Animation interval set to %{public}.4f s (~%{public}.1f FPS)", log: log!, type: .info, animationTimeInterval, 1.0 / animationTimeInterval)
+        os_log("Animation interval set to %{public}.4f s (~%{public}.1f FPS)",
+               log: log!, type: .info, animationTimeInterval, 1.0 / animationTimeInterval)
         registerListeners()
     }
     
@@ -79,13 +85,8 @@ class StarryExcuseForAView: ScreenSaverView {
     
     override var configureSheet: NSWindow? {
         os_log("configureSheet requested", log: log!, type: .info)
-        
-        // Ensure controller knows about this view (idempotent)
         configSheetController.setView(view: self)
-        
-        // Force window creation (windowDidLoad will build UI programmatically)
         _ = configSheetController.window
-        
         if let win = configSheetController.window {
             os_log("Programmatic config sheet window ready", log: log!, type: .info)
             return win
@@ -98,47 +99,45 @@ class StarryExcuseForAView: ScreenSaverView {
     override var hasConfigureSheet: Bool { true }
     
     override func animateOneFrame() {
-        // If stopAnimation has already been called, log and no-op.
         if stoppedRunning {
             if defaultsManager.debugOverlayEnabled {
-                os_log("animateOneFrame[#%{public}llu] skipped (already stopped)", log: log ?? .default, type: .info, frameIndex)
+                os_log("animateOneFrame[#%{public}llu] skipped (already stopped)",
+                       log: log ?? .default, type: .info, frameIndex)
             }
             return
+        }
+        
+        if firstAnimationWallTime == nil {
+            firstAnimationWallTime = CACurrentMediaTime()
         }
         
         frameIndex &+= 1
-        
-        // Update / infer visibility each frame (or at least every few frames) to handle Tahoe changes
         inferVisibilityState(frameIndex: frameIndex)
         
-        // If not visible (or renderer not producing drawables) we skip heavy work.
         if !shouldRenderCurrentFrame() {
             if defaultsManager.debugOverlayEnabled && (frameIndex <= 5 || frameIndex % 120 == 0) {
-                os_log("animateOneFrame[#%{public}llu] skipped (invisible=%{public}@ drawableAvail=%{public}@ released=%{public}@)",
+                os_log("animateOneFrame[#%{public}llu] skipped (visible=%{public}@ drawable=%{public}@ released=%{public}@ reason=%{public}@)",
                        log: log!, type: .info,
                        frameIndex,
-                       lastVisibilityState ? "false" : "true",
-                       rendererDrawableAvailable ? "true" : "false",
-                       resourcesReleasedWhileInvisible ? "true" : "false")
+                       lastVisibilityState ? "yes" : "no",
+                       rendererDrawableAvailable ? "yes" : "no",
+                       resourcesReleasedWhileInvisible ? "yes" : "no",
+                       lastVisibilityReason)
             }
             return
         }
         
-        // If we became visible and resources were previously released, ensure they are recreated.
         if pendingVisibilityReinit {
             pendingVisibilityReinit = false
             if resourcesReleasedWhileInvisible {
-                os_log("Visibility restored: recreating resources before rendering frame #%{public}llu", log: log!, type: .info, frameIndex)
+                os_log("Visibility restored: recreating resources before frame #%{public}llu",
+                       log: log!, type: .info, frameIndex)
                 recreateResourcesIfNeeded()
             }
         }
         
-        // All animateOneFrame logging is now gated by debugOverlayEnabled.
-        // We keep a reduced cadence: first 5 frames and then every 60th frame for routine status,
-        // but error / skip conditions will still log whenever debugOverlayEnabled is true.
         let loggingEnabled = defaultsManager.debugOverlayEnabled
         let cadenceLog = loggingEnabled && (frameIndex <= 5 || frameIndex % 60 == 0)
-        
         if cadenceLog {
             os_log("animateOneFrame[#%{public}llu] begin", log: log!, type: .info, frameIndex)
         }
@@ -147,31 +146,33 @@ class StarryExcuseForAView: ScreenSaverView {
             let size = bounds.size
             if !(size.width >= 1 && size.height >= 1) {
                 if loggingEnabled {
-                    os_log("animateOneFrame[#%{public}llu] invalid bounds size %{public}.1f x %{public}.1f — frame skipped",
+                    os_log("animateOneFrame[#%{public}llu] invalid bounds size %.1f x %.1f — skipped",
                            log: log!, type: .error, frameIndex, Double(size.width), Double(size.height))
                 }
                 return
             }
             guard let engine = engine else {
                 if loggingEnabled {
-                    os_log("animateOneFrame[#%{public}llu] engine is nil — frame skipped", log: log!, type: .error, frameIndex)
+                    os_log("animateOneFrame[#%{public}llu] engine nil — skipped",
+                           log: log!, type: .error, frameIndex)
                 }
                 return
             }
             guard let metalRenderer = metalRenderer else {
                 if loggingEnabled {
-                    os_log("animateOneFrame[#%{public}llu] metalRenderer is nil — frame skipped", log: log!, type: .error, frameIndex)
+                    os_log("animateOneFrame[#%{public}llu] metalRenderer nil — skipped",
+                           log: log!, type: .error, frameIndex)
                 }
                 return
             }
             guard let metalLayer = metalLayer else {
                 if loggingEnabled {
-                    os_log("animateOneFrame[#%{public}llu] metalLayer is nil — frame skipped", log: log!, type: .error, frameIndex)
+                    os_log("animateOneFrame[#%{public}llu] metalLayer nil — skipped",
+                           log: log!, type: .error, frameIndex)
                 }
                 return
             }
             
-            // Prefer the view's screen scale (handles multi-display correctly)
             let backingScale = window?.screen?.backingScaleFactor
                 ?? window?.backingScaleFactor
                 ?? NSScreen.main?.backingScaleFactor
@@ -179,14 +180,15 @@ class StarryExcuseForAView: ScreenSaverView {
             let wPx = Int(round(size.width * backingScale))
             let hPx = Int(round(size.height * backingScale))
             if cadenceLog {
-                os_log("animateOneFrame[#%{public}llu] bounds=%{public}.1fx%{public}.1f scale=%{public}.2f drawableTarget=%{public}dx%{public}d",
+                os_log("animateOneFrame[#%{public}llu] bounds=%.1fx%.1f scale=%.2f drawableTarget=%dx%d",
                        log: log!, type: .info,
                        frameIndex,
-                       Double(size.width), Double(size.height), Double(backingScale), wPx, hPx)
+                       Double(size.width), Double(size.height),
+                       Double(backingScale), wPx, hPx)
             }
             guard wPx > 0, hPx > 0 else {
                 if loggingEnabled {
-                    os_log("animateOneFrame[#%{public}llu] invalid drawable size w=%{public}d h=%{public}d — frame skipped",
+                    os_log("animateOneFrame[#%{public}llu] invalid drawable size w=%d h=%d — skipped",
                            log: log!, type: .error, frameIndex, wPx, hPx)
                 }
                 return
@@ -199,7 +201,7 @@ class StarryExcuseForAView: ScreenSaverView {
             let t0 = CACurrentMediaTime()
             let drawData = engine.advanceFrameGPU()
             if cadenceLog {
-                os_log("animateOneFrame[#%{public}llu] sprites base=%{public}d sat=%{public}d shooting=%{public}d moon=%{public}@ clearAll=%{public}@",
+                os_log("animateOneFrame[#%{public}llu] sprites base=%d sat=%d shooting=%d moon=%{public}@ clearAll=%{public}@",
                        log: log!, type: .info,
                        frameIndex,
                        drawData.baseSprites.count,
@@ -211,7 +213,9 @@ class StarryExcuseForAView: ScreenSaverView {
             metalRenderer.render(drawData: drawData)
             if cadenceLog {
                 let t1 = CACurrentMediaTime()
-                os_log("animateOneFrame[#%{public}llu] end (%.2f ms)", log: log!, type: .info, frameIndex, (t1 - t0) * 1000.0)
+                os_log("animateOneFrame[#%{public}llu] end (%.2f ms)",
+                       log: log!, type: .info,
+                       frameIndex, (t1 - t0) * 1000.0)
             }
         }
     }
@@ -224,7 +228,6 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     override func stopAnimation() {
-        // NOTE: On macOS Tahoe this may no longer be called. Retained for backward compatibility.
         os_log("stopAnimation called", log: log!, type: .info)
         stoppedRunning = true
         super.stopAnimation()
@@ -236,14 +239,14 @@ class StarryExcuseForAView: ScreenSaverView {
             engine = StarryEngine(size: bounds.size,
                                   log: log!,
                                   config: currentRuntimeConfig())
-            os_log("Engine created (size=%{public}.0fx%{public}.0f)", log: log!, type: .info, Double(bounds.width), Double(bounds.height))
+            os_log("Engine created (size=%.0fx%.0f)", log: log!, type: .info,
+                   Double(bounds.width), Double(bounds.height))
         }
         await MainActor.run {
             if self.metalLayer == nil {
                 self.wantsLayer = true
                 let mLayer = CAMetalLayer()
                 mLayer.frame = self.bounds
-                // Initialize contentsScale immediately for crisp output and correct drawable sizing
                 let scale = self.window?.screen?.backingScaleFactor
                     ?? self.window?.backingScaleFactor
                     ?? NSScreen.main?.backingScaleFactor
@@ -251,7 +254,8 @@ class StarryExcuseForAView: ScreenSaverView {
                 mLayer.contentsScale = scale
                 self.layer?.addSublayer(mLayer)
                 self.metalLayer = mLayer
-                os_log("CAMetalLayer created and added. contentsScale=%{public}.2f", log: self.log!, type: .info, Double(scale))
+                os_log("CAMetalLayer created and added. contentsScale=%.2f",
+                       log: self.log!, type: .info, Double(scale))
                 if let log = self.log {
                     self.metalRenderer = StarryMetalRenderer(layer: mLayer, log: log)
                     if self.metalRenderer == nil {
@@ -259,23 +263,22 @@ class StarryExcuseForAView: ScreenSaverView {
                     } else {
                         os_log("StarryMetalRenderer created", log: self.log!, type: .info)
                     }
-                    // Ensure drawable is sized before first frame if valid
                     let size = self.bounds.size
                     let wPx = Int(round(size.width * scale))
                     let hPx = Int(round(size.height * scale))
                     if wPx > 0, hPx > 0 {
                         self.metalRenderer?.updateDrawableSize(size: size, scale: scale)
-                        os_log("Initial drawableSize update applied (%{public}dx%{public}d)", log: self.log!, type: .info, wPx, hPx)
+                        os_log("Initial drawableSize update applied (%dx%d)",
+                               log: self.log!, type: .info, wPx, hPx)
                     } else {
-                        os_log("Initial drawableSize update skipped due to invalid size (%{public}dx%{public}d)", log: self.log!, type: .error, wPx, hPx)
+                        os_log("Initial drawableSize update skipped invalid (%dx%d)",
+                               log: self.log!, type: .error, wPx, hPx)
                     }
-                    // Propagate trail half-lives into renderer from defaults
                     self.metalRenderer?.setTrailHalfLives(
                         satellites: self.defaultsManager.satellitesTrailHalfLifeSeconds,
                         shooting: self.defaultsManager.shootingStarsTrailHalfLifeSeconds
                     )
                 }
-                // Observe window occlusion changes to infer visibility
                 if let win = self.window {
                     NotificationCenter.default.addObserver(self,
                                                            selector: #selector(self.windowOcclusionChanged(_:)),
@@ -287,9 +290,9 @@ class StarryExcuseForAView: ScreenSaverView {
                 metalLayer?.frame = bounds
             }
         }
-        os_log("leaving setupAnimation %d %d",
+        os_log("leaving setupAnimation %.0f %.0f",
                log: log!,
-               Int(bounds.width), Int(bounds.height))
+               Double(bounds.width), Double(bounds.height))
     }
     
     private func currentRuntimeConfig() -> StarryRuntimeConfig {
@@ -326,7 +329,6 @@ class StarryExcuseForAView: ScreenSaverView {
             debugLogEveryFrame: false,
             buildingLightsPerUpdate: defaultsManager.buildingLightsPerUpdate,
             disableFlasherOnBase: false,
-            // New per-second rates (0 => derive from legacy per-update * 10 FPS)
             starsPerSecond: 0,
             buildingLightsPerSecond: 0
         )
@@ -337,12 +339,10 @@ class StarryExcuseForAView: ScreenSaverView {
         if let engine = engine {
             engine.updateConfig(currentRuntimeConfig())
         } else {
-            // If engine doesn't exist yet, create it.
             self.engine = StarryEngine(size: bounds.size,
                                        log: log!,
                                        config: currentRuntimeConfig())
         }
-        // Update renderer half-lives immediately
         metalRenderer?.setTrailHalfLives(
             satellites: defaultsManager.satellitesTrailHalfLifeSeconds,
             shooting: defaultsManager.shootingStarsTrailHalfLifeSeconds
@@ -358,7 +358,6 @@ class StarryExcuseForAView: ScreenSaverView {
         }
     }
     
-    // Handler that logs any explicitly registered com.apple.screensaver.* notifications (except stop ones handled separately).
     @objc func anyScreensaverNotification(_ note: Notification) {
         let name = note.name.rawValue
         guard name.hasPrefix("com.apple.screensaver.") else { return }
@@ -371,17 +370,18 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     private func deallocateResources() {
-        os_log("Deallocating resources: tearing down renderer, layer, engine", log: log!, type: .info)
+        os_log("Deallocating resources: tearing down renderer, layer, engine",
+               log: log!, type: .info)
         metalLayer?.removeFromSuperlayer()
         metalLayer = nil
         metalRenderer = nil
         engine = nil
     }
     
-    // Partial release when invisible (so we can recover quickly)
     private func deallocateResourcesPartial(reason: String) {
         guard !resourcesReleasedWhileInvisible else { return }
-        os_log("Partial resource release (invisible) reason=%{public}@ (engine kept, config preserved)", log: log!, type: .info, reason)
+        os_log("Partial resource release (invisible) reason=%{public}@ (engine kept)",
+               log: log!, type: .info, reason)
         metalLayer?.removeFromSuperlayer()
         metalLayer = nil
         metalRenderer = nil
@@ -395,9 +395,8 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     private func registerListeners() {
-        os_log("Registering distributed screensaver listeners (sandbox-safe explicit set)", log: log!, type: .info)
+        os_log("Registering distributed screensaver listeners", log: log!, type: .info)
         
-        // Stop-related notifications use the existing willStopHandler for termination logic.
         DistributedNotificationCenter.default.addObserver(
             self,
             selector: #selector(self.willStopHandler(_:)),
@@ -411,7 +410,6 @@ class StarryExcuseForAView: ScreenSaverView {
             object: nil
         )
         
-        // Register the remaining screensaver notifications we care about individually.
         for name in otherScreensaverNotificationNames {
             DistributedNotificationCenter.default.addObserver(
                 self,
@@ -421,18 +419,12 @@ class StarryExcuseForAView: ScreenSaverView {
             )
         }
         
-        // Observe renderer drawable availability notifications (new inference path)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(rendererDrawableAvailabilityChanged(_:)),
                                                name: StarryMetalRenderer.drawableAvailabilityNotification,
                                                object: nil)
-        
-        // NOTE: We intentionally do NOT call addObserver with name: nil because sandboxing
-        // prohibits "all notifications" and produces:
-        // "*** attempt to register for all distributed notifications thwarted by sandboxing."
     }
     
-    // Fallback plain sheet if programmatic controller somehow fails (should be rare)
     private func createFallbackSheetWindow() -> NSWindow {
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
                            styleMask: [.titled, .closable],
@@ -461,41 +453,46 @@ class StarryExcuseForAView: ScreenSaverView {
         if let available = note.userInfo?["available"] as? Bool {
             rendererDrawableAvailable = available
             if defaultsManager.debugOverlayEnabled {
-                os_log("Drawable availability changed -> %{public}@", log: log ?? .default, type: .info, available ? "AVAILABLE" : "UNAVAILABLE")
+                os_log("Drawable availability changed -> %{public}@",
+                       log: log ?? .default, type: .info,
+                       available ? "AVAILABLE" : "UNAVAILABLE")
             }
             if available {
-                // Trigger reinit next frame if needed
                 pendingVisibilityReinit = true
             }
         }
     }
     
     @objc private func windowOcclusionChanged(_ note: Notification) {
-        // Force immediate recalculation
         inferVisibilityState(frameIndex: frameIndex, force: true)
     }
     
     private func inferVisibilityState(frameIndex: UInt64, force: Bool = false) {
-        // Avoid doing heavy checks every single frame unless forced.
         if !force && (frameIndex - lastVisibilityCheckFrame) < 1 {
             return
         }
         lastVisibilityCheckFrame = frameIndex
         
-        let visible = isEffectivelyVisible()
+        let (visible, reason) = isEffectivelyVisibleWithReason()
         if visible != lastVisibilityState {
-            lastVisibilityState = visible
+            // Suppress logging an "INVISIBLE" transition inside the initial grace period.
+            let inGrace = inInitialGracePeriod()
             if visible {
                 invisibleConsecutiveFrames = 0
                 invisibilityBeganTime = nil
                 pendingVisibilityReinit = true
-                os_log("Visibility transition -> VISIBLE (frame #%{public}llu)", log: log!, type: .info, frameIndex)
-            } else {
+                os_log("Visibility transition -> VISIBLE (frame #%{public}llu) reason=%{public}@",
+                       log: log!, type: .info, frameIndex, reason)
+            } else if !inGrace {
                 invisibilityBeganTime = CACurrentMediaTime()
-                os_log("Visibility transition -> INVISIBLE (frame #%{public}llu)", log: log!, type: .info, frameIndex)
+                os_log("Visibility transition -> INVISIBLE (frame #%{public}llu) reason=%{public}@",
+                       log: log!, type: .info, frameIndex, reason)
             }
+            lastVisibilityState = visible
         }
-        if !visible {
+        lastVisibilityReason = reason
+        
+        if !lastVisibilityState {
             invisibleConsecutiveFrames &+= 1
             if let start = invisibilityBeganTime {
                 let elapsed = CACurrentMediaTime() - start
@@ -507,33 +504,88 @@ class StarryExcuseForAView: ScreenSaverView {
         }
     }
     
-    private func isEffectivelyVisible() -> Bool {
-        // If preview mode (System Settings / small preview), treat as visible; we rarely want to throttle there.
+    private func inInitialGracePeriod() -> Bool {
+        guard let t0 = firstAnimationWallTime else { return true }
+        return (CACurrentMediaTime() - t0) < initialVisibilityGraceSeconds
+    }
+    
+    // Returns (visible, reason)
+    private func isEffectivelyVisibleWithReason() -> (Bool, String) {
+        // Preview mode: treat as visible unless explicitly occluded/minimized or window absent.
         if isPreview {
-            if let win = window {
-                if !win.occlusionState.contains(.visible) { return false }
-                if !win.isVisible { return false }
-            }
-            return true
+            guard let win = window else { return (true, "preview-no-window-assume") }
+            if win.isMiniaturized { return (false, "preview-miniaturized") }
+            if win.occlusionState.contains(.occluded) { return (false, "preview-occluded") }
+            if !win.isVisible { return (false, "preview-notVisible") }
+            return (true, "preview-visible")
         }
-        guard let win = window else { return false }
-        if !win.isVisible { return false }
-        if win.isMiniaturized { return false }
-        if !win.occlusionState.contains(.visible) { return false }
-        // Basic screen intersection check (guard against off-screen window)
+        
+        // Grace period: optimistic unless we have a hard negative.
+        let grace = inInitialGracePeriod()
+        
+        guard let win = window else {
+            return grace ? (true, "grace-no-window") : (false, "no-window")
+        }
+        if win.isMiniaturized {
+            return (false, "miniaturized")
+        }
+        if !win.isVisible {
+            // During grace period still treat as visible unless explicitly occluded
+            if grace {
+                return (true, "grace-notVisibleFlag")
+            }
+            return (false, "window-notVisible-flag")
+        }
+        
+        let occ = win.occlusionState
+        if occ.contains(.occluded) {
+            return (false, "occlusionState-occluded")
+        }
+        
+        // If occlusionState does not yet contain .visible (ambiguous early), use CGWindow heuristic.
+        if !occ.contains(.visible) {
+            if grace {
+                return (true, "grace-ambiguous-occlusion")
+            }
+            // Ambiguous: consult CGWindow (throttled)
+            let cgOnscreen = cgWindowIsOnScreenThrottled(frameIndex: frameIndex)
+            if cgOnscreen {
+                return (true, "cgWindow-onscreen-ambiguousOcc")
+            } else {
+                return (false, "cgWindow-offscreen-ambiguousOcc")
+            }
+        }
+        
+        // Screen intersection check
         let wf = win.frame
         let intersects = NSScreen.screens.contains { NSIntersectsRect($0.frame, wf) }
-        if !intersects { return false }
-        return true
+        if !intersects {
+            return grace ? (true, "grace-offscreen-frame") : (false, "no-screen-intersection")
+        }
+        
+        return (true, "visible-occlusionState")
+    }
+    
+    private func cgWindowIsOnScreenThrottled(frameIndex: UInt64) -> Bool {
+        if frameIndex - lastCGWindowCheckFrame < cgWindowRecheckIntervalFrames {
+            return cachedCGWindowOnscreen
+        }
+        lastCGWindowCheckFrame = frameIndex
+        guard let win = window else { return cachedCGWindowOnscreen }
+        let wid = CGWindowID(win.windowNumber)
+        guard wid != 0 else { return cachedCGWindowOnscreen }
+        if let infoList = CGWindowListCopyWindowInfo([.optionIncludingWindow], wid) as? [[String: Any]],
+           let info = infoList.first {
+            if let onscreen = info[kCGWindowIsOnscreen as String] as? Bool {
+                cachedCGWindowOnscreen = onscreen
+                return onscreen
+            }
+        }
+        return cachedCGWindowOnscreen
     }
     
     private func shouldRenderCurrentFrame() -> Bool {
-        // Render only if:
-        //  - We believe we are visible
-        //  - Renderer claims it can get drawables
-        //  - Resources are present (or will be re-created)
         if !lastVisibilityState {
-            // Quick skip pathway
             if invisibleConsecutiveFrames >= visibilityLightSkipThresholdFrames {
                 return false
             }
