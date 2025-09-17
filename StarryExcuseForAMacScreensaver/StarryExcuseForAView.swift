@@ -89,31 +89,49 @@ class StarryExcuseForAView: ScreenSaverView {
     override func animateOneFrame() {
         // If stopAnimation has already been called, log and no-op.
         if stoppedRunning {
-            os_log("animateOneFrame invoked after stopAnimation; ignoring frame (index would have been #%{public}llu)", log: log ?? .default, type: .error, frameIndex)
+            if defaultsManager.debugOverlayEnabled {
+                os_log("animateOneFrame[#%{public}llu] skipped (already stopped)", log: log ?? .default, type: .info, frameIndex)
+            }
             return
         }
         
         frameIndex &+= 1
-        let verbose = defaultsManager.debugOverlayEnabled && (frameIndex <= 5) || (frameIndex % 60 == 0)
-        if verbose {
-            os_log("animateOneFrame #%{public}llu begin", log: log!, type: .info, frameIndex)
+        
+        // All animateOneFrame logging is now gated by debugOverlayEnabled.
+        // We keep a reduced cadence: first 5 frames and then every 60th frame for routine status,
+        // but error / skip conditions will still log whenever debugOverlayEnabled is true.
+        let loggingEnabled = defaultsManager.debugOverlayEnabled
+        let cadenceLog = loggingEnabled && (frameIndex <= 5 || frameIndex % 60 == 0)
+        
+        if cadenceLog {
+            os_log("animateOneFrame[#%{public}llu] begin", log: log!, type: .info, frameIndex)
         }
+        
         autoreleasepool {
             let size = bounds.size
             if !(size.width >= 1 && size.height >= 1) {
-                os_log("animateOneFrame: invalid bounds size %{public}.1fx%{public}.1f — skipping", log: log!, type: .error, Double(size.width), Double(size.height))
+                if loggingEnabled {
+                    os_log("animateOneFrame[#%{public}llu] invalid bounds size %{public}.1f x %{public}.1f — frame skipped",
+                           log: log!, type: .error, frameIndex, Double(size.width), Double(size.height))
+                }
                 return
             }
             guard let engine = engine else {
-                os_log("animateOneFrame: engine is nil — skipping frame", log: log!, type: .error)
+                if loggingEnabled {
+                    os_log("animateOneFrame[#%{public}llu] engine is nil — frame skipped", log: log!, type: .error, frameIndex)
+                }
                 return
             }
             guard let metalRenderer = metalRenderer else {
-                os_log("animateOneFrame: metalRenderer is nil — skipping frame", log: log!, type: .error)
+                if loggingEnabled {
+                    os_log("animateOneFrame[#%{public}llu] metalRenderer is nil — frame skipped", log: log!, type: .error, frameIndex)
+                }
                 return
             }
             guard let metalLayer = metalLayer else {
-                os_log("animateOneFrame: metalLayer is nil — skipping frame", log: log!, type: .error)
+                if loggingEnabled {
+                    os_log("animateOneFrame[#%{public}llu] metalLayer is nil — frame skipped", log: log!, type: .error, frameIndex)
+                }
                 return
             }
             
@@ -124,12 +142,17 @@ class StarryExcuseForAView: ScreenSaverView {
                 ?? 2.0
             let wPx = Int(round(size.width * backingScale))
             let hPx = Int(round(size.height * backingScale))
-            if verbose {
-                os_log("animateOneFrame: bounds=%{public}.1fx%{public}.1f scale=%{public}.2f drawable target=%{public}dx%{public}d", log: log!, type: .info,
+            if cadenceLog {
+                os_log("animateOneFrame[#%{public}llu] bounds=%{public}.1fx%{public}.1f scale=%{public}.2f drawableTarget=%{public}dx%{public}d",
+                       log: log!, type: .info,
+                       frameIndex,
                        Double(size.width), Double(size.height), Double(backingScale), wPx, hPx)
             }
             guard wPx > 0, hPx > 0 else {
-                os_log("animateOneFrame: invalid drawable size w=%{public}d h=%{public}d — skipping", log: log!, type: .error, wPx, hPx)
+                if loggingEnabled {
+                    os_log("animateOneFrame[#%{public}llu] invalid drawable size w=%{public}d h=%{public}d — frame skipped",
+                           log: log!, type: .error, frameIndex, wPx, hPx)
+                }
                 return
             }
             
@@ -139,17 +162,20 @@ class StarryExcuseForAView: ScreenSaverView {
             
             let t0 = CACurrentMediaTime()
             let drawData = engine.advanceFrameGPU()
-            if verbose {
-                os_log("animateOneFrame: drawData base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@",
+            if cadenceLog {
+                os_log("animateOneFrame[#%{public}llu] sprites base=%{public}d sat=%{public}d shooting=%{public}d moon=%{public}@ clearAll=%{public}@",
                        log: log!, type: .info,
-                       drawData.baseSprites.count, drawData.satellitesSprites.count, drawData.shootingSprites.count,
+                       frameIndex,
+                       drawData.baseSprites.count,
+                       drawData.satellitesSprites.count,
+                       drawData.shootingSprites.count,
                        drawData.moon != nil ? "yes" : "no",
                        drawData.clearAll ? "yes" : "no")
             }
             metalRenderer.render(drawData: drawData)
-            let t1 = CACurrentMediaTime()
-            if verbose {
-                os_log("animateOneFrame #%{public}llu end (%.2f ms)", log: log!, type: .info, frameIndex, (t1 - t0) * 1000.0)
+            if cadenceLog {
+                let t1 = CACurrentMediaTime()
+                os_log("animateOneFrame[#%{public}llu] end (%.2f ms)", log: log!, type: .info, frameIndex, (t1 - t0) * 1000.0)
             }
         }
     }
