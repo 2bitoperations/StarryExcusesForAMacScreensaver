@@ -145,6 +145,8 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
     
     // Unknown shape fallback: do not draw
     discard_fragment();
+    // Provide a dummy return to satisfy the compiler's control-flow analysis.
+    return float4(0.0);
 }
 
 // Moon shading uniforms:
