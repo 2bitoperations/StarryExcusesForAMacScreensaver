@@ -9,6 +9,10 @@ import simd
 // horizontally (either direction) at a fixed speed, at random vertical positions
 // above the skyline (upper ~70% of screen). Layer emits one "head" sprite per
 // active satellite per frame; persistent trail is produced by GPU decay.
+//
+// 2025 Update: Spawn vertical band is now dynamically clamped so satellites
+// always spawn ABOVE the top of the flasher. Caller should provide flasher
+// geometry via setFlasherInfo(centerY:radius:) each frame (or when it changes).
 final class SatellitesLayerRenderer {
     
     private struct Satellite {
@@ -39,6 +43,12 @@ final class SatellitesLayerRenderer {
     private var trailDecay: CGFloat
     /// Debug: show spawn vertical band bounds.
     private var debugShowSpawnBounds: Bool
+    
+    /// Dynamic flasher information (used to ensure satellites spawn above flasher top).
+    private var flasherCenterY: CGFloat?
+    private var flasherRadius: CGFloat?
+    /// Extra vertical gap (pixels) to keep between flasher top and satellite spawn area.
+    private let flasherVerticalGap: CGFloat = 4.0
     
     /// Active satellites.
     private var satellites: [Satellite] = []
@@ -151,6 +161,19 @@ final class SatellitesLayerRenderer {
         }
     }
     
+    /// Provide current flasher geometry so satellites can spawn above it.
+    /// Call this each frame (or whenever flasher moves). Pass nil radius to clear.
+    func setFlasherInfo(centerY: CGFloat, radius: CGFloat) {
+        flasherCenterY = centerY
+        flasherRadius = max(0.0, radius)
+    }
+    
+    /// Clear flasher info (satellites revert to legacy band).
+    func clearFlasherInfo() {
+        flasherCenterY = nil
+        flasherRadius = nil
+    }
+    
     // MARK: - Private helpers
     
     private func scheduleNextSpawn() {
@@ -161,15 +184,46 @@ final class SatellitesLayerRenderer {
         os_log("Satellites: next spawn in %{public}.2fs", log: log, type: .debug, timeUntilNextSpawn)
     }
     
+    // Compute the current vertical spawn band (inclusive) taking flasher into account.
+    // Returns (minY, maxY). If flasher info is present, maxY is clamped to be
+    // strictly above the flasher top minus a small gap and satellite half-size.
+    private func currentSpawnBand(satelliteDiameter: CGFloat) -> (CGFloat, CGFloat) {
+        // Legacy baseline band (was 30%..95%). We widen upward a bit to allow more sky if clamped.
+        var yMin = CGFloat(height) * 0.05      // allow higher portion of sky
+        var yMax = CGFloat(height) * 0.95
+        
+        if let cy = flasherCenterY, let r = flasherRadius {
+            // Flasher top:
+            let flasherTop = cy - r
+            // Ensure entire satellite circle stays above flasher top:
+            let adjustedMax = flasherTop - satelliteDiameter * 0.5 - flasherVerticalGap
+            yMax = min(yMax, adjustedMax)
+            if yMax < yMin {
+                // Degenerate case: flasher too close to top; collapse band to a thin line just below yMin.
+                yMax = yMin
+            }
+        }
+        // Clamp to screen
+        yMin = max(0, min(CGFloat(height), yMin))
+        yMax = max(0, min(CGFloat(height), yMax))
+        return (yMin, yMax)
+    }
+    
     private func spawn() {
         guard isEnabled else { return }
         // NOTE: Previously we enforced a maxConcurrent cap (default=1). That cap has been removed
         // to allow multiple satellites to coexist naturally.
         let fromLeft = Bool.random(using: &rng)
-        // Constrain y so satellites stay above likely building tops (upper 70% of screen)
-        let yMin = CGFloat(height) * 0.30
-        let yMax = CGFloat(height) * 0.95
-        let y = CGFloat.random(in: yMin...yMax, using: &rng)
+        
+        // Determine spawn band respecting flasher (if provided).
+        let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx)
+        let y: CGFloat
+        if bandMax >= bandMin {
+            y = CGFloat.random(in: bandMin...bandMax, using: &rng)
+        } else {
+            y = bandMin   // fallback (should not happen)
+        }
+        
         let x = fromLeft ? -sizePx : CGFloat(width) + sizePx
         let vx = (fromLeft ? 1.0 : -1.0) * speed
         let s = Satellite(x: x,
@@ -178,8 +232,16 @@ final class SatellitesLayerRenderer {
                           size: sizePx,
                           brightness: brightness * CGFloat.random(in: 0.8...1.05, using: &rng))
         satellites.append(s)
-        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f speed=%{public}.1f size=%{public}.1f activeNow=%{public}d",
-               log: log, type: .debug, fromLeft ? "L→R" : "R→L", Double(y), Double(speed), Double(sizePx), satellites.count)
+        let (finalMin, finalMax) = (bandMin, bandMax)
+        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherTop=%{public}@",
+               log: log, type: .debug,
+               fromLeft ? "L→R" : "R→L",
+               Double(y),
+               Double(finalMin), Double(finalMax),
+               Double(speed),
+               Double(sizePx),
+               satellites.count,
+               (flasherCenterY != nil && flasherRadius != nil) ? "yes" : "no")
     }
     
     // MARK: - Emission to GPU
@@ -243,15 +305,14 @@ final class SatellitesLayerRenderer {
         
         // Debug vertical band bounds (y-range). Drawn every frame to counteract decay.
         if debugShowSpawnBounds {
-            let yMin = CGFloat(height) * 0.30
-            let yMax = CGFloat(height) * 0.95
-            let minY = min(yMin, yMax)
-            let maxY = max(yMin, yMax)
-            if maxY > minY {
+            let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx)
+            let minY = min(bandMin, bandMax)
+            let maxY = max(bandMin, bandMax)
+            if maxY >= minY {
                 let cx: CGFloat = CGFloat(width) * 0.5
                 let cy: CGFloat = (minY + maxY) * 0.5
                 let halfW: CGFloat = CGFloat(width) * 0.5
-                let halfH: CGFloat = (maxY - minY) * 0.5
+                let halfH: CGFloat = max(1.0, (maxY - minY) * 0.5)
                 // Cyan outline
                 let alpha: CGFloat = 0.70
                 let r: CGFloat = 0.05
@@ -270,8 +331,15 @@ final class SatellitesLayerRenderer {
         
         let keep: Float = trailing ? Float(pow(Double(trailDecay), dt)) : 0.0
         if logThis {
-            os_log("Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d dbgBounds=%{public}@",
-                   log: log, type: .info, satellites.count, sprites.count, Double(keep), removed, debugShowSpawnBounds ? "yes" : "no")
+            let flasherState: String
+            if let cy = flasherCenterY, let r = flasherRadius {
+                let top = cy - r
+                flasherState = String(format: "yes(top=%.1f)", Double(top))
+            } else {
+                flasherState = "no"
+            }
+            os_log("Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d flasher=%{public}@ dbgBounds=%{public}@",
+                   log: log, type: .info, satellites.count, sprites.count, Double(keep), removed, flasherState, debugShowSpawnBounds ? "yes" : "no")
         }
         return (sprites, max(0.0, min(1.0, keep)))
     }

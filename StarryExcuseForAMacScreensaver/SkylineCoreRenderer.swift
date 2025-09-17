@@ -97,6 +97,21 @@ class SkylineCoreRenderer {
         os_log("SkylineCoreRenderer: counters reset for memory release", log: log, type: .info)
     }
     
+    // Expose current flasher vertical geometry so other layers (e.g. satellites) can adapt.
+    // Returns (centerY, radius) in pixel coordinates or nil if no flasher.
+    func currentFlasherInfo() -> (centerY: CGFloat, radius: CGFloat)? {
+        guard let flasher = skyline.getFlasher() else { return nil }
+        let cy = CGFloat(flasher.yPos)
+        let r = CGFloat(skyline.flasherRadius)
+        return (cy, r)
+    }
+    
+    // Convenience: top edge Y of flasher (centerY - radius), or nil.
+    func currentFlasherTopY() -> CGFloat? {
+        guard let info = currentFlasherInfo() else { return nil }
+        return info.centerY - info.radius
+    }
+    
     // Generate sprite instances for this frame using time-based spawning.
     // dtSeconds: simulation time elapsed since last frame.
     func generateSprites(dtSeconds: Double) -> [SpriteInstance] {
