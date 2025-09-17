@@ -296,6 +296,12 @@ class StarryExcuseForAView: ScreenSaverView {
             name: Notification.Name("com.apple.screensaver.willstop"),
             object: nil
         )
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.willStopHandler(_:)),
+            name: Notification.Name("com.apple.screensaver.didstop"),
+            object: nil
+        )
     }
     
     // Fallback plain sheet if programmatic controller somehow fails (should be rare)
