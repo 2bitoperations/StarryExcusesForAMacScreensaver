@@ -175,9 +175,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         applyAccessibility()
         applyButtonKeyEquivalents()
         applySystemSymbolImages()
-        if let renderer = previewRenderer {
-            renderer.setDebugOverlayEnabled(lastDebugOverlayEnabled)
-        }
         if let styleMaskRaw = window?.styleMask.rawValue, let log = log {
             os_log("Config sheet UI initialized early (styleMask raw=0x%{public}llx)", log: log, type: .info, styleMaskRaw)
         }
@@ -1516,7 +1513,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                       newValue: newVal ? "true" : "false")
             lastDebugOverlayEnabled = newVal
         }
-        previewRenderer?.setDebugOverlayEnabled(newVal)
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
     }
@@ -1762,7 +1758,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
                 ?? 2.0
             previewRenderer?.updateDrawableSize(size: size, scale: scale)
             updateRendererHalfLives()
-            previewRenderer?.setDebugOverlayEnabled(lastDebugOverlayEnabled)
         }
         
         previewEngine = StarryEngine(size: size,
@@ -1893,9 +1888,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func updatePreviewConfig() {
         previewEngine?.updateConfig(currentPreviewRuntimeConfig())
         updateRendererHalfLives()
-        if let renderer = previewRenderer {
-            renderer.setDebugOverlayEnabled(lastDebugOverlayEnabled)
-        }
     }
     
     private func updateRendererHalfLives() {
