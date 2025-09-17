@@ -28,6 +28,7 @@ class StarryExcuseForAView: ScreenSaverView {
     private var engine: StarryEngine?
     private var traceEnabled: Bool
     private var frameIndex: UInt64 = 0
+    private var stoppedRunning: Bool = false   // Tracks whether stopAnimation has been invoked
     
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
@@ -78,6 +79,12 @@ class StarryExcuseForAView: ScreenSaverView {
     override var hasConfigureSheet: Bool { true }
     
     override func animateOneFrame() {
+        // If stopAnimation has already been called, log and no-op.
+        if stoppedRunning {
+            os_log("animateOneFrame invoked after stopAnimation; ignoring frame (index would have been #%{public}llu)", log: log ?? .default, type: .error, frameIndex)
+            return
+        }
+        
         frameIndex &+= 1
         let verbose = (frameIndex <= 5) || (frameIndex % 60 == 0)
         if verbose {
@@ -141,12 +148,14 @@ class StarryExcuseForAView: ScreenSaverView {
     
     override func startAnimation() {
         super.startAnimation()
+        stoppedRunning = false
         os_log("startAnimation called", log: log!, type: .info)
         Task { await setupAnimation() }
     }
     
     override func stopAnimation() {
         os_log("stopAnimation called", log: log!, type: .info)
+        stoppedRunning = true
         super.stopAnimation()
     }
     
