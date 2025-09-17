@@ -6,8 +6,11 @@ class StarryDefaultsManager {
     var defaults: UserDefaults
     
     // MARK: - Public range constants (single source of truth for UI components)
-    // Stars / Building Lights
-    static let starsPerSecondMin: Double = 0.0
+    // Star density (normalized 0.0 -> 1.0 of maximum fraction that yields 1600 stars/sec on 3008x1692)
+    static let starSpawnFractionOfMaxMin: Double = 0.0
+    static let starSpawnFractionOfMaxMax: Double = 1.0
+    
+    // Building Lights (still per-second)
     static let buildingLightsPerSecondMin: Double = 0.0
     
     // Clears
@@ -60,8 +63,8 @@ class StarryDefaultsManager {
     static let satellitesTrailHalfLifeMax: Double = 0.5
     
     // Default fallback constants (single source of truth for values)
-    private let defaultStarsPerUpdate = 80                // legacy
-    private let defaultStarsPerSecond = 800.0             // new authoritative (≈ 80 * 10fps legacy assumption)
+    // Star density: 0.5 ≈ previous default 800 stars/sec at reference screen (half of 1600).
+    private let defaultStarSpawnFractionOfMax = 0.5
     private let defaultBuildingLightsPerUpdate = 15
     private let defaultBuildingLightsPerSecond = 150.0
     
@@ -105,29 +108,23 @@ class StarryDefaultsManager {
     
     // MARK: - Defensive helpers
     
-    // Returns NSNumber strictly (rejects strings, etc.)
     private func safeNumber(_ key: String) -> NSNumber? {
         guard let obj = defaults.object(forKey: key) else { return nil }
         if let num = obj as? NSNumber {
             let d = num.doubleValue
-            if d.isNaN || d.isInfinite {
-                return nil
-            }
+            if d.isNaN || d.isInfinite { return nil }
             return num
         }
         return nil
     }
-    
     private func safeDouble(_ key: String) -> Double? {
         guard let n = safeNumber(key) else { return nil }
         return n.doubleValue
     }
-    
     private func safeInt(_ key: String) -> Int? {
         guard let n = safeNumber(key) else { return nil }
         return n.intValue
     }
-    
     private func safeBool(_ key: String) -> Bool? {
         guard let obj = defaults.object(forKey: key) else { return nil }
         if let b = obj as? Bool { return b }
@@ -135,27 +132,22 @@ class StarryDefaultsManager {
         return nil
     }
     
-    // Generic validation (range inclusive). If invalid or out-of-range → defaultValue.
     private func validatedDouble(_ value: Double?, min: Double, max: Double, defaultValue: Double) -> Double {
         guard let v = value, !v.isNaN, !v.isInfinite else { return defaultValue }
         if v < min || v > max { return defaultValue }
         return v
     }
-    
     private func validatedInt(_ value: Int?, min: Int, max: Int, defaultValue: Int) -> Int {
         guard let v = value else { return defaultValue }
         if v < min || v > max { return defaultValue }
         return v
     }
     
-    // NOTE: Parameter names previously shadowed global min/max and caused 'Cannot call value of non-function type' build errors.
-    // Use distinct internal names and qualify global functions with Swift.
     private func setClampedDouble(_ value: Double, key: String, min lower: Double, max upper: Double) {
         let clamped = Swift.max(lower, Swift.min(upper, value))
         defaults.set(clamped, forKey: key)
         defaults.synchronize()
     }
-    
     private func setClampedInt(_ value: Int, key: String, min lower: Int, max upper: Int) {
         let clamped = Swift.max(lower, Swift.min(upper, value))
         defaults.set(clamped, forKey: key)
@@ -191,8 +183,8 @@ class StarryDefaultsManager {
                 let fps = 60.0
                 let f = Swift.max(0.0001, Swift.min(0.9999, factor))
                 let hl = Swift.max(Self.shootingStarsTrailHalfLifeMin,
-                             Swift.min(Self.shootingStarsTrailHalfLifeMax,
-                                 log(0.5) / (fps * log(f))))
+                                   Swift.min(Self.shootingStarsTrailHalfLifeMax,
+                                             log(0.5) / (fps * log(f))))
                 defaults.set(hl, forKey: "ShootingStarsTrailHalfLifeSeconds")
             } else {
                 defaults.set(defaultShootingStarsTrailHalfLifeSeconds, forKey: "ShootingStarsTrailHalfLifeSeconds")
@@ -201,7 +193,7 @@ class StarryDefaultsManager {
         } else {
             let hl = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
             let clamped = Swift.max(Self.shootingStarsTrailHalfLifeMin,
-                              Swift.min(Self.shootingStarsTrailHalfLifeMax, hl))
+                                    Swift.min(Self.shootingStarsTrailHalfLifeMax, hl))
             if clamped != hl {
                 defaults.set(clamped, forKey: "ShootingStarsTrailHalfLifeSeconds")
             }
@@ -215,11 +207,14 @@ class StarryDefaultsManager {
                 if v > 0.0 && v <= 1.0 {
                     let fps = 60.0
                     let f = Swift.max(0.0001, Swift.min(0.9999, v))
-                    hl = Swift.max(Self.shootingStarsTrailHalfLifeMin, Swift.min(Self.shootingStarsTrailHalfLifeMax, log(0.5) / (fps * log(f))))
+                    hl = Swift.max(Self.shootingStarsTrailHalfLifeMin,
+                                   Swift.min(Self.shootingStarsTrailHalfLifeMax,
+                                             log(0.5) / (fps * log(f))))
                 } else {
                     let t = Swift.max(0.01, Swift.min(120.0, v))
                     hl = t * log(2.0) / log(100.0)
-                    hl = Swift.max(Self.shootingStarsTrailHalfLifeMin, Swift.min(Self.shootingStarsTrailHalfLifeMax, hl))
+                    hl = Swift.max(Self.shootingStarsTrailHalfLifeMin,
+                                   Swift.min(Self.shootingStarsTrailHalfLifeMax, hl))
                 }
                 defaults.set(hl, forKey: "SatellitesTrailHalfLifeSeconds")
             } else {
@@ -231,19 +226,28 @@ class StarryDefaultsManager {
         let oldHL = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
         if oldHL.isNaN || oldHL < Self.satellitesTrailHalfLifeMin || oldHL > Self.satellitesTrailHalfLifeMax {
             let clamped = Swift.max(Self.satellitesTrailHalfLifeMin,
-                              Swift.min(Self.satellitesTrailHalfLifeMax,
-                                  oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : oldHL))
+                                    Swift.min(Self.satellitesTrailHalfLifeMax,
+                                              oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : oldHL))
             defaults.set(clamped == oldHL ? clamped : (oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : clamped),
                          forKey: "SatellitesTrailHalfLifeSeconds")
             defaults.synchronize()
         }
         
-        if defaults.object(forKey: "StarsPerSecond") == nil {
-            if defaults.object(forKey: "StarsPerUpdate") != nil {
-                let legacy = Swift.max(0, defaults.integer(forKey: "StarsPerUpdate"))
-                defaults.set(Double(legacy) * 10.0, forKey: "StarsPerSecond")
+        // Migrate legacy StarsPerSecond -> StarSpawnFractionOfMax if present.
+        if defaults.object(forKey: "StarSpawnFractionOfMax") == nil {
+            if let obj = defaults.object(forKey: "StarsPerSecond") {
+                var starsPerSecond: Double?
+                if let n = obj as? NSNumber { starsPerSecond = n.doubleValue }
+                if let s = obj as? String, let dv = Double(s) { starsPerSecond = dv }
+                if let sps = starsPerSecond, sps >= 0 {
+                    // 1600 stars/sec == 100% of max at reference resolution.
+                    let norm = min(1.0, max(0.0, sps / 1600.0))
+                    defaults.set(norm, forKey: "StarSpawnFractionOfMax")
+                } else {
+                    defaults.set(defaultStarSpawnFractionOfMax, forKey: "StarSpawnFractionOfMax")
+                }
             } else {
-                defaults.set(defaultStarsPerSecond, forKey: "StarsPerSecond")
+                defaults.set(defaultStarSpawnFractionOfMax, forKey: "StarSpawnFractionOfMax")
             }
             defaults.synchronize()
         }
@@ -261,39 +265,13 @@ class StarryDefaultsManager {
     
     // MARK: - Stored properties (defensive getters)
     
-    var starsPerSecond: Double {
-        set {
-            let v = Swift.max(Self.starsPerSecondMin, newValue)
-            defaults.set(v, forKey: "StarsPerSecond")
-            // Keep legacy key in sync (rounded)
-            defaults.set(Int(round(v / 10.0)), forKey: "StarsPerUpdate")
-            defaults.synchronize()
-        }
+    var starSpawnFractionOfMax: Double {
+        set { setClampedDouble(newValue, key: "StarSpawnFractionOfMax", min: Self.starSpawnFractionOfMaxMin, max: Self.starSpawnFractionOfMaxMax) }
         get {
-            if let v = safeDouble("StarsPerSecond"), v >= Self.starsPerSecondMin {
-                return v
-            }
-            // legacy fallback
-            if let legacy = safeInt("StarsPerUpdate"), legacy >= 0 {
-                return Double(legacy) * 10.0
-            }
-            return defaultStarsPerSecond
-        }
-    }
-    
-    var starsPerUpdate: Int {
-        set {
-            let val = Swift.max(0, newValue)
-            defaults.set(val, forKey: "StarsPerUpdate")
-            defaults.set(Double(val) * 10.0, forKey: "StarsPerSecond")
-            defaults.synchronize()
-        }
-        get {
-            if let v = safeInt("StarsPerUpdate"), v >= 0 {
-                return v
-            }
-            // derive from starsPerSecond (which already defends)
-            return Int(Swift.max(0, round(starsPerSecond / 10.0)))
+            return validatedDouble(safeDouble("StarSpawnFractionOfMax"),
+                                   min: Self.starSpawnFractionOfMaxMin,
+                                   max: Self.starSpawnFractionOfMaxMax,
+                                   defaultValue: defaultStarSpawnFractionOfMax)
         }
     }
     
@@ -321,7 +299,6 @@ class StarryDefaultsManager {
             if let v = safeDouble("BuildingLightsPerSecond"), v >= Self.buildingLightsPerSecondMin {
                 return v
             }
-            // legacy fallback
             return Double(buildingLightsPerUpdate) * 10.0
         }
     }
@@ -329,11 +306,10 @@ class StarryDefaultsManager {
     var buildingHeight: Double {
         set { setClampedDouble(newValue, key: "BuildingHeight", min: Self.buildingHeightMin, max: Self.buildingHeightMax) }
         get {
-            let v = validatedDouble(safeDouble("BuildingHeight"),
-                                    min: Self.buildingHeightMin,
-                                    max: Self.buildingHeightMax,
-                                    defaultValue: defaultBuildingHeight)
-            return v
+            validatedDouble(safeDouble("BuildingHeight"),
+                            min: Self.buildingHeightMin,
+                            max: Self.buildingHeightMax,
+                            defaultValue: defaultBuildingHeight)
         }
     }
     
@@ -354,10 +330,10 @@ class StarryDefaultsManager {
     var moonTraversalMinutes: Int {
         set { setClampedInt(newValue, key: "MoonTraversalMinutes", min: Self.moonTraversalMinutesMin, max: Self.moonTraversalMinutesMax) }
         get {
-            return validatedInt(safeInt("MoonTraversalMinutes"),
-                                min: Self.moonTraversalMinutesMin,
-                                max: Self.moonTraversalMinutesMax,
-                                defaultValue: defaultMoonTraversalMinutes)
+            validatedInt(safeInt("MoonTraversalMinutes"),
+                         min: Self.moonTraversalMinutesMin,
+                         max: Self.moonTraversalMinutesMax,
+                         defaultValue: defaultMoonTraversalMinutes)
         }
     }
     
@@ -376,223 +352,192 @@ class StarryDefaultsManager {
     var moonDiameterScreenWidthPercent: Double {
         set { setClampedDouble(newValue, key: "MoonDiameterScreenWidthPercent", min: Self.moonDiameterPercentMin, max: Self.moonDiameterPercentMax) }
         get {
-            let v = validatedDouble(safeDouble("MoonDiameterScreenWidthPercent"),
-                                    min: Self.moonDiameterPercentMin,
-                                    max: Self.moonDiameterPercentMax,
-                                    defaultValue: defaultMoonDiameterScreenWidthPercent)
-            return v
+            validatedDouble(safeDouble("MoonDiameterScreenWidthPercent"),
+                            min: Self.moonDiameterPercentMin,
+                            max: Self.moonDiameterPercentMax,
+                            defaultValue: defaultMoonDiameterScreenWidthPercent)
         }
     }
     
     var moonBrightBrightness: Double {
         set { setClampedDouble(newValue, key: "MoonBrightBrightness", min: Self.moonBrightBrightnessMin, max: Self.moonBrightBrightnessMax) }
         get {
-            return validatedDouble(safeDouble("MoonBrightBrightness"),
-                                   min: Self.moonBrightBrightnessMin,
-                                   max: Self.moonBrightBrightnessMax,
-                                   defaultValue: defaultMoonBrightBrightness)
+            validatedDouble(safeDouble("MoonBrightBrightness"),
+                            min: Self.moonBrightBrightnessMin,
+                            max: Self.moonBrightBrightnessMax,
+                            defaultValue: defaultMoonBrightBrightness)
         }
     }
     
     var moonDarkBrightness: Double {
         set { setClampedDouble(newValue, key: "MoonDarkBrightness", min: Self.moonDarkBrightnessMin, max: Self.moonDarkBrightnessMax) }
         get {
-            return validatedDouble(safeDouble("MoonDarkBrightness"),
-                                   min: Self.moonDarkBrightnessMin,
-                                   max: Self.moonDarkBrightnessMax,
-                                   defaultValue: defaultMoonDarkBrightness)
+            validatedDouble(safeDouble("MoonDarkBrightness"),
+                            min: Self.moonDarkBrightnessMin,
+                            max: Self.moonDarkBrightnessMax,
+                            defaultValue: defaultMoonDarkBrightness)
         }
     }
     
     var moonPhaseOverrideEnabled: Bool {
-        set {
-            defaults.set(newValue, forKey: "MoonPhaseOverrideEnabled")
-            defaults.synchronize()
-        }
-        get {
-            return safeBool("MoonPhaseOverrideEnabled") ?? defaultMoonPhaseOverrideEnabled
-        }
+        set { defaults.set(newValue, forKey: "MoonPhaseOverrideEnabled"); defaults.synchronize() }
+        get { safeBool("MoonPhaseOverrideEnabled") ?? defaultMoonPhaseOverrideEnabled }
     }
     
     var moonPhaseOverrideValue: Double {
         set { setClampedDouble(newValue, key: "MoonPhaseOverrideValue", min: Self.moonPhaseValueMin, max: Self.moonPhaseValueMax) }
         get {
-            return validatedDouble(safeDouble("MoonPhaseOverrideValue"),
-                                   min: Self.moonPhaseValueMin,
-                                   max: Self.moonPhaseValueMax,
-                                   defaultValue: defaultMoonPhaseOverrideValue)
+            validatedDouble(safeDouble("MoonPhaseOverrideValue"),
+                            min: Self.moonPhaseValueMin,
+                            max: Self.moonPhaseValueMax,
+                            defaultValue: defaultMoonPhaseOverrideValue)
         }
     }
     
     var showLightAreaTextureFillMask: Bool {
-        set {
-            defaults.set(newValue, forKey: "ShowLightAreaTextureFillMask")
-            defaults.synchronize()
-        }
-        get {
-            return safeBool("ShowLightAreaTextureFillMask") ?? defaultShowLightAreaTextureFillMask
-        }
+        set { defaults.set(newValue, forKey: "ShowLightAreaTextureFillMask"); defaults.synchronize() }
+        get { safeBool("ShowLightAreaTextureFillMask") ?? defaultShowLightAreaTextureFillMask }
     }
     
     var debugOverlayEnabled: Bool {
-        set {
-            defaults.set(newValue, forKey: "DebugOverlayEnabled")
-            defaults.synchronize()
-        }
-        get {
-            return safeBool("DebugOverlayEnabled") ?? defaultDebugOverlayEnabled
-        }
+        set { defaults.set(newValue, forKey: "DebugOverlayEnabled"); defaults.synchronize() }
+        get { safeBool("DebugOverlayEnabled") ?? defaultDebugOverlayEnabled }
     }
     
-    // MARK: - Shooting Stars Settings
+    // MARK: - Shooting Stars
     
     var shootingStarsEnabled: Bool {
         set { defaults.set(newValue, forKey: "ShootingStarsEnabled"); defaults.synchronize() }
         get { safeBool("ShootingStarsEnabled") ?? defaultShootingStarsEnabled }
     }
-    
     var shootingStarsAvgSeconds: Double {
         set { setClampedDouble(newValue, key: "ShootingStarsAvgSeconds", min: Self.shootingStarsAvgSecondsMin, max: Self.shootingStarsAvgSecondsMax) }
         get {
-            return validatedDouble(safeDouble("ShootingStarsAvgSeconds"),
-                                   min: Self.shootingStarsAvgSecondsMin,
-                                   max: Self.shootingStarsAvgSecondsMax,
-                                   defaultValue: defaultShootingStarsAvgSeconds)
+            validatedDouble(safeDouble("ShootingStarsAvgSeconds"),
+                            min: Self.shootingStarsAvgSecondsMin,
+                            max: Self.shootingStarsAvgSecondsMax,
+                            defaultValue: defaultShootingStarsAvgSeconds)
         }
     }
-    
     var shootingStarsDirectionMode: Int {
         set { setClampedInt(newValue, key: "ShootingStarsDirectionMode", min: Self.shootingStarsDirectionModeMin, max: Self.shootingStarsDirectionModeMax) }
         get {
-            return validatedInt(safeInt("ShootingStarsDirectionMode"),
-                                min: Self.shootingStarsDirectionModeMin,
-                                max: Self.shootingStarsDirectionModeMax,
-                                defaultValue: defaultShootingStarsDirectionMode)
+            validatedInt(safeInt("ShootingStarsDirectionMode"),
+                         min: Self.shootingStarsDirectionModeMin,
+                         max: Self.shootingStarsDirectionModeMax,
+                         defaultValue: defaultShootingStarsDirectionMode)
         }
     }
-    
     var shootingStarsLength: Double {
         set { setClampedDouble(newValue, key: "ShootingStarsLength", min: Self.shootingStarsLengthMin, max: Self.shootingStarsLengthMax) }
         get {
-            return validatedDouble(safeDouble("ShootingStarsLength"),
-                                   min: Self.shootingStarsLengthMin,
-                                   max: Self.shootingStarsLengthMax,
-                                   defaultValue: defaultShootingStarsLength)
+            validatedDouble(safeDouble("ShootingStarsLength"),
+                            min: Self.shootingStarsLengthMin,
+                            max: Self.shootingStarsLengthMax,
+                            defaultValue: defaultShootingStarsLength)
         }
     }
-    
     var shootingStarsSpeed: Double {
         set { setClampedDouble(newValue, key: "ShootingStarsSpeed", min: Self.shootingStarsSpeedMin, max: Self.shootingStarsSpeedMax) }
         get {
-            return validatedDouble(safeDouble("ShootingStarsSpeed"),
-                                   min: Self.shootingStarsSpeedMin,
-                                   max: Self.shootingStarsSpeedMax,
-                                   defaultValue: defaultShootingStarsSpeed)
+            validatedDouble(safeDouble("ShootingStarsSpeed"),
+                            min: Self.shootingStarsSpeedMin,
+                            max: Self.shootingStarsSpeedMax,
+                            defaultValue: defaultShootingStarsSpeed)
         }
     }
-    
     var shootingStarsThickness: Double {
         set { setClampedDouble(newValue, key: "ShootingStarsThickness", min: Self.shootingStarsThicknessMin, max: Self.shootingStarsThicknessMax) }
         get {
-            return validatedDouble(safeDouble("ShootingStarsThickness"),
-                                   min: Self.shootingStarsThicknessMin,
-                                   max: Self.shootingStarsThicknessMax,
-                                   defaultValue: defaultShootingStarsThickness)
+            validatedDouble(safeDouble("ShootingStarsThickness"),
+                            min: Self.shootingStarsThicknessMin,
+                            max: Self.shootingStarsThicknessMax,
+                            defaultValue: defaultShootingStarsThickness)
         }
     }
-    
     var shootingStarsBrightness: Double {
         set { setClampedDouble(newValue, key: "ShootingStarsBrightness", min: Self.shootingStarsBrightnessMin, max: Self.shootingStarsBrightnessMax) }
         get {
-            return validatedDouble(safeDouble("ShootingStarsBrightness"),
-                                   min: Self.shootingStarsBrightnessMin,
-                                   max: Self.shootingStarsBrightnessMax,
-                                   defaultValue: defaultShootingStarsBrightness)
+            validatedDouble(safeDouble("ShootingStarsBrightness"),
+                            min: Self.shootingStarsBrightnessMin,
+                            max: Self.shootingStarsBrightnessMax,
+                            defaultValue: defaultShootingStarsBrightness)
         }
     }
-    
     var shootingStarsTrailHalfLifeSeconds: Double {
         set { setClampedDouble(newValue, key: "ShootingStarsTrailHalfLifeSeconds", min: Self.shootingStarsTrailHalfLifeMin, max: Self.shootingStarsTrailHalfLifeMax) }
         get {
-            return validatedDouble(safeDouble("ShootingStarsTrailHalfLifeSeconds"),
-                                   min: Self.shootingStarsTrailHalfLifeMin,
-                                   max: Self.shootingStarsTrailHalfLifeMax,
-                                   defaultValue: defaultShootingStarsTrailHalfLifeSeconds)
+            validatedDouble(safeDouble("ShootingStarsTrailHalfLifeSeconds"),
+                            min: Self.shootingStarsTrailHalfLifeMin,
+                            max: Self.shootingStarsTrailHalfLifeMax,
+                            defaultValue: defaultShootingStarsTrailHalfLifeSeconds)
         }
     }
-    
     var shootingStarsDebugShowSpawnBounds: Bool {
         set { defaults.set(newValue, forKey: "ShootingStarsDebugShowSpawnBounds"); defaults.synchronize() }
         get { safeBool("ShootingStarsDebugShowSpawnBounds") ?? defaultShootingStarsDebugSpawnBounds }
     }
     
-    // MARK: - Satellites Settings
+    // MARK: - Satellites
     
     var satellitesEnabled: Bool {
         set { defaults.set(newValue, forKey: "SatellitesEnabled"); defaults.synchronize() }
         get { safeBool("SatellitesEnabled") ?? defaultSatellitesEnabled }
     }
-    
     var satellitesAvgSpawnSeconds: Double {
         set { setClampedDouble(newValue, key: "SatellitesAvgSpawnSeconds", min: Self.satellitesAvgSpawnSecondsMin, max: Self.satellitesAvgSpawnSecondsMax) }
         get {
-            return validatedDouble(safeDouble("SatellitesAvgSpawnSeconds"),
-                                   min: Self.satellitesAvgSpawnSecondsMin,
-                                   max: Self.satellitesAvgSpawnSecondsMax,
-                                   defaultValue: defaultSatellitesAvgSpawnSeconds)
+            validatedDouble(safeDouble("SatellitesAvgSpawnSeconds"),
+                            min: Self.satellitesAvgSpawnSecondsMin,
+                            max: Self.satellitesAvgSpawnSecondsMax,
+                            defaultValue: defaultSatellitesAvgSpawnSeconds)
         }
     }
-    
     var satellitesSpeed: Double {
         set { setClampedDouble(newValue, key: "SatellitesSpeed", min: Self.satellitesSpeedMin, max: Self.satellitesSpeedMax) }
         get {
-            return validatedDouble(safeDouble("SatellitesSpeed"),
-                                   min: Self.satellitesSpeedMin,
-                                   max: Self.satellitesSpeedMax,
-                                   defaultValue: defaultSatellitesSpeed)
+            validatedDouble(safeDouble("SatellitesSpeed"),
+                            min: Self.satellitesSpeedMin,
+                            max: Self.satellitesSpeedMax,
+                            defaultValue: defaultSatellitesSpeed)
         }
     }
-    
     var satellitesSize: Double {
         set { setClampedDouble(newValue, key: "SatellitesSize", min: Self.satellitesSizeMin, max: Self.satellitesSizeMax) }
         get {
-            return validatedDouble(safeDouble("SatellitesSize"),
-                                   min: Self.satellitesSizeMin,
-                                   max: Self.satellitesSizeMax,
-                                   defaultValue: defaultSatellitesSize)
+            validatedDouble(safeDouble("SatellitesSize"),
+                            min: Self.satellitesSizeMin,
+                            max: Self.satellitesSizeMax,
+                            defaultValue: defaultSatellitesSize)
         }
     }
-    
     var satellitesBrightness: Double {
         set { setClampedDouble(newValue, key: "SatellitesBrightness", min: Self.satellitesBrightnessMin, max: Self.satellitesBrightnessMax) }
         get {
-            return validatedDouble(safeDouble("SatellitesBrightness"),
-                                   min: Self.satellitesBrightnessMin,
-                                   max: Self.satellitesBrightnessMax,
-                                   defaultValue: defaultSatellitesBrightness)
+            validatedDouble(safeDouble("SatellitesBrightness"),
+                            min: Self.satellitesBrightnessMin,
+                            max: Self.satellitesBrightnessMax,
+                            defaultValue: defaultSatellitesBrightness)
         }
     }
-    
     var satellitesTrailing: Bool {
         set { defaults.set(newValue, forKey: "SatellitesTrailing"); defaults.synchronize() }
         get { safeBool("SatellitesTrailing") ?? defaultSatellitesTrailing }
     }
-    
     var satellitesTrailHalfLifeSeconds: Double {
         set { setClampedDouble(newValue, key: "SatellitesTrailHalfLifeSeconds", min: Self.satellitesTrailHalfLifeMin, max: Self.satellitesTrailHalfLifeMax) }
         get {
-            return validatedDouble(safeDouble("SatellitesTrailHalfLifeSeconds"),
-                                   min: Self.satellitesTrailHalfLifeMin,
-                                   max: Self.satellitesTrailHalfLifeMax,
-                                   defaultValue: defaultSatellitesTrailHalfLifeSeconds)
+            validatedDouble(safeDouble("SatellitesTrailHalfLifeSeconds"),
+                            min: Self.satellitesTrailHalfLifeMin,
+                            max: Self.satellitesTrailHalfLifeMax,
+                            defaultValue: defaultSatellitesTrailHalfLifeSeconds)
         }
     }
     
-    // MARK: - Runtime validation (kept, but getters are already defensive)
+    // MARK: - Runtime validation
     
     func validateAndCorrectMoonSettings(log: OSLog) {
         var corrected = false
-        
         if moonBrightBrightness < moonDarkBrightness {
             os_log("Invalid moon brightness settings (bright %.3f < dark %.3f). Reverting to defaults (bright %.2f, dark %.2f).",
                    log: log, type: .error,
@@ -602,7 +547,6 @@ class StarryDefaultsManager {
             defaults.set(defaultMoonDarkBrightness, forKey: "MoonDarkBrightness")
             corrected = true
         }
-        
         let phaseOverride = defaults.double(forKey: "MoonPhaseOverrideValue")
         if phaseOverride.isNaN || phaseOverride < Self.moonPhaseValueMin || phaseOverride > Self.moonPhaseValueMax {
             os_log("Out-of-range MoonPhaseOverrideValue %.3f detected. Resetting to %.3f.",
@@ -610,7 +554,6 @@ class StarryDefaultsManager {
             defaults.set(defaultMoonPhaseOverrideValue, forKey: "MoonPhaseOverrideValue")
             corrected = true
         }
-        
         let percent = defaults.double(forKey: "MoonDiameterScreenWidthPercent")
         if percent.isNaN || percent < Self.moonDiameterPercentMin || percent > Self.moonDiameterPercentMax {
             os_log("Out-of-range MoonDiameterScreenWidthPercent %.5f detected. Resetting to default %.5f.",
@@ -618,7 +561,6 @@ class StarryDefaultsManager {
             defaults.set(defaultMoonDiameterScreenWidthPercent, forKey: "MoonDiameterScreenWidthPercent")
             corrected = true
         }
-        
         if corrected { defaults.synchronize() }
     }
 }

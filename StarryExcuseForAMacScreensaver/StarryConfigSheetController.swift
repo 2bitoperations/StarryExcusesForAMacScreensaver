@@ -14,8 +14,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // MARK: - Former IBOutlets (now programmatically created)
     
-    // General section (authoritative stars-per-second)
-    var starsPerSecond: NSTextField!
+    // General section (now star density slider instead of explicit stars/sec)
+    var starDensitySlider: NSSlider!
+    var starDensityPreview: NSTextField!
     var buildingLightsPerSecond: NSTextField!
     var buildingHeightSlider: NSSlider?
     var buildingHeightPreview: NSTextField?
@@ -101,7 +102,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private var isAutoPaused = false
     
     // Last-known values
-    private var lastStarsPerSecond: Int = 0
+    private var lastStarSpawnFractionOfMax: Double = 0.0
     private var lastBuildingLightsPerSecond: Double = 0
     private var lastBuildingHeight: Double = 0
     private var lastSecsBetweenClears: Double = 0
@@ -137,6 +138,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     // MARK: - One-time UI init flag
     private var uiInitialized = false
+    
+    // Reference constants for star rate estimation (match engine logic)
+    private let referenceWidth: Double = 3008.0
+    private let referenceHeight: Double = 1692.0
+    private let maxStarsAtReference: Double = 1600.0
     
     // MARK: - Init
     
@@ -188,9 +194,11 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     // MARK: - Populate defaults
     
     private func populateDefaultsAndState() {
-        guard starsPerSecond != nil else { return }
+        guard starDensitySlider != nil else { return }
         
-        starsPerSecond.integerValue = Int(round(defaultsManager.starsPerSecond))
+        starDensitySlider.doubleValue = defaultsManager.starSpawnFractionOfMax
+        updateStarDensityPreview()
+        
         buildingLightsPerSecond.doubleValue = defaultsManager.buildingLightsPerSecond
         
         if let bhSlider = buildingHeightSlider {
@@ -294,7 +302,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         }
         
         // Last-known capture
-        lastStarsPerSecond = starsPerSecond.integerValue
+        lastStarSpawnFractionOfMax = starDensitySlider.doubleValue
         lastBuildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         lastBuildingHeight = buildingHeightSlider?.doubleValue ?? defaultsManager.buildingHeight
         lastBuildingFrequency = buildingFrequencySlider?.doubleValue ?? defaultsManager.buildingFrequency
@@ -366,11 +374,33 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         let generalBox = makeBox(title: "General")
         let generalStack = makeVStack(spacing: 8)
         
-        let starsRow = makeLabeledFieldRow(label: "Stars/second:",
-                                           fieldWidth: 70,
-                                           small: true) { tf in
-            self.starsPerSecond = tf
-        }
+        // Star Density slider
+        let starDensityLabelRow = NSStackView()
+        starDensityLabelRow.orientation = .horizontal
+        starDensityLabelRow.alignment = .firstBaseline
+        starDensityLabelRow.spacing = 4
+        starDensityLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let sdLabel = makeLabel("Star density")
+        let sdPreview = makeSmallLabel("--")
+        self.starDensityPreview = sdPreview
+        starDensityLabelRow.addArrangedSubview(sdLabel)
+        starDensityLabelRow.addArrangedSubview(sdPreview)
+        let sdSlider = NSSlider(value: defaultsManager.starSpawnFractionOfMax,
+                                minValue: StarryDefaultsManager.starSpawnFractionOfMaxMin,
+                                maxValue: StarryDefaultsManager.starSpawnFractionOfMaxMax,
+                                target: self,
+                                action: #selector(starDensityChanged(_:)))
+        sdSlider.translatesAutoresizingMaskIntoConstraints = false
+        sdSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        self.starDensitySlider = sdSlider
+        let sdSliderRow = NSStackView(views: [sdSlider])
+        sdSliderRow.orientation = .horizontal
+        sdSliderRow.alignment = .centerY
+        sdSliderRow.spacing = 4
+        sdSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        sdSlider.leadingAnchor.constraint(equalTo: sdSliderRow.leadingAnchor).isActive = true
+        sdSlider.trailingAnchor.constraint(equalTo: sdSliderRow.trailingAnchor).isActive = true
+        
         let blRow = makeLabeledFieldRow(label: "Building lights/second:",
                                         fieldWidth: 70,
                                         small: true) { tf in
@@ -464,7 +494,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         spawnBoundsRow.addArrangedSubview(spawnBoundsSwitch)
         spawnBoundsRow.addArrangedSubview(spawnBoundsLabel)
         
-        generalStack.addArrangedSubview(starsRow)
+        generalStack.addArrangedSubview(starDensityLabelRow)
+        generalStack.addArrangedSubview(sdSliderRow)
         generalStack.addArrangedSubview(blRow)
         generalStack.addArrangedSubview(sbcRow)
         generalStack.addArrangedSubview(bhLabelRow)
@@ -1101,13 +1132,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             preview.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20)
         ])
         
-        starsPerSecond.delegate = self
         buildingLightsPerSecond.delegate = self
         secsBetweenClears?.delegate = self
         shootingStarsAvgSecondsField.delegate = self
         satellitesAvgSecondsField?.delegate = self
         
-        for row in [starsRow, blRow, sbcRow] {
+        for row in [sbcRow, blRow] {
             row.trailingAnchor.constraint(equalTo: generalStack.trailingAnchor).isActive = true
         }
         if let shootingAvgRow = shootingStarsAvgSecondsField?.superview as? NSStackView,
@@ -1246,7 +1276,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func applyAccessibility() {
-        starsPerSecond.setAccessibilityLabel("Stars per second")
+        starDensitySlider.setAccessibilityLabel("Star density (fraction of maximum)")
         buildingLightsPerSecond.setAccessibilityLabel("Building lights per second")
         secsBetweenClears?.setAccessibilityLabel("Seconds between clears")
         buildingHeightSlider?.setAccessibilityLabel("Building height fraction of screen")
@@ -1333,17 +1363,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     private func handleTextFieldChange(_ field: NSTextField) {
-        if field == starsPerSecond {
-            let newVal = max(Int(StarryDefaultsManager.starsPerSecondMin), field.integerValue)
-            if newVal != lastStarsPerSecond {
-                logChange(changedKey: "starsPerSecond",
-                          oldValue: "\(lastStarsPerSecond)",
-                          newValue: "\(newVal)")
-                lastStarsPerSecond = newVal
-                rebuildPreviewEngineIfNeeded()
-                updatePreviewConfig()
-            }
-        } else if field == buildingLightsPerSecond {
+        if field == buildingLightsPerSecond {
             let newVal = max(StarryDefaultsManager.buildingLightsPerSecondMin, field.doubleValue)
             if newVal != lastBuildingLightsPerSecond {
                 logChange(changedKey: "buildingLightsPerSecond",
@@ -1393,6 +1413,30 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     }
     
     // MARK: - Actions
+    
+    @IBAction func starDensityChanged(_ sender: Any) {
+        let val = starDensitySlider.doubleValue
+        if val != lastStarSpawnFractionOfMax {
+            logChange(changedKey: "starSpawnFractionOfMax",
+                      oldValue: format(lastStarSpawnFractionOfMax),
+                      newValue: format(val))
+            lastStarSpawnFractionOfMax = val
+        }
+        updateStarDensityPreview()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+        maybeClearAndRestartPreview(reason: "starDensityChanged")
+    }
+    
+    private func updateStarDensityPreview() {
+        let fraction = starDensitySlider.doubleValue
+        let size = moonPreviewView?.bounds.size ?? CGSize(width: referenceWidth, height: referenceHeight)
+        let w = max(1.0, Double(size.width))
+        let h = max(1.0, Double(size.height))
+        let scaleFactor = (w * h) / (referenceWidth * referenceHeight)
+        let estimatedStarsPerSec = fraction * maxStarsAtReference * scaleFactor
+        starDensityPreview.stringValue = String(format: "%.1f%% (≈ %.0f/sec)", fraction * 100.0, estimatedStarsPerSec)
+    }
     
     @IBAction func buildingHeightChanged(_ sender: Any) {
         guard let slider = buildingHeightSlider else { return }
@@ -1623,7 +1667,6 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     @IBAction func satellitesSliderChanged(_ sender: Any) {
         if let perMinSlider = satellitesPerMinuteSlider {
-            // Retained legacy calculation; not exposed via defaults constants currently.
             let perMinute = max(0.1, perMinSlider.doubleValue)
             let avgSeconds = 60.0 / perMinute
             if avgSeconds != lastSatellitesAvgSpawnSeconds {
@@ -1823,6 +1866,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         engine.resizeIfNeeded(newSize: size)
         mLayer.frame = moonPreviewView.bounds
         
+        // Update density preview each frame (in case size changed)
+        updateStarDensityPreview()
+        
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         let wPx = Int(round(size.width * scale))
         let hPx = Int(round(size.height * scale))
@@ -1844,11 +1890,13 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             satellitesAvg = defaultsManager.satellitesAvgSpawnSeconds
         }
         
-        let starsPerSec = Double(starsPerSecond.integerValue)
-        let derivedLegacyStarsPerUpdate = max(0, Int(round(starsPerSec / 10.0)))
+        // Convert starSpawnFractionOfMax to raw fraction-of-pixels
+        // maxFraction = 1600 / (refW * refH)
+        let maxFraction = maxStarsAtReference / (referenceWidth * referenceHeight)
+        let starFractionPixels = starDensitySlider.doubleValue * maxFraction
         
         return StarryRuntimeConfig(
-            starsPerUpdate: derivedLegacyStarsPerUpdate,
+            starsPerUpdate: 0, // legacy unused
             buildingHeight: buildingHeightSlider?.doubleValue ?? lastBuildingHeight,
             buildingFrequency: buildingFrequencySlider?.doubleValue ?? lastBuildingFrequency,
             secsBetweenClears: secsBetweenClears?.doubleValue ?? lastSecsBetweenClears,
@@ -1880,8 +1928,9 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             debugLogEveryFrame: false,
             buildingLightsPerUpdate: defaultsManager.buildingLightsPerUpdate,
             disableFlasherOnBase: false,
-            starsPerSecond: starsPerSec,
-            buildingLightsPerSecond: buildingLightsPerSecond.doubleValue
+            starsPerSecond: 0, // legacy disabled
+            buildingLightsPerSecond: buildingLightsPerSecond.doubleValue,
+            starSpawnFractionOfPixels: starFractionPixels
         )
     }
     
@@ -1899,6 +1948,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     private func updatePreviewLabels() {
         let percent = moonSizePercentSlider.doubleValue * 100.0
         moonSizePercentPreview.stringValue = String(format: "%.2f%%", percent)
+        updateStarDensityPreview()
         if let bhSlider = buildingHeightSlider, let bhPrev = buildingHeightPreview {
             bhPrev.stringValue = String(format: "%.2f%%", bhSlider.doubleValue * 100.0)
         }
@@ -2013,7 +2063,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         
         os_log("hit saveClose", log: self.log ?? OSLog.default, type: .info)
         
-        defaultsManager.starsPerSecond = Double(starsPerSecond.integerValue)
+        defaultsManager.starSpawnFractionOfMax = starDensitySlider.doubleValue
         defaultsManager.buildingLightsPerSecond = buildingLightsPerSecond.doubleValue
         defaultsManager.moonDiameterScreenWidthPercent = moonSizePercentSlider.doubleValue
         if let bh = buildingHeightSlider {
@@ -2124,12 +2174,12 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
     
     private func stateSummaryString() -> String {
         var parts: [String] = []
-        parts.append("starsPerSecond=\(starsPerSecond.integerValue)")
+        parts.append("starSpawnFractionOfMax=\(format(lastStarSpawnFractionOfMax))")
         parts.append("buildingLightsPerSecond=\(format(buildingLightsPerSecond.doubleValue))")
         parts.append("secsBetweenClears=\(format(secsBetweenClears?.doubleValue ?? lastSecsBetweenClears))")
         parts.append("buildingHeight=\(format(buildingHeightSlider?.doubleValue ?? lastBuildingHeight))")
         parts.append("buildingFrequency=\(format(buildingFrequencySlider?.doubleValue ?? lastBuildingFrequency))")
-        parts.append("debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ? "true" : "false")")
+        parts.append("debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ? 't' : 'f')")
         parts.append("spawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox?.state == .on ? "true" : "false")")
         parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
         parts.append("moonBright=\(format(brightBrightnessSlider?.doubleValue ?? lastBrightBrightness))")
