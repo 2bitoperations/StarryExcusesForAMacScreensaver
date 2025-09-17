@@ -30,6 +30,15 @@ class StarryExcuseForAView: ScreenSaverView {
     private var frameIndex: UInt64 = 0
     private var stoppedRunning: Bool = false   // Tracks whether stopAnimation has been invoked
     
+    // Explicit list of additional (non-stop) screensaver distributed notifications we want to observe.
+    // We CANNOT use name: nil with DistributedNotificationCenter inside the sandbox; macOS will log:
+    // "*** attempt to register for all distributed notifications thwarted by sandboxing."
+    // Add more names here if needed (only those that actually exist); unknown names are harmless.
+    private let otherScreensaverNotificationNames: [Notification.Name] = [
+        Notification.Name("com.apple.screensaver.willstart"),
+        Notification.Name("com.apple.screensaver.didstart")
+    ]
+    
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
         super.init(frame: frame, isPreview: isPreview)
@@ -46,8 +55,7 @@ class StarryExcuseForAView: ScreenSaverView {
         if log == nil {
             log = OSLog(subsystem: "com.2bitoperations.screensavers.starry", category: "Skyline")
         }
-        os_log("StarryExcuseForAView internal init (preview=%{public}@) bounds=%{public}@",
-               log: log!, type: .info, isPreview ? "true" : "false", NSStringFromRect(bounds))
+        os_log("StarryExcuseForAView internal init (preview=%{public}@) bounds=%{public}@", log: log!, type: .info, isPreview ? "true" : "false", NSStringFromRect(bounds))
         
         defaultsManager.validateAndCorrectMoonSettings(log: log!)
         // Set target ~60 FPS
@@ -280,7 +288,7 @@ class StarryExcuseForAView: ScreenSaverView {
         }
     }
     
-    // New generic handler that logs ANY com.apple.screensaver.* notification
+    // Handler that logs any explicitly registered com.apple.screensaver.* notifications (except stop ones handled separately).
     @objc func anyScreensaverNotification(_ note: Notification) {
         let name = note.name.rawValue
         guard name.hasPrefix("com.apple.screensaver.") else { return }
@@ -301,7 +309,9 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     private func registerListeners() {
-        os_log("Registering willStop listener", log: log!, type: .info)
+        os_log("Registering distributed screensaver listeners (sandbox-safe explicit set)", log: log!, type: .info)
+        
+        // Stop-related notifications use the existing willStopHandler for termination logic.
         DistributedNotificationCenter.default.addObserver(
             self,
             selector: #selector(self.willStopHandler(_:)),
@@ -314,13 +324,20 @@ class StarryExcuseForAView: ScreenSaverView {
             name: Notification.Name("com.apple.screensaver.didstop"),
             object: nil
         )
-        // Register a catch‑all observer for ANY notification; filter by prefix in handler.
-        DistributedNotificationCenter.default.addObserver(
-            self,
-            selector: #selector(self.anyScreensaverNotification(_:)),
-            name: nil,          // nil => receive all distributed notifications
-            object: nil
-        )
+        
+        // Register the remaining screensaver notifications we care about individually.
+        for name in otherScreensaverNotificationNames {
+            DistributedNotificationCenter.default.addObserver(
+                self,
+                selector: #selector(self.anyScreensaverNotification(_:)),
+                name: name,
+                object: nil
+            )
+        }
+        
+        // NOTE: We intentionally do NOT call addObserver with name: nil because sandboxing
+        // prohibits "all notifications" and produces:
+        // "*** attempt to register for all distributed notifications thwarted by sandboxing."
     }
     
     // Fallback plain sheet if programmatic controller somehow fails (should be rare)
