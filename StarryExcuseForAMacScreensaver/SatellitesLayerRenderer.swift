@@ -10,9 +10,13 @@ import simd
 // above the skyline (upper ~70% of screen). Layer emits one "head" sprite per
 // active satellite per frame; persistent trail is produced by GPU decay.
 //
-// 2025 Update: Spawn vertical band is now dynamically clamped so satellites
-// always spawn ABOVE the top of the flasher. Caller should provide flasher
-// geometry via setFlasherInfo(centerY:radius:) each frame (or when it changes).
+// 2025 Update: Flasher geometry (centerY & radius) is now provided once at
+// construction time instead of through dynamic setters. Spawn vertical band is
+// statically clamped so satellites always spawn ABOVE the top of the flasher.
+// If no flasher info is supplied (nil), legacy band behavior is used.
+//
+// To change flasher-constrained behavior at runtime you must recreate the
+// SatellitesLayerRenderer with new parameters.
 final class SatellitesLayerRenderer {
     
     private struct Satellite {
@@ -44,9 +48,9 @@ final class SatellitesLayerRenderer {
     /// Debug: show spawn vertical band bounds.
     private var debugShowSpawnBounds: Bool
     
-    /// Dynamic flasher information (used to ensure satellites spawn above flasher top).
-    private var flasherCenterY: CGFloat?
-    private var flasherRadius: CGFloat?
+    /// Static flasher information (used to ensure satellites spawn above flasher top).
+    private let flasherCenterY: CGFloat?
+    private let flasherRadius: CGFloat?
     /// Extra vertical gap (pixels) to keep between flasher top and satellite spawn area.
     private let flasherVerticalGap: CGFloat = 4.0
     
@@ -74,7 +78,9 @@ final class SatellitesLayerRenderer {
          brightness: CGFloat,
          trailing: Bool,
          trailDecay: CGFloat,
-         debugShowSpawnBounds: Bool) {
+         debugShowSpawnBounds: Bool,
+         flasherCenterY: CGFloat?,
+         flasherRadius: CGFloat?) {
         self.width = width
         self.height = height
         self.log = log
@@ -85,9 +91,11 @@ final class SatellitesLayerRenderer {
         self.trailing = trailing
         self.trailDecay = min(max(0.0, trailDecay), 0.999)
         self.debugShowSpawnBounds = debugShowSpawnBounds
+        self.flasherCenterY = flasherCenterY
+        self.flasherRadius = flasherRadius.map { max(0.0, $0) }
         scheduleNextSpawn()
-        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f showBounds=%{public}@",
-               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay), debugShowSpawnBounds ? "true" : "false")
+        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f showBounds=%{public}@ flasher=%{public}@",
+               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay), debugShowSpawnBounds ? "true" : "false", (self.flasherCenterY != nil && self.flasherRadius != nil) ? "yes" : "no")
     }
     
     // MARK: - Public reconfiguration
@@ -121,6 +129,7 @@ final class SatellitesLayerRenderer {
     
     /// Update runtime parameters. Any nil parameter is left unchanged.
     /// If avgSpawnSeconds changes, next spawn time is rescheduled to reflect new cadence.
+    /// (Flasher geometry is immutable; recreate renderer to change it.)
     func updateParameters(avgSpawnSeconds: Double? = nil,
                           speed: CGFloat? = nil,
                           size: CGFloat? = nil,
@@ -159,19 +168,6 @@ final class SatellitesLayerRenderer {
         if reschedule {
             scheduleNextSpawn()
         }
-    }
-    
-    /// Provide current flasher geometry so satellites can spawn above it.
-    /// Call this each frame (or whenever flasher moves). Pass nil radius to clear.
-    func setFlasherInfo(centerY: CGFloat, radius: CGFloat) {
-        flasherCenterY = centerY
-        flasherRadius = max(0.0, radius)
-    }
-    
-    /// Clear flasher info (satellites revert to legacy band).
-    func clearFlasherInfo() {
-        flasherCenterY = nil
-        flasherRadius = nil
     }
     
     // MARK: - Private helpers
@@ -342,7 +338,6 @@ final class SatellitesLayerRenderer {
                     }
                 }
             } else {
-                // Optionally could log occasionally; avoid spamming.
                 if logThis {
                     os_log("Satellites debug: no valid spawn band (flasher constrains all space)", log: log, type: .info)
                 }

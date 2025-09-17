@@ -469,7 +469,10 @@ final class StarryEngine {
     private func ensureSatellitesRenderer() {
         guard satellitesRenderer == nil,
               config.satellitesEnabled,
-              skyline != nil else { return }
+              let skyline = skyline else { return }
+        let flasher = skyline.getFlasherDetails()
+        let flasherCenterY = flasher.map { CGFloat($0.centerY) }
+        let flasherRadius = flasher.map { CGFloat($0.radius) }
         satellitesRenderer = SatellitesLayerRenderer(width: Int(size.width),
                                                      height: Int(size.height),
                                                      log: log,
@@ -479,8 +482,15 @@ final class StarryEngine {
                                                      brightness: CGFloat(config.satellitesBrightness),
                                                      trailing: config.satellitesTrailing,
                                                      trailDecay: 1.0,
-                                                     debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds)
-        os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs showBounds=%{public}@)", log: log, type: .info, config.satellitesEnabled ? "true" : "false", config.satellitesAvgSpawnSeconds, config.shootingStarsDebugShowSpawnBounds ? "true" : "false")
+                                                     debugShowSpawnBounds: config.shootingStarsDebugShowSpawnBounds,
+                                                     flasherCenterY: flasherCenterY,
+                                                     flasherRadius: flasherRadius)
+        os_log("SatellitesLayerRenderer created (enabled=%{public}@, avg=%{public}.2fs showBounds=%{public}@ flasher=%{public}@)",
+               log: log, type: .info,
+               config.satellitesEnabled ? "true" : "false",
+               config.satellitesAvgSpawnSeconds,
+               config.shootingStarsDebugShowSpawnBounds ? "true" : "false",
+               (flasherCenterY != nil && flasherRadius != nil) ? "yes" : "no")
     }
 
     func advanceFrameGPU() -> StarryDrawData {
@@ -572,7 +582,10 @@ final class StarryEngine {
                                     waxingSign: waxSign)
         }
 
-        if logThisFrame {
+        let logEveryFrame = config.debugOverlayEnabled || config.debugLogEveryFrame
+        let periodicLogThisFrame = (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
+        let logThisFrame2 = logEveryFrame || (verboseLogging && periodicLogThisFrame)
+        if logThisFrame2 {
             os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f lightsPerSecEff=%.2f showSpawnBounds=%{public}@",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
@@ -597,7 +610,7 @@ final class StarryEngine {
             debugFPS: Float(currentFPS),
             debugCPUPercent: Float(currentCPUPercent)
         )
-        if moonAlbedoDirty && logThisFrame {
+        if moonAlbedoDirty && logThisFrame2 {
             os_log("advanceFrameGPU: moon albedo image attached for upload", log: log, type: .info)
         }
         moonAlbedoDirty = false
