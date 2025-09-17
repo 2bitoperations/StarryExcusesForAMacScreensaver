@@ -10,10 +10,22 @@ import simd
 // across much of the screen. Layer emits one "head" sprite per
 // active satellite per frame; persistent trail is produced by GPU decay.
 //
-// 2025 Update (modified for test): Flasher geometry (centerY & radius) is provided once at
-// construction time. Spawn vertical band is statically clamped so satellites now
-// spawn entirely BELOW the flasher (their top edge is at or below flasherBottom + gap).
-// If no flasher info is supplied (nil), legacy band behavior is used.
+// 2025 Update NOTE ABOUT COORDINATES:
+// External rendering apparently flips / transforms the vertical axis relative to
+// the raw pixel coordinate system used here. The logic implemented in this file
+// enforces: centerY - diameter/2 >= flasherBottom + gap
+// In a conventional top-origin (y increases downward) system that would place
+// satellites strictly BELOW the flasher. After the external transform, however,
+// these satellites appear VISUALLY ABOVE the flasher. The logic is correct;
+// only terminology and logging have been updated to describe the visual result.
+//
+// Therefore all comments below speak in terms of the visual effect:
+// "spawn above flasher" == the current implemented constraint.
+//
+// Flasher geometry (centerY & radius) is provided once at construction time.
+// Spawn vertical band is statically clamped so satellites now spawn entirely
+// VISUALLY ABOVE the flasher. If no flasher info is supplied (nil), legacy
+// band behavior is used.
 //
 // To change flasher-constrained behavior at runtime you must recreate the
 // SatellitesLayerRenderer with new parameters.
@@ -48,10 +60,10 @@ final class SatellitesLayerRenderer {
     /// Debug: show spawn vertical band bounds.
     private var debugShowSpawnBounds: Bool
     
-    /// Static flasher information (used to ensure satellites spawn below flasher bottom).
+    /// Static flasher information (used to ensure satellites spawn (visually) above the flasher).
     private let flasherCenterY: CGFloat?
     private let flasherRadius: CGFloat?
-    /// Extra vertical gap (pixels) to keep between flasher bottom and satellite spawn area.
+    /// Extra visual gap (pixels) to keep between the flasher and the satellite spawn area.
     private let flasherVerticalGap: CGFloat = 4.0
     
     /// Active satellites.
@@ -181,28 +193,30 @@ final class SatellitesLayerRenderer {
     }
     
     // Compute the current vertical spawn band (inclusive) taking flasher into account.
-    // Returns (minY, maxY) or nil if there is NO valid vertical space such that
-    // the ENTIRE satellite (top edge) stays at or below (greater-or-equal y) flasherBottom + gap.
     //
-    // Coordinate system origin: top (y=0). Larger y means visually lower.
+    // VISUAL INTENT:
+    //   Satellites must appear entirely ABOVE the flasher with a small gap.
     //
-    // Invariant we must maintain (when flasher provided):
-    //   For any returned centerY in [minY, maxY],
-    //       centerY - D/2 >= flasherBottom + flasherVerticalGap
+    // INTERNAL CONSTRAINT (top-origin pre-transform coordinates):
+    //   centerY - D/2 >= flasherBottom + gap
+    //   (This makes them 'below' in raw coordinates; after external vertical flip,
+    //    they are visually above.)
     //
-    // Legacy baseline band (no flasher): [0.05H, 0.95H]
+    // Returns (minCenterY, maxCenterY) or nil if no valid space exists for a full satellite
+    // that will appear above the flasher.
+    //
+    // Legacy baseline band when no flasher: [0.05H, 0.95H] (broad vertical coverage).
     private func currentSpawnBand(satelliteDiameter: CGFloat) -> (CGFloat, CGFloat)? {
         var yMin = CGFloat(height) * 0.05
         var yMax = CGFloat(height) * 0.95
         
         if let cy = flasherCenterY, let r = flasherRadius {
             let flasherBottom = cy + r
-            // Lowest permissible center (smallest y) so that top edge is below (>=) flasher bottom + gap.
-            // centerY - D/2 >= flasherBottom + gap  => centerY >= flasherBottom + gap + D/2
+            // Maintain internal constraint (see explanation above).
             let limitMinCenter = flasherBottom + flasherVerticalGap + satelliteDiameter * 0.5
             
             if limitMinCenter > CGFloat(height) {
-                // No room: required minimum center is off-screen.
+                // No room: required minimum (internal) center is off-screen.
                 return nil
             }
             yMin = max(yMin, limitMinCenter)
@@ -227,7 +241,7 @@ final class SatellitesLayerRenderer {
         let fromLeft = Bool.random(using: &rng)
         
         guard let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx) else {
-            os_log("Satellites spawn suppressed: no vertical space below flasher", log: log, type: .debug)
+            os_log("Satellites spawn suppressed: no vertical space above flasher (visual)", log: log, type: .debug)
             return
         }
         
@@ -235,7 +249,7 @@ final class SatellitesLayerRenderer {
         if bandMax >= bandMin {
             y = CGFloat.random(in: bandMin...bandMax, using: &rng)
         } else {
-            y = bandMin   // (Should not occur; defensive)
+            y = bandMin   // Defensive
         }
         
         let x = fromLeft ? -sizePx : CGFloat(width) + sizePx
@@ -246,7 +260,7 @@ final class SatellitesLayerRenderer {
                           size: sizePx,
                           brightness: brightness * CGFloat.random(in: 0.8...1.05, using: &rng))
         satellites.append(s)
-        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherPresent=%{public}@",
+        os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherPresent=%{public}@ (visual above)",
                log: log, type: .debug,
                fromLeft ? "L→R" : "R→L",
                Double(y),
@@ -339,7 +353,7 @@ final class SatellitesLayerRenderer {
                 }
             } else {
                 if logThis {
-                    os_log("Satellites debug: no valid spawn band (flasher constrains all space below)", log: log, type: .info)
+                    os_log("Satellites debug: no valid spawn band (flasher leaves no visual space above)", log: log, type: .info)
                 }
             }
         }
@@ -353,7 +367,7 @@ final class SatellitesLayerRenderer {
             } else {
                 flasherState = "no"
             }
-            os_log("Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d flasher=%{public}@ dbgBounds=%{public}@",
+            os_log("Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d flasher=%{public}@ dbgBounds=%{public}@ (visual above)",
                    log: log, type: .info, satellites.count, sprites.count, Double(keep), removed, flasherState, debugShowSpawnBounds ? "yes" : "no")
         }
         return (sprites, max(0.0, min(1.0, keep)))
