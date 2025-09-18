@@ -247,7 +247,7 @@ class StarryExcuseForAView: ScreenSaverView {
                                   log: log!,
                                   config: currentRuntimeConfig())
             os_log("Engine created (size=%.0fx%.0f)", log: log!, type: .info,
-                   Double(bounds.width), Double.bounds.height)
+                   Double(bounds.width), Double(bounds.height))
         }
         await MainActor.run {
             if self.metalLayer == nil {
