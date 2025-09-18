@@ -5,10 +5,9 @@ import QuartzCore   // For CACurrentMediaTime()
 import Darwin       // For task_info CPU sampling
 import simd
 
-// (File content changed: added per-second spawning support & dt-aware skyline renderer interaction.)
-// Phase 1 change: introduce star spawn rate derived from a fraction of total pixels (dynamic with size).
-// UI / defaults still supply legacy starsPerSecond / starsPerUpdate; new fraction field will be
-// adopted by UI in a later pass. For now, if starSpawnFractionOfPixels > 0 it takes precedence.
+// Building lights spawning now mirrors star spawning logic:
+// A normalized fraction (0.0–1.0) -> fraction of reference max density (600 lights/sec @ 3008x1692).
+// No legacy per-update or explicit per-second override retained.
 
 struct StarryRuntimeConfig {
     var buildingHeight: Double
@@ -44,13 +43,12 @@ struct StarryRuntimeConfig {
     var debugDropBaseEveryNFrames: Int = 0
     var debugForceClearEveryNFrames: Int = 0
     var debugLogEveryFrame: Bool = false
-    var buildingLightsPerUpdate: Int = 15
+    
+    // NEW: Normalized (0..1) fraction of maximum building lights density.
+    var buildingLightsSpawnPerSecFractionOfMax: Double = 0
     var disableFlasherOnBase: Bool = false
     
-    var buildingLightsPerSecond: Double = 0
-
-    // NEW: Fraction of total pixels per second that should spawn stars.
-    // Effective star rate = min(starSpawnFractionOfPixels, maxFraction) * (width * height)
+    // Existing (already refactored) star density fraction.
     var starSpawnPerSecFractionOfMax: Double = 0
 }
 
@@ -87,9 +85,8 @@ StarryRuntimeConfig(
   debugDropBaseEveryNFrames: \(debugDropBaseEveryNFrames),
   debugForceClearEveryNFrames: \(debugForceClearEveryNFrames),
   debugLogEveryFrame: \(debugLogEveryFrame),
-  buildingLightsPerUpdate: \(buildingLightsPerUpdate),
+  buildingLightsSpawnPerSecFractionOfMax: \(buildingLightsSpawnPerSecFractionOfMax),
   disableFlasherOnBase: \(disableFlasherOnBase),
-  buildingLightsPerSecond: \(buildingLightsPerSecond),
   starSpawnPerSecFractionOfMax: \(starSpawnPerSecFractionOfMax)
 )
 """
@@ -132,15 +129,18 @@ final class StarryEngine {
     private let diagnosticsNotification = Notification.Name("StarryDiagnostics")
     private let clearNotification = Notification.Name("StarryClear")
     
-    // Legacy fallback FPS constant for converting per-update -> per-second when needed.
-    private let legacyPerUpdateFPS: Double = 10.0
-
-    // NEW star density reference & maximum fraction.
-    // Reference screen: 3008 x 1692 should yield 1600 stars/sec at "100% (max) fraction".
+    // Reference resolution.
     private let referenceWidth: Double = 3008.0
     private let referenceHeight: Double = 1692.0
+    
+    // Maximum per-pixel fractions (at fraction=1.0) for stars & building lights.
+    // 1600 stars/sec @ reference -> fraction-of-pixels
     private lazy var maxStarSpawnFractionOfPixels: Double = {
-        return 1600.0 / (referenceWidth * referenceHeight) // ~0.000314402...
+        1600.0 / (referenceWidth * referenceHeight)
+    }()
+    // 600 building lights/sec @ reference
+    private lazy var maxBuildingLightsSpawnFractionOfPixels: Double = {
+        600.0 / (referenceWidth * referenceHeight)
     }()
 
     init(size: CGSize,
@@ -192,16 +192,8 @@ final class StarryEngine {
         var cfg = config
         var cfgChanged = false
 
-        if let n: Int = value("buildingLightsPerUpdate", from: ui), n != config.buildingLightsPerUpdate {
-            cfg.buildingLightsPerUpdate = max(0, n)
-            applied.append("buildingLightsPerUpdate=\(cfg.buildingLightsPerUpdate)")
-            cfgChanged = true
-        }
-        if let d: Double = value("buildingLightsPerSecond", from: ui), d >= 0, d != config.buildingLightsPerSecond {
-            cfg.buildingLightsPerSecond = d
-            applied.append(String(format: "buildingLightsPerSecond=%.2f", d))
-            cfgChanged = true
-        }
+        // (Legacy building lights keys intentionally ignored / removed.)
+        
         if let n: Int = value("dropBaseEveryN", from: ui), n != config.debugDropBaseEveryNFrames {
             cfg.debugDropBaseEveryNFrames = max(0, n)
             applied.append("dropBaseEveryN=\(cfg.debugDropBaseEveryNFrames)")
@@ -299,8 +291,8 @@ final class StarryEngine {
             config.moonPhaseOverrideEnabled != newConfig.moonPhaseOverrideEnabled ||
             config.moonPhaseOverrideValue != newConfig.moonPhaseOverrideValue ||
             config.showLightAreaTextureFillMask != newConfig.showLightAreaTextureFillMask ||
-            config.buildingLightsPerSecond != newConfig.buildingLightsPerSecond ||
-            config.starSpawnPerSecFractionOfMax != newConfig.starSpawnPerSecFractionOfMax
+            config.starSpawnPerSecFractionOfMax != newConfig.starSpawnPerSecFractionOfMax ||
+            config.buildingLightsSpawnPerSecFractionOfMax != newConfig.buildingLightsSpawnPerSecFractionOfMax
 
         if skylineAffecting {
             os_log("Config changed (skyline affecting) — resetting skyline, renderers, and moon albedo", log: log, type: .info)
@@ -361,11 +353,12 @@ final class StarryEngine {
         }
 
         config = newConfig
-        os_log("New config applied (starFraction=%.8f maxFraction=%.8f effectiveStarsPerSec=%.2f)",
+        os_log("New config applied (starFraction=%.4f -> starsEff=%.2f/s | buildingLightsFraction=%.4f -> lightsEff=%.2f/s)",
                log: log, type: .info,
                config.starSpawnPerSecFractionOfMax,
-               maxStarSpawnFractionOfPixels,
-               effectiveStarsPerSecond())
+               effectiveStarsPerSecond(),
+               config.buildingLightsSpawnPerSecFractionOfMax,
+               effectiveBuildingLightsPerSecond())
 
         if let sr = skylineRenderer {
             sr.setDisableFlasherOnBase(config.disableFlasherOnBase)
@@ -387,13 +380,15 @@ final class StarryEngine {
     }
     
     private func effectiveStarsPerSecond() -> Double {
-        let fraction = min(max(0, config.starSpawnPerSecFractionOfMax * maxStarSpawnFractionOfPixels), config.starSpawnPerSecFractionOfMax * maxStarSpawnFractionOfPixels, maxStarSpawnFractionOfPixels);
-        return fraction * Double(size.width) * Double(size.height)
+        let norm = max(0.0, min(config.starSpawnPerSecFractionOfMax, 1.0))
+        let perPixelFraction = norm * maxStarSpawnFractionOfPixels
+        return perPixelFraction * Double(size.width) * Double(size.height)
     }
     
     private func effectiveBuildingLightsPerSecond() -> Double {
-        if config.buildingLightsPerSecond > 0 { return config.buildingLightsPerSecond }
-        return Double(config.buildingLightsPerUpdate) * legacyPerUpdateFPS
+        let norm = max(0.0, min(config.buildingLightsSpawnPerSecFractionOfMax, 1.0))
+        let perPixelFraction = norm * maxBuildingLightsSpawnFractionOfPixels
+        return perPixelFraction * Double(size.width) * Double(size.height)
     }
 
     private func ensureSkyline() {
@@ -402,20 +397,25 @@ final class StarryEngine {
             ensureShootingStarsRenderer()
             return
         }
-        os_log("Initializing skyline/renderers for size %{public}dx%{public}d (starFraction=%.8f -> effStarsPerSec=%.2f)",
+        os_log("Initializing skyline/renderers for size %{public}dx%{public}d (starFraction=%.4f -> %.2f/s, buildingLightsFraction=%.4f -> %.2f/s)",
                log: log, type: .info,
                Int(size.width), Int(size.height),
-               config.starSpawnPerSecFractionOfMax,
-               effectiveStarsPerSecond())
+               config.starSpawnPerSecFractionOfMax, effectiveStarsPerSecond(),
+               config.buildingLightsSpawnPerSecFractionOfMax, effectiveBuildingLightsPerSecond())
         do {
             let traversalSeconds = Double(config.moonTraversalMinutes) * 60.0
+            
+            // Temporary legacy per-update value retained only because Skyline initializer still expects it.
+            // Will be removed when Skyline is refactored to rely solely on per-second rates.
+            let legacyBuildingLightsPerUpdate = 15
+            
             skyline = try Skyline(screenXMax: Int(size.width),
                                   screenYMax: Int(size.height),
                                   buildingHeightPercentMax: config.buildingHeight,
                                   buildingWidthMin: 40,
                                   buildingWidthMax: 300,
                                   buildingFrequency: config.buildingFrequency,
-                                  buildingLightsPerUpdate: config.buildingLightsPerUpdate,
+                                  buildingLightsPerUpdate: legacyBuildingLightsPerUpdate,
                                   buildingColor: Color(red: 0.972, green: 0.945, blue: 0.012),
                                   flasherRadius: 4,
                                   flasherPeriod: 2.0,
@@ -429,13 +429,14 @@ final class StarryEngine {
                                   moonPhaseOverrideEnabled: config.moonPhaseOverrideEnabled,
                                   moonPhaseOverrideValue: config.moonPhaseOverrideValue)
             if let skyline = skyline {
-                os_log("Skyline created. lights/update=%{public}d | dynamicStarsPerSec=%.2f (fraction=%.8f cap=%.8f) lightsPerSec=%.2f",
+                os_log("Skyline created. dynamicStarsPerSec=%.2f (fraction=%.4f cap=%.8f) dynamicBuildingLightsPerSec=%.2f (fraction=%.4f cap=%.8f)",
                        log: log, type: .info,
-                       config.buildingLightsPerUpdate,
                        effectiveStarsPerSecond(),
                        config.starSpawnPerSecFractionOfMax,
                        maxStarSpawnFractionOfPixels,
-                       effectiveBuildingLightsPerSecond())
+                       effectiveBuildingLightsPerSecond(),
+                       config.buildingLightsSpawnPerSecFractionOfMax,
+                       maxBuildingLightsSpawnFractionOfPixels)
                 skylineRenderer = SkylineCoreRenderer(skyline: skyline,
                                                       log: log,
                                                       traceEnabled: config.traceEnabled,
@@ -524,7 +525,6 @@ final class StarryEngine {
             os_log("advanceFrameGPU: DIAG force clear scheduled for this frame (every N=%{public}d)", log: log, type: .info, config.debugForceClearEveryNFrames)
         }
 
-        // Per-frame / periodic frame logs only when overlay enabled
         let allowFrameLogging = shouldEmitFrameLogs()
         let periodicLogThisFrame = allowFrameLogging && (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
         let logThisFrame = allowFrameLogging && (config.debugLogEveryFrame || (verboseLogging && periodicLogThisFrame))
@@ -548,7 +548,6 @@ final class StarryEngine {
         if let skyline = skyline,
            let skylineRenderer = skylineRenderer {
             if skyline.shouldClearNow() {
-                // Always log clears (asynchronous events) regardless of overlay state
                 os_log("advanceFrameGPU: skyline requested clear — resetting state", log: log, type: .info)
                 skylineRenderer.resetFrameCounter()
                 satellitesRenderer?.reset()
@@ -587,7 +586,6 @@ final class StarryEngine {
         }
 
         if forceClearOnNextFrame {
-            // Always log forced clears
             os_log("advanceFrameGPU: forceClearOnNextFrame active — will clear accumulation textures", log: log, type: .info)
             clearAll = true
             forceClearOnNextFrame = false
@@ -609,17 +607,16 @@ final class StarryEngine {
         }
 
         if logThisFrame {
-            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f (fraction=%.8f cap=%.8f) lightsPerSecEff=%.2f showSpawnBounds=%{public}@",
+            os_log("advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsEff=%.2f/s lightsEff=%.2f/s fractions(star=%.4f light=%.4f)",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
                    moonParams != nil ? "yes" : "no",
                    clearAll ? "yes" : "no",
                    dt,
                    effectiveStarsPerSecond(),
-                   config.starSpawnPerSecFractionOfMax,
-                   maxStarSpawnFractionOfPixels,
                    effectiveBuildingLightsPerSecond(),
-                   config.shootingStarsDebugShowSpawnBounds ? "yes" : "no")
+                   config.starSpawnPerSecFractionOfMax,
+                   config.buildingLightsSpawnPerSecFractionOfMax)
         }
 
         let drawData = StarryDrawData(
@@ -643,7 +640,7 @@ final class StarryEngine {
     }
 
     @discardableResult
-    func advanceFrame() -> CGImage? {
+    func advanceFrame() -> CGImage? { // Headless path
         engineFrameIndex &+= 1
 
         if config.debugOverlayEnabled &&
@@ -657,7 +654,7 @@ final class StarryEngine {
         let periodicLogThisFrame = allowFrameLogging && (engineLogEveryNFrames > 0) && (engineFrameIndex % UInt64(engineLogEveryNFrames) == 0)
         let logThisFrame = allowFrameLogging && (config.debugLogEveryFrame || (verboseLogging && periodicLogThisFrame))
         if logThisFrame {
-            os_log("advanceFrame (headless): begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
+            os_log("advanceFrame(headless): begin frame #%{public}llu", log: log, type: .info, engineFrameIndex)
         }
 
         ensureSkyline()
@@ -730,17 +727,16 @@ final class StarryEngine {
         }
 
         if logThisFrame {
-            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsPerSecEff=%.2f (fraction=%.8f cap=%.8f) lightsPerSecEff=%.2f showSpawnBounds=%{public}@",
+            os_log("advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsEff=%.2f/s lightsEff=%.2f/s fractions(star=%.4f light=%.4f)",
                    log: log, type: .info,
                    baseSprites.count, satellitesSprites.count, shootingSprites.count,
                    moonParams != nil ? "yes" : "no",
                    clearAll ? "yes" : "no",
                    dt,
                    effectiveStarsPerSecond(),
-                   config.starSpawnPerSecFractionOfMax,
-                   maxStarSpawnFractionOfPixels,
                    effectiveBuildingLightsPerSecond(),
-                   config.shootingStarsDebugShowSpawnBounds ? "yes" : "no")
+                   config.starSpawnPerSecFractionOfMax,
+                   config.buildingLightsSpawnPerSecFractionOfMax)
         }
 
         let drawData = StarryDrawData(
@@ -830,7 +826,6 @@ final class StarryEngine {
             currentFPS = currentFPS * 0.6 + fps * 0.4
             fpsAccumulatedTime = 0
             fpsFrameCount = 0
-            // FPS log considered periodic per-frame -> gate by overlay enablement
             if config.debugOverlayEnabled {
                 os_log("Stats: FPS=%.1f CPU=%.1f%%", log: log, type: .debug, currentFPS, currentCPUPercent)
             }
