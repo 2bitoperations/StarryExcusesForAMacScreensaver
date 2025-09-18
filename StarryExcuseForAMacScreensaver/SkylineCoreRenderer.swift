@@ -4,9 +4,9 @@ import CoreGraphics
 import simd
 
 // Renders ONLY the evolving star field, building lights, and flasher.
-// Now emits GPU sprite instances instead of drawing into a CGContext.
-// Refactored (2025): star spawning is purely time-based using starsPerSecond.
-// Legacy "per update / per frame" star counts are no longer consulted.
+// Emits GPU sprite instances instead of drawing into a CGContext.
+// Spawning is purely time-based using per-second rates provided by the caller.
+// Negative rates are clamped to 0. No other defaulting or legacy logic retained.
 class SkylineCoreRenderer {
     let skyline: Skyline
     let log: OSLog
@@ -25,9 +25,6 @@ class SkylineCoreRenderer {
     private var starAccumulator: Double = 0
     private var buildingLightAccumulator: Double = 0
     
-    // Default density if caller passes <=0 (no legacy per-update fallback any more).
-    private let defaultStarsPerSecond: Double = 800.0
-    
     init(skyline: Skyline,
          log: OSLog,
          traceEnabled: Bool,
@@ -39,45 +36,35 @@ class SkylineCoreRenderer {
         self.traceEnabled = traceEnabled
         self.disableFlasherOnBase = disableFlasherOnBase
         
-        // Stars: pure per-second model. Provide a reasonable default if unspecified.
-        if starsPerSecond > 0 {
-            self.starsPerSecond = starsPerSecond
-        } else {
-            self.starsPerSecond = defaultStarsPerSecond
-        }
+        // Clamp negatives to zero; otherwise use exactly what caller supplied.
+        self.starsPerSecond = max(0, starsPerSecond)
+        self.buildingLightsPerSecond = max(0, buildingLightsPerSecond)
         
-        // Building lights still support explicit per-second (existing optional legacy fallback preserved here).
-        if buildingLightsPerSecond > 0 {
-            self.buildingLightsPerSecond = buildingLightsPerSecond
-        } else {
-            // Keep legacy density heuristic for lights (derive from legacy per-update * assumed 10 FPS)
-            self.buildingLightsPerSecond = Double(skyline.buildingLightsPerUpdate) * 10.0
-        }
-        
-        if starsPerSecond <= 0 {
-            os_log("SkylineCoreRenderer init: starsPerSecond unspecified -> default %.2f", log: log, type: .info, self.starsPerSecond)
-        } else {
-            os_log("SkylineCoreRenderer init: starsPerSecond=%.2f", log: log, type: .info, self.starsPerSecond)
-        }
-        os_log("SkylineCoreRenderer init: buildingLightsPerSecond=%.2f (legacy perUpdate=%d)",
-               log: log, type: .info, self.buildingLightsPerSecond, skyline.buildingLightsPerUpdate)
+        os_log("SkylineCoreRenderer init: starsPerSecond=%.2f buildingLightsPerSecond=%.2f flasherDisabled=%{public}@",
+               log: log,
+               type: .info,
+               self.starsPerSecond,
+               self.buildingLightsPerSecond,
+               disableFlasherOnBase ? "true" : "false")
     }
     
-    // Update per-second rates. Passing <=0 leaves existing value unchanged (no reversion to any per-update logic).
+    // Update per-second rates (negative -> 0). Accumulators preserved for smoothness.
     func updateRates(starsPerSecond: Double, buildingLightsPerSecond: Double) {
+        let newStars = max(0, starsPerSecond)
+        let newLights = max(0, buildingLightsPerSecond)
         var changed = false
-        if starsPerSecond > 0 && self.starsPerSecond != starsPerSecond {
-            os_log("SkylineCoreRenderer rate update: stars %.2f -> %.2f", log: log, type: .info, self.starsPerSecond, starsPerSecond)
-            self.starsPerSecond = starsPerSecond
+        if newStars != self.starsPerSecond {
+            os_log("SkylineCoreRenderer rate update: stars %.2f -> %.2f", log: log, type: .info, self.starsPerSecond, newStars)
+            self.starsPerSecond = newStars
             changed = true
         }
-        if buildingLightsPerSecond > 0 && self.buildingLightsPerSecond != buildingLightsPerSecond {
-            os_log("SkylineCoreRenderer rate update: building lights %.2f -> %.2f", log: log, type: .info, self.buildingLightsPerSecond, buildingLightsPerSecond)
-            self.buildingLightsPerSecond = buildingLightsPerSecond
+        if newLights != self.buildingLightsPerSecond {
+            os_log("SkylineCoreRenderer rate update: building lights %.2f -> %.2f", log: log, type: .info, self.buildingLightsPerSecond, newLights)
+            self.buildingLightsPerSecond = newLights
             changed = true
         }
-        if changed {
-            // (Optionally) reset accumulators to avoid burst; here we keep remainder for smoothness.
+        if changed && traceEnabled {
+            os_log("SkylineCoreRenderer accumulators retained: starAcc=%.3f lightAcc=%.3f", log: log, type: .info, starAccumulator, buildingLightAccumulator)
         }
     }
     
@@ -118,23 +105,23 @@ class SkylineCoreRenderer {
         frameCounter &+= 1
         
         // Determine spawn counts via accumulator method (fractional retention).
-        let starsDesired = starsPerSecond * max(0, dtSeconds)
-        starAccumulator += starsDesired
+        let clampedDt = max(0, dtSeconds)
+        starAccumulator += starsPerSecond * clampedDt
         let starSpawnCount = Int(floor(starAccumulator))
         starAccumulator -= Double(starSpawnCount)
         
-        let lightsDesired = buildingLightsPerSecond * max(0, dtSeconds)
-        buildingLightAccumulator += lightsDesired
+        buildingLightAccumulator += buildingLightsPerSecond * clampedDt
         let buildingLightSpawnCount = Int(floor(buildingLightAccumulator))
         buildingLightAccumulator -= Double(buildingLightSpawnCount)
         
         if traceEnabled && (frameCounter <= 5 || frameCounter % 60 == 0) {
-            os_log("generateSprites(dt=%.4f) starSpawn=%d(acc=%.3f) lightSpawn=%d(acc=%.3f) flasherDisabled=%{public}@",
+            os_log("generateSprites(dt=%.4f) starSpawn=%d(acc=%.3f) lightSpawn=%d(acc=%.3f) flasherDisabled=%{public}@ rates(star=%.2f light=%.2f)",
                    log: log, type: .info,
                    dtSeconds,
                    starSpawnCount, starAccumulator,
                    buildingLightSpawnCount, buildingLightAccumulator,
-                   disableFlasherOnBase ? "true" : "false")
+                   disableFlasherOnBase ? "true" : "false",
+                   starsPerSecond, buildingLightsPerSecond)
         }
         
         var sprites: [SpriteInstance] = []
