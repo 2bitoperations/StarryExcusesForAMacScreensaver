@@ -1890,13 +1890,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             satellitesAvg = defaultsManager.satellitesAvgSpawnSeconds
         }
         
-        // Convert starSpawnFractionOfMax to raw fraction-of-pixels
-        // maxFraction = 1600 / (refW * refH)
-        let maxFraction = maxStarsAtReference / (referenceWidth * referenceHeight)
-        let starFractionPixels = starDensitySlider.doubleValue * maxFraction
-        
         return StarryRuntimeConfig(
-            starsPerUpdate: 0, // legacy unused
             buildingHeight: buildingHeightSlider?.doubleValue ?? lastBuildingHeight,
             buildingFrequency: buildingFrequencySlider?.doubleValue ?? lastBuildingFrequency,
             secsBetweenClears: secsBetweenClears?.doubleValue ?? lastSecsBetweenClears,
@@ -1928,9 +1922,8 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
             debugLogEveryFrame: false,
             buildingLightsPerUpdate: defaultsManager.buildingLightsPerUpdate,
             disableFlasherOnBase: false,
-            starsPerSecond: 0, // legacy disabled
             buildingLightsPerSecond: buildingLightsPerSecond.doubleValue,
-            starSpawnFractionOfPixels: starFractionPixels
+            starSpawnPerSecFractionOfMax: starDensitySlider.doubleValue
         )
     }
     
@@ -2179,7 +2172,7 @@ class StarryConfigSheetController : NSWindowController, NSWindowDelegate, NSText
         parts.append("secsBetweenClears=\(format(secsBetweenClears?.doubleValue ?? lastSecsBetweenClears))")
         parts.append("buildingHeight=\(format(buildingHeightSlider?.doubleValue ?? lastBuildingHeight))")
         parts.append("buildingFrequency=\(format(buildingFrequencySlider?.doubleValue ?? lastBuildingFrequency))")
-        parts.append("debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ? 't' : 'f')")
+        parts.append("debugOverlayEnabled=\(debugOverlayEnabledCheckbox?.state == .on ? "true" : "false")")
         parts.append("spawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox?.state == .on ? "true" : "false")")
         parts.append("moonSizePercent=\(format(moonSizePercentSlider.doubleValue))")
         parts.append("moonBright=\(format(brightBrightnessSlider?.doubleValue ?? lastBrightBrightness))")

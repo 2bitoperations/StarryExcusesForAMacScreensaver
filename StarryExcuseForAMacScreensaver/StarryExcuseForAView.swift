@@ -299,7 +299,6 @@ class StarryExcuseForAView: ScreenSaverView {
     
     private func currentRuntimeConfig() -> StarryRuntimeConfig {
         return StarryRuntimeConfig(
-            starsPerUpdate: defaultsManager.starsPerUpdate,
             buildingHeight: defaultsManager.buildingHeight,
             buildingFrequency: defaultsManager.buildingFrequency,
             secsBetweenClears: defaultsManager.secsBetweenClears,
@@ -331,8 +330,8 @@ class StarryExcuseForAView: ScreenSaverView {
             debugLogEveryFrame: false,
             buildingLightsPerUpdate: defaultsManager.buildingLightsPerUpdate,
             disableFlasherOnBase: false,
-            starsPerSecond: 0,
-            buildingLightsPerSecond: 0
+            buildingLightsPerSecond: 0,
+            starSpawnPerSecFractionOfMax: defaultsManager.starSpawnFractionOfMax
         )
     }
     
