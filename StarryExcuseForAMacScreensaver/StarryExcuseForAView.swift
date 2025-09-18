@@ -35,8 +35,14 @@ class StarryExcuseForAView: ScreenSaverView {
     private var invisibleConsecutiveFrames: UInt64 = 0
     private var invisibilityBeganTime: CFTimeInterval?
     private var resourcesReleasedWhileInvisible: Bool = false
-    private let visibilityReleaseResourcesThresholdSeconds: Double = 3.0
+    private let visibilityReleaseResourcesThresholdSeconds: Double = 3.0  // partial (graphics) release
     private var pendingVisibilityReinit: Bool = false
+
+    // Long term invisibility management
+    private let invisibilityFullReleaseThresholdSeconds: Double = 20.0  // full release + log suppression threshold
+    private var fullyReleasedAfterLongInvisibility: Bool = false
+    private var lastLoggedVisibilityState: Bool?
+    private var lastLoggedVisibilityReason: String?
 
     // New heuristic support
     private var firstAnimationWallTime: CFTimeInterval?
@@ -139,7 +145,7 @@ class StarryExcuseForAView: ScreenSaverView {
         let now = CACurrentMediaTime()
         if now - lastVisibilityCheckWallTime >= visibilityCheckIntervalSeconds {
             lastVisibilityCheckWallTime = now
-            // Force evaluation & always log full decision data
+            // Force evaluation & always request decision (internal suppression may skip logging)
             inferVisibilityState(
                 frameIndex: frameIndex,
                 force: true,
@@ -652,6 +658,7 @@ class StarryExcuseForAView: ScreenSaverView {
                 invisibleConsecutiveFrames = 0
                 invisibilityBeganTime = nil
                 pendingVisibilityReinit = true
+                fullyReleasedAfterLongInvisibility = false
                 os_log(
                     "Visibility transition -> VISIBLE (frame #%{public}llu) reason=%{public}@ prevReason=%{public}@ decisionPath=%{public}@",
                     log: log!,
@@ -674,12 +681,32 @@ class StarryExcuseForAView: ScreenSaverView {
                 )
             }
             lastVisibilityState = visible
+            // Reset last logged markers so next periodic log (if any) can output
+            lastLoggedVisibilityState = nil
+            lastLoggedVisibilityReason = nil
         }
         lastVisibilityReason = reason
         lastVisibilityDecisionPath = path
 
-        // Diagnostic logging for every periodic / forced check
+        // Decide whether to log the periodic line (suppress after long-term stable invisibility unless reason/state change)
+        var shouldLogPeriodic = logEveryCheck
         if logEveryCheck {
+            if !visible {
+                if let start = invisibilityBeganTime {
+                    let elapsed = CACurrentMediaTime() - start
+                    if elapsed >= invisibilityFullReleaseThresholdSeconds {
+                        // Suppress if unchanged
+                        if lastLoggedVisibilityState == visible
+                            && lastLoggedVisibilityReason == reason
+                        {
+                            shouldLogPeriodic = false
+                        }
+                    }
+                }
+            }
+        }
+
+        if shouldLogPeriodic {
             os_log(
                 "visibilityCheck periodic frame #%{public}llu visible=%{public}@ reason=%{public}@ decisionPath=%{public}@",
                 log: log!,
@@ -689,18 +716,35 @@ class StarryExcuseForAView: ScreenSaverView {
                 reason,
                 path
             )
+            lastLoggedVisibilityState = visible
+            lastLoggedVisibilityReason = reason
         }
 
         if !lastVisibilityState {
             invisibleConsecutiveFrames &+= 1
             if let start = invisibilityBeganTime {
                 let elapsed = CACurrentMediaTime() - start
+                // Partial release (Metal layer + renderer) after short threshold
                 if elapsed >= visibilityReleaseResourcesThresholdSeconds
                     && !resourcesReleasedWhileInvisible
                 {
                     deallocateResourcesPartial(
                         reason: String(format: "Invisible %.2fs", elapsed)
                     )
+                }
+                // Full release (engine too) after long threshold
+                if elapsed >= invisibilityFullReleaseThresholdSeconds
+                    && !fullyReleasedAfterLongInvisibility
+                {
+                    os_log(
+                        "Long-term invisibility (%.2fs) -> full resource release",
+                        log: log!,
+                        type: .info,
+                        elapsed
+                    )
+                    deallocateResources()
+                    resourcesReleasedWhileInvisible = true  // ensure recreate on visibility
+                    fullyReleasedAfterLongInvisibility = true
                 }
             }
         }
