@@ -14,7 +14,7 @@ struct Point {
     let xPos: Int
     let yPos: Int
     let color: Color
-    
+
     init(xPos: Int, yPos: Int, color: Color) {
         self.xPos = xPos
         self.yPos = yPos
@@ -24,7 +24,7 @@ struct Point {
 
 struct Color {
     let red, green, blue: Double
-    
+
     init(red: Double, green: Double, blue: Double) {
         self.red = red
         self.green = green

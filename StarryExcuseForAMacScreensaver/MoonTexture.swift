@@ -1,32 +1,45 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 enum MoonTexture {
     static func createMoonTexture(diameter: Int) -> CGImage? {
         let baseSize = 64
         let baseData = generateAlbedoMap(size: baseSize)
-        guard let baseImage = makeGrayImage(width: baseSize, height: baseSize, data: baseData) else {
+        guard
+            let baseImage = makeGrayImage(
+                width: baseSize,
+                height: baseSize,
+                data: baseData
+            )
+        else {
             return nil
         }
         if diameter == baseSize {
             return baseImage
         }
-        guard let scaledCtx = CGContext(data: nil,
-                                        width: diameter,
-                                        height: diameter,
-                                        bitsPerComponent: 8,
-                                        bytesPerRow: 0,
-                                        space: CGColorSpaceCreateDeviceGray(),
-                                        bitmapInfo: CGImageAlphaInfo.none.rawValue) else {
+        guard
+            let scaledCtx = CGContext(
+                data: nil,
+                width: diameter,
+                height: diameter,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGImageAlphaInfo.none.rawValue
+            )
+        else {
             return baseImage
         }
         // We want crater detail sampled with nearest neighbor (blocky texture),
         // but the final circular outline will be anti-aliased by the vector clip in the renderer.
         scaledCtx.interpolationQuality = .none
-        scaledCtx.draw(baseImage, in: CGRect(x: 0, y: 0, width: diameter, height: diameter))
+        scaledCtx.draw(
+            baseImage,
+            in: CGRect(x: 0, y: 0, width: diameter, height: diameter)
+        )
         return scaledCtx.makeImage()
     }
-    
+
     // NOTE: We deliberately do NOT encode the circular silhouette in the texture anymore.
     // Previously a hard cutoff (setting brightness=0 outside r) caused jagged edges when
     // scaled with nearest-neighbor. Now we keep continuous data everywhere and rely on
@@ -40,7 +53,7 @@ enum MoonTexture {
             (0.32, 0.55, 0.25, 0.50),
             (0.46, 0.58, 0.12, 0.50),
             (0.50, 0.68, 0.14, 0.50),
-            (0.40, 0.72, 0.18, 0.55)
+            (0.40, 0.72, 0.18, 0.55),
         ]
         let invSize = 1.0 / Double(size - 1)
         for y in 0..<size {
@@ -49,14 +62,14 @@ enum MoonTexture {
                 let ny = Double(y) * invSize
                 let dx = nx - 0.5
                 let dy = ny - 0.5
-                let r2 = dx*dx + dy*dy
+                let r2 = dx * dx + dy * dy
                 // Soft radial falloff just for a subtle limb darkening; no hard edge.
                 let radial = min(1.0, sqrt(r2) / 0.5)
                 var brightness = 0.88 - 0.10 * radial
                 for (mx, my, radius, depth) in maria {
                     let ddx = nx - mx
                     let ddy = ny - my
-                    let dist2 = ddx*ddx + ddy*ddy
+                    let dist2 = ddx * ddx + ddy * ddy
                     let sigma = radius * 0.5
                     let influence = exp(-dist2 / (2.0 * sigma * sigma))
                     brightness -= depth * 0.5 * influence
@@ -75,13 +88,23 @@ enum MoonTexture {
         }
         return buffer
     }
-    
-    private static func makeGrayImage(width: Int, height: Int, data: [UInt8]) -> CGImage? {
+
+    private static func makeGrayImage(width: Int, height: Int, data: [UInt8])
+        -> CGImage?
+    {
         guard data.count == width * height else { return nil }
         let cs = CGColorSpaceCreateDeviceGray()
-        guard let ctx = CGContext(data: nil, width: width, height: height,
-                                  bitsPerComponent: 8, bytesPerRow: width,
-                                  space: cs, bitmapInfo: CGImageAlphaInfo.none.rawValue) else {
+        guard
+            let ctx = CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width,
+                space: cs,
+                bitmapInfo: CGImageAlphaInfo.none.rawValue
+            )
+        else {
             return nil
         }
         data.withUnsafeBytes { src in
@@ -91,24 +114,28 @@ enum MoonTexture {
         }
         return ctx.makeImage()
     }
-    
+
     private static func pseudoNoise(x: Int, y: Int) -> Double {
         let ux = UInt64(bitPattern: Int64(x))
         let uy = UInt64(bitPattern: Int64(y))
-        var n = ux &* 73856093
-        n &+= uy &* 19349663
-        n &+= 0x9E3779B97F4A7C15
-        n ^= n >> 33; n &*= 0xff51afd7ed558ccd
-        n ^= n >> 33; n &*= 0xc4ceb9fe1a85ec53
+        var n = ux &* 73_856_093
+        n &+= uy &* 19_349_663
+        n &+= 0x9E37_79B9_7F4A_7C15
+        n ^= n >> 33
+        n &*= 0xff51_afd7_ed55_8ccd
+        n ^= n >> 33
+        n &*= 0xc4ce_b9fe_1a85_ec53
         n ^= n >> 33
         return Double(n & 0xFFFFFF) / Double(0xFFFFFF)
     }
-    
+
     private static func pseudoNoiseHash(x: Int) -> Double {
         var n = UInt64(bitPattern: Int64(x))
-        n &*= 0x9E3779B97F4A7C15
-        n ^= n >> 30; n &*= 0xbf58476d1ce4e5b9
-        n ^= n >> 27; n &*= 0x94d049bb133111eb
+        n &*= 0x9E37_79B9_7F4A_7C15
+        n ^= n >> 30
+        n &*= 0xbf58_476d_1ce4_e5b9
+        n ^= n >> 27
+        n &*= 0x94d0_49bb_1331_11eb
         n ^= n >> 31
         return Double(n & 0xFFFFFF) / Double(0xFFFFFF)
     }

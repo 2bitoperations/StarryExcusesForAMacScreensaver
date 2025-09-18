@@ -1,8 +1,8 @@
-import Foundation
 import CoreGraphics
-import os
+import Darwin  // For explicit access to math functions like log()
+import Foundation
 import QuartzCore
-import Darwin   // For explicit access to math functions like log()
+import os
 import simd
 
 // Simple satellite renderer: spawns small bright points that traverse the sky
@@ -30,7 +30,7 @@ import simd
 // To change flasher-constrained behavior at runtime you must recreate the
 // SatellitesLayerRenderer with new parameters.
 final class SatellitesLayerRenderer {
-    
+
     private struct Satellite {
         var x: CGFloat
         var y: CGFloat
@@ -38,15 +38,15 @@ final class SatellitesLayerRenderer {
         var size: CGFloat
         var brightness: CGFloat
     }
-    
+
     // MARK: - Public configuration interface
-    
+
     /// Whether the layer is actively rendering. Disabling clears existing satellites.
     private(set) var isEnabled: Bool = true
-    
+
     /// Average seconds between spawns (modifiable at runtime).
     private var avgSpawnSeconds: Double
-    
+
     /// Base horizontal speed (points / second).
     private var speed: CGFloat
     /// Base size (pixels) of each satellite circle (diameter).
@@ -59,44 +59,46 @@ final class SatellitesLayerRenderer {
     private var trailDecay: CGFloat
     /// Debug: show spawn vertical band bounds.
     private var debugShowSpawnBounds: Bool
-    
+
     /// Static flasher information (used to ensure satellites spawn (visually) above the flasher).
     private let flasherCenterY: CGFloat?
     private let flasherRadius: CGFloat?
     /// Extra visual gap (pixels) to keep between the flasher and the satellite spawn area.
     private let flasherVerticalGap: CGFloat = 4.0
-    
+
     /// Active satellites.
     private var satellites: [Satellite] = []
-    
+
     private let width: Int
     private let height: Int
     private let log: OSLog
-    
+
     private var timeUntilNextSpawn: Double = 0.0
     private var rng = SystemRandomNumberGenerator()
-    
+
     // Instrumentation
     private var updateCount: UInt64 = 0
-    
+
     // Debug overlay gating (provided by engine)
     private var debugOverlayEnabled: Bool
-    
+
     // MARK: - Init
-    
-    init(width: Int,
-         height: Int,
-         log: OSLog,
-         avgSpawnSeconds: Double,
-         speed: CGFloat,
-         size: CGFloat,
-         brightness: CGFloat,
-         trailing: Bool,
-         trailDecay: CGFloat,
-         debugShowSpawnBounds: Bool,
-         flasherCenterY: CGFloat?,
-         flasherRadius: CGFloat?,
-         debugOverlayEnabled: Bool) {
+
+    init(
+        width: Int,
+        height: Int,
+        log: OSLog,
+        avgSpawnSeconds: Double,
+        speed: CGFloat,
+        size: CGFloat,
+        brightness: CGFloat,
+        trailing: Bool,
+        trailDecay: CGFloat,
+        debugShowSpawnBounds: Bool,
+        flasherCenterY: CGFloat?,
+        flasherRadius: CGFloat?,
+        debugOverlayEnabled: Bool
+    ) {
         self.width = width
         self.height = height
         self.log = log
@@ -111,12 +113,24 @@ final class SatellitesLayerRenderer {
         self.flasherRadius = flasherRadius.map { max(0.0, $0) }
         self.debugOverlayEnabled = debugOverlayEnabled
         scheduleNextSpawn()
-        os_log("Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f showBounds=%{public}@ flasher=%{public}@",
-               log: log, type: .info, self.avgSpawnSeconds, Double(self.speed), Double(self.sizePx), Double(self.brightness), self.trailing ? "on" : "off", Double(self.trailDecay), debugShowSpawnBounds ? "true" : "false", (self.flasherCenterY != nil && self.flasherRadius != nil) ? "yes" : "no")
+        os_log(
+            "Satellites init: avg=%{public}.2fs speed=%{public}.1f size=%{public}.1f brightness=%{public}.2f trailing=%{public}@ decay=%{public}.3f showBounds=%{public}@ flasher=%{public}@",
+            log: log,
+            type: .info,
+            self.avgSpawnSeconds,
+            Double(self.speed),
+            Double(self.sizePx),
+            Double(self.brightness),
+            self.trailing ? "on" : "off",
+            Double(self.trailDecay),
+            debugShowSpawnBounds ? "true" : "false",
+            (self.flasherCenterY != nil && self.flasherRadius != nil)
+                ? "yes" : "no"
+        )
     }
-    
+
     // MARK: - Public reconfiguration
-    
+
     /// Enable or disable the renderer. Disabling clears any existing satellites.
     func setEnabled(_ enabled: Bool) {
         if enabled == isEnabled { return }
@@ -124,7 +138,11 @@ final class SatellitesLayerRenderer {
         if !enabled {
             satellites.removeAll()
             if debugOverlayEnabled {
-                os_log("Satellites disabled: clearing active satellites", log: log, type: .info)
+                os_log(
+                    "Satellites disabled: clearing active satellites",
+                    log: log,
+                    type: .info
+                )
             }
         } else {
             if debugOverlayEnabled {
@@ -133,49 +151,64 @@ final class SatellitesLayerRenderer {
             scheduleNextSpawn()
         }
     }
-    
+
     /// Update debug overlay gating
     func setDebugOverlayEnabled(_ enabled: Bool) {
         debugOverlayEnabled = enabled
     }
-    
+
     /// Convenience to fully reset, disable, and clear state.
     func resetAndDisable() {
         satellites.removeAll()
         isEnabled = false
         if debugOverlayEnabled {
-            os_log("Satellites resetAndDisable: cleared and disabled", log: log, type: .info)
+            os_log(
+                "Satellites resetAndDisable: cleared and disabled",
+                log: log,
+                type: .info
+            )
         }
     }
-    
+
     /// Reset satellites and timers (preserves current parameter values and enabled state).
     func reset() {
         satellites.removeAll()
         scheduleNextSpawn()
         if debugOverlayEnabled {
-            os_log("Satellites reset: cleared and rescheduled next spawn", log: log, type: .info)
+            os_log(
+                "Satellites reset: cleared and rescheduled next spawn",
+                log: log,
+                type: .info
+            )
         }
     }
-    
+
     /// Update runtime parameters. Any nil parameter is left unchanged.
     /// If avgSpawnSeconds changes, next spawn time is rescheduled to reflect new cadence.
     /// (Flasher geometry is immutable; recreate renderer to change it.)
-    func updateParameters(avgSpawnSeconds: Double? = nil,
-                          speed: CGFloat? = nil,
-                          size: CGFloat? = nil,
-                          brightness: CGFloat? = nil,
-                          trailing: Bool? = nil,
-                          trailDecay: CGFloat? = nil,
-                          debugShowSpawnBounds: Bool? = nil) {
+    func updateParameters(
+        avgSpawnSeconds: Double? = nil,
+        speed: CGFloat? = nil,
+        size: CGFloat? = nil,
+        brightness: CGFloat? = nil,
+        trailing: Bool? = nil,
+        trailDecay: CGFloat? = nil,
+        debugShowSpawnBounds: Bool? = nil
+    ) {
         var reschedule = false
-        
+
         if let a = avgSpawnSeconds {
             let clamped = max(0.05, a)
             if clamped != self.avgSpawnSeconds {
                 self.avgSpawnSeconds = clamped
                 reschedule = true
                 if debugOverlayEnabled {
-                    os_log("Satellites param changed: avgSpawnSeconds=%{public}.2f", log: log, type: .info, clamped)
+                    os_log(
+                        "Satellites param changed: avgSpawnSeconds=%{public}.2f",
+                        log: log,
+                        type: .info,
+                        clamped
+                    )
                 }
             }
         }
@@ -201,19 +234,24 @@ final class SatellitesLayerRenderer {
             scheduleNextSpawn()
         }
     }
-    
+
     // MARK: - Private helpers
-    
+
     private func scheduleNextSpawn() {
         guard isEnabled else { return }
         // Exponential distribution with mean avgSpawnSeconds.
         let u = Double.random(in: 0.00001...0.99999, using: &rng)
         timeUntilNextSpawn = -Darwin.log(1 - u) * avgSpawnSeconds
         if debugOverlayEnabled {
-            os_log("Satellites: next spawn in %{public}.2fs", log: log, type: .debug, timeUntilNextSpawn)
+            os_log(
+                "Satellites: next spawn in %{public}.2fs",
+                log: log,
+                type: .debug,
+                timeUntilNextSpawn
+            )
         }
     }
-    
+
     // Compute the current vertical spawn band (inclusive) taking flasher into account.
     //
     // VISUAL INTENT:
@@ -228,15 +266,18 @@ final class SatellitesLayerRenderer {
     // that will appear above the flasher.
     //
     // Legacy baseline band when no flasher: [0.05H, 0.95H] (broad vertical coverage).
-    private func currentSpawnBand(satelliteDiameter: CGFloat) -> (CGFloat, CGFloat)? {
+    private func currentSpawnBand(satelliteDiameter: CGFloat) -> (
+        CGFloat, CGFloat
+    )? {
         var yMin = CGFloat(height) * 0.05
         var yMax = CGFloat(height) * 0.95
-        
+
         if let cy = flasherCenterY, let r = flasherRadius {
             let flasherBottom = cy + r
             // Maintain internal constraint (see explanation above).
-            let limitMinCenter = flasherBottom + flasherVerticalGap + satelliteDiameter * 0.5
-            
+            let limitMinCenter =
+                flasherBottom + flasherVerticalGap + satelliteDiameter * 0.5
+
             if limitMinCenter > CGFloat(height) {
                 // No room: required minimum (internal) center is off-screen.
                 return nil
@@ -247,154 +288,207 @@ final class SatellitesLayerRenderer {
                 return nil
             }
         }
-        
+
         // Clamp to screen
         yMin = max(0, min(CGFloat(height), yMin))
         yMax = max(0, min(CGFloat(height), yMax))
-        
+
         if yMin > yMax {
             return nil
         }
         return (yMin, yMax)
     }
-    
+
     private func spawn() {
         guard isEnabled else { return }
         let fromLeft = Bool.random(using: &rng)
-        
-        guard let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx) else {
+
+        guard
+            let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx)
+        else {
             if debugOverlayEnabled {
-                os_log("Satellites spawn suppressed: no vertical space above flasher (visual)", log: log, type: .debug)
+                os_log(
+                    "Satellites spawn suppressed: no vertical space above flasher (visual)",
+                    log: log,
+                    type: .debug
+                )
             }
             return
         }
-        
+
         let y: CGFloat
         if bandMax >= bandMin {
             y = CGFloat.random(in: bandMin...bandMax, using: &rng)
         } else {
-            y = bandMin   // Defensive
+            y = bandMin  // Defensive
         }
-        
+
         let x = fromLeft ? -sizePx : CGFloat(width) + sizePx
         let vx = (fromLeft ? 1.0 : -1.0) * speed
-        let s = Satellite(x: x,
-                          y: y,
-                          vx: vx,
-                          size: sizePx,
-                          brightness: brightness * CGFloat.random(in: 0.8...1.05, using: &rng))
+        let s = Satellite(
+            x: x,
+            y: y,
+            vx: vx,
+            size: sizePx,
+            brightness: brightness * CGFloat.random(in: 0.8...1.05, using: &rng)
+        )
         satellites.append(s)
         if debugOverlayEnabled {
-            os_log("Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherPresent=%{public}@ (visual above)",
-                   log: log, type: .debug,
-                   fromLeft ? "L→R" : "R→L",
-                   Double(y),
-                   Double(bandMin), Double(bandMax),
-                   Double(speed),
-                   Double(sizePx),
-                   satellites.count,
-                   (flasherCenterY != nil && flasherRadius != nil) ? "yes" : "no")
+            os_log(
+                "Satellites spawn: dir=%{public}@ y=%{public}.1f band=[%.1f, %.1f] speed=%{public}.1f size=%{public}.1f activeNow=%{public}d flasherPresent=%{public}@ (visual above)",
+                log: log,
+                type: .debug,
+                fromLeft ? "L→R" : "R→L",
+                Double(y),
+                Double(bandMin),
+                Double(bandMax),
+                Double(speed),
+                Double(sizePx),
+                satellites.count,
+                (flasherCenterY != nil && flasherRadius != nil) ? "yes" : "no"
+            )
         }
     }
-    
+
     // MARK: - Emission to GPU
-    
+
     // Advance simulation, emit sprites for this frame, and compute keep factor for trails.
     // keepFactor = trailing ? (trailDecay^dt) : 0
     func update(dt: CFTimeInterval) -> ([SpriteInstance], Float) {
         updateCount &+= 1
-        let logThis = debugOverlayEnabled && ((updateCount <= 5) || (updateCount % 120 == 0))
-        
+        let logThis =
+            debugOverlayEnabled
+            && ((updateCount <= 5) || (updateCount % 120 == 0))
+
         // If disabled, just clear state and request texture clear (keep 0)
         guard isEnabled else {
             satellites.removeAll()
-            if logThis { os_log("Satellites update: disabled -> clear layer", log: log, type: .info) }
+            if logThis {
+                os_log(
+                    "Satellites update: disabled -> clear layer",
+                    log: log,
+                    type: .info
+                )
+            }
             return ([], 0.0)
         }
-        
+
         // Advance satellites & prune
         var idx = 0
         let dtf = CGFloat(dt)
         var removed = 0
         while idx < satellites.count {
             satellites[idx].x += satellites[idx].vx * dtf
-            if satellites[idx].vx > 0 && satellites[idx].x - satellites[idx].size > CGFloat(width) {
+            if satellites[idx].vx > 0
+                && satellites[idx].x - satellites[idx].size > CGFloat(width)
+            {
                 satellites.remove(at: idx)
                 removed += 1
                 continue
-            } else if satellites[idx].vx < 0 && satellites[idx].x + satellites[idx].size < 0 {
+            } else if satellites[idx].vx < 0
+                && satellites[idx].x + satellites[idx].size < 0
+            {
                 satellites.remove(at: idx)
                 removed += 1
                 continue
             }
             idx += 1
         }
-        
+
         // Spawning
         timeUntilNextSpawn -= dt
         while timeUntilNextSpawn <= 0 {
             spawn()
             scheduleNextSpawn()
-            break   // emit at most one new satellite per frame; loop kept for robustness
+            break  // emit at most one new satellite per frame; loop kept for robustness
         }
-        
+
         var sprites: [SpriteInstance] = []
-        sprites.reserveCapacity(satellites.count + (debugShowSpawnBounds ? 1 : 0))
-        
+        sprites.reserveCapacity(
+            satellites.count + (debugShowSpawnBounds ? 1 : 0)
+        )
+
         // Emit only the head for each active satellite.
         for sat in satellites {
             let half = Float(sat.size * 0.5)
             let b = Float(sat.brightness)
             let colorPremul = SIMD4<Float>(b, b, b, 1.0)
             sprites.append(
-                SpriteInstance(centerPx: SIMD2<Float>(Float(sat.x), Float(sat.y)),
-                               halfSizePx: SIMD2<Float>(half, half),
-                               colorPremul: colorPremul,
-                               shape: .circle)
+                SpriteInstance(
+                    centerPx: SIMD2<Float>(Float(sat.x), Float(sat.y)),
+                    halfSizePx: SIMD2<Float>(half, half),
+                    colorPremul: colorPremul,
+                    shape: .circle
+                )
             )
         }
-        
+
         // Debug vertical band bounds (y-range).
         if debugShowSpawnBounds {
-            if let (bandMin, bandMax) = currentSpawnBand(satelliteDiameter: sizePx) {
+            if let (bandMin, bandMax) = currentSpawnBand(
+                satelliteDiameter: sizePx
+            ) {
                 let minY = min(bandMin, bandMax)
                 let maxY = max(bandMin, bandMax)
                 if maxY >= minY {
-                    let rect = CGRect(x: 0,
-                                      y: minY,
-                                      width: CGFloat(width),
-                                      height: max(1.0, maxY - minY))
+                    let rect = CGRect(
+                        x: 0,
+                        y: minY,
+                        width: CGFloat(width),
+                        height: max(1.0, maxY - minY)
+                    )
                     // Cyan outline
                     let alpha: CGFloat = 0.70
                     let r: CGFloat = 0.05
                     let g: CGFloat = 0.85
                     let b: CGFloat = 1.0
-                    let premul = SIMD4<Float>(Float(r * alpha),
-                                              Float(g * alpha),
-                                              Float(b * alpha),
-                                              Float(alpha))
-                    if let sprite = makeRectOutlineSprite(rect: rect, colorPremul: premul) {
+                    let premul = SIMD4<Float>(
+                        Float(r * alpha),
+                        Float(g * alpha),
+                        Float(b * alpha),
+                        Float(alpha)
+                    )
+                    if let sprite = makeRectOutlineSprite(
+                        rect: rect,
+                        colorPremul: premul
+                    ) {
                         sprites.append(sprite)
                     }
                 }
             } else {
                 if logThis {
-                    os_log("Satellites debug: no valid spawn band (flasher leaves no visual space above)", log: log, type: .info)
+                    os_log(
+                        "Satellites debug: no valid spawn band (flasher leaves no visual space above)",
+                        log: log,
+                        type: .info
+                    )
                 }
             }
         }
-        
+
         let keep: Float = trailing ? Float(pow(Double(trailDecay), dt)) : 0.0
         if logThis {
             let flasherState: String
             if let cy = flasherCenterY, let r = flasherRadius {
                 let bottom = cy + r
-                flasherState = String(format: "yes(bottom=%.1f)", Double(bottom))
+                flasherState = String(
+                    format: "yes(bottom=%.1f)",
+                    Double(bottom)
+                )
             } else {
                 flasherState = "no"
             }
-            os_log("Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d flasher=%{public}@ dbgBounds=%{public}@ (visual above)",
-                   log: log, type: .info, satellites.count, sprites.count, Double(keep), removed, flasherState, debugShowSpawnBounds ? "yes" : "no")
+            os_log(
+                "Satellites update: active=%{public}d sprites=%{public}d keep=%{public}.3f removed=%{public}d flasher=%{public}@ dbgBounds=%{public}@ (visual above)",
+                log: log,
+                type: .info,
+                satellites.count,
+                sprites.count,
+                Double(keep),
+                removed,
+                flasherState,
+                debugShowSpawnBounds ? "yes" : "no"
+            )
         }
         return (sprites, max(0.0, min(1.0, keep)))
     }
