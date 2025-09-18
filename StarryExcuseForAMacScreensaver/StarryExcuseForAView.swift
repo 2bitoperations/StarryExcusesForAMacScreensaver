@@ -815,10 +815,7 @@ class StarryExcuseForAView: ScreenSaverView {
         let occ = win.occlusionState
         steps.append("occlusionState=\(describeOcclusion(occ))")
 
-        // If .visible not set we treat as ambiguous (older SDK may not provide .occluded).
-        // CHANGE: Previously if the CGWindow layer reported onscreen we treated this as visible
-        // (reason=cgWindow-onscreen-ambiguousOcc). We now consider this NOT visible per request,
-        // to avoid rendering when the window's occlusionState lacks the .visible bit.
+        // If .visible not set we treat as ambiguous (older SDK may not provide .occluded)
         if !occ.contains(.visible) {
             steps.append(".visible bit NOT set -> ambiguous")
             if grace {
@@ -828,8 +825,7 @@ class StarryExcuseForAView: ScreenSaverView {
             let cgOnscreen = cgWindowIsOnScreenThrottled(frameIndex: frameIndex)
             steps.append("CGWindow onscreen=\(cgOnscreen)")
             if cgOnscreen {
-                // Previously: return finish(true, "cgWindow-onscreen-ambiguousOcc")
-                return finish(false, "cgWindow-onscreen-ambiguousOcc")
+                return finish(true, "cgWindow-onscreen-ambiguousOcc")
             } else {
                 return finish(false, "cgWindow-offscreen-ambiguousOcc")
             }
