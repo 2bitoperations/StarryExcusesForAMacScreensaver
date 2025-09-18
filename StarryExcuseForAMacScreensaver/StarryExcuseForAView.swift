@@ -31,7 +31,6 @@ class StarryExcuseForAView: ScreenSaverView {
     
     // Inferred visibility / availability state
     private var rendererDrawableAvailable: Bool = true
-    private var lastVisibilityCheckFrame: UInt64 = 0
     private var lastVisibilityState: Bool = true
     private var invisibleConsecutiveFrames: UInt64 = 0
     private var invisibilityBeganTime: CFTimeInterval?
@@ -47,7 +46,12 @@ class StarryExcuseForAView: ScreenSaverView {
     private let cgWindowRecheckIntervalFrames: UInt64 = 30     // ~0.5s at 60 FPS
     private var lastVisibilityReason: String = "initial"
     private var lastVisibilityDecisionPath: String = "initial"
-
+    
+    // Periodic visibility diagnostics (every 2 seconds)
+    private let visibilityCheckIntervalSeconds: CFTimeInterval = 2.0
+    private var lastVisibilityCheckWallTime: CFTimeInterval = 0
+    // (We removed the per-frame visibility check; now we only evaluate every 2 seconds or on explicit triggers.)
+    
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
         super.init(frame: frame, isPreview: isPreview)
@@ -105,7 +109,14 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         
         frameIndex &+= 1
-        inferVisibilityState(frameIndex: frameIndex)
+        
+        // Perform visibility check every visibilityCheckIntervalSeconds
+        let now = CACurrentMediaTime()
+        if now - lastVisibilityCheckWallTime >= visibilityCheckIntervalSeconds {
+            lastVisibilityCheckWallTime = now
+            // Force evaluation & always log full decision data
+            inferVisibilityState(frameIndex: frameIndex, force: true, logEveryCheck: true)
+        }
         
         // New rule: if not currently visible (and thus not transitioning to visible in this frame),
         // do NOT advance the engine or render.
@@ -236,7 +247,7 @@ class StarryExcuseForAView: ScreenSaverView {
                                   log: log!,
                                   config: currentRuntimeConfig())
             os_log("Engine created (size=%.0fx%.0f)", log: log!, type: .info,
-                   Double(bounds.width), Double(bounds.height))
+                   Double(bounds.width), Double.bounds.height)
         }
         await MainActor.run {
             if self.metalLayer == nil {
@@ -444,14 +455,12 @@ class StarryExcuseForAView: ScreenSaverView {
     }
     
     @objc private func windowOcclusionChanged(_ note: Notification) {
-        inferVisibilityState(frameIndex: frameIndex, force: true)
+        // Force immediate re-evaluation & log it
+        inferVisibilityState(frameIndex: frameIndex, force: true, logEveryCheck: true)
     }
     
-    private func inferVisibilityState(frameIndex: UInt64, force: Bool = false) {
-        if !force && (frameIndex - lastVisibilityCheckFrame) < 1 {
-            return
-        }
-        lastVisibilityCheckFrame = frameIndex
+    private func inferVisibilityState(frameIndex: UInt64, force: Bool = false, logEveryCheck: Bool = false) {
+        // Always evaluate when forced (periodic invocation) or when called from explicit triggers.
         
         let prevVisible = lastVisibilityState
         let prevReason = lastVisibilityReason
@@ -475,6 +484,16 @@ class StarryExcuseForAView: ScreenSaverView {
         }
         lastVisibilityReason = reason
         lastVisibilityDecisionPath = path
+        
+        // Diagnostic logging for every periodic / forced check
+        if logEveryCheck {
+            os_log("visibilityCheck periodic frame #%{public}llu visible=%{public}@ reason=%{public}@ decisionPath=%{public}@",
+                   log: log!, type: .info,
+                   frameIndex,
+                   visible ? "yes" : "no",
+                   reason,
+                   path)
+        }
         
         if !lastVisibilityState {
             invisibleConsecutiveFrames &+= 1
