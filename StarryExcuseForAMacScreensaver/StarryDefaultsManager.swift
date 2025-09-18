@@ -6,12 +6,14 @@ class StarryDefaultsManager {
     var defaults: UserDefaults
     
     // MARK: - Public range constants (single source of truth for UI components)
+    
     // Star density (normalized 0.0 -> 1.0 of maximum fraction that yields 1600 stars/sec on 3008x1692)
     static let starSpawnFractionOfMaxMin: Double = 0.0
     static let starSpawnFractionOfMaxMax: Double = 1.0
     
-    // Building Lights (still per-second)
-    static let buildingLightsPerSecondMin: Double = 0.0
+    // Building lights density (normalized 0.0 -> 1.0 of maximum fraction that yields 600 lights/sec on 3008x1692)
+    static let buildingLightsSpawnFractionOfMaxMin: Double = 0.0
+    static let buildingLightsSpawnFractionOfMaxMax: Double = 1.0
     
     // Clears
     static let secsBetweenClearsMin: Double = 1.0
@@ -65,8 +67,9 @@ class StarryDefaultsManager {
     // Default fallback constants (single source of truth for values)
     // Star density: 0.5 ≈ previous default 800 stars/sec at reference screen (half of 1600).
     private let defaultStarSpawnFractionOfMax = 0.5
-    private let defaultBuildingLightsPerUpdate = 15
-    private let defaultBuildingLightsPerSecond = 150.0
+    
+    // Building lights density: 0.25 ≈ previous default 150 lights/sec at reference (150 / 600).
+    private let defaultBuildingLightsSpawnFractionOfMax = 0.25
     
     private let defaultBuildingHeight = 0.35
     private let defaultSecsBetweenClears = 120.0
@@ -155,6 +158,7 @@ class StarryDefaultsManager {
     }
     
     // MARK: - Migration
+    // No legacy migration required for building lights or star density beyond initial fraction-based keys.
     
     private func migrateLegacyKeysIfNeeded() {
         if defaults.object(forKey: "ShowLightAreaTextureFillMask") == nil,
@@ -233,32 +237,15 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         
-        // Migrate legacy StarsPerSecond -> StarSpawnFractionOfMax if present.
+        // Initialize star fraction if missing.
         if defaults.object(forKey: "StarSpawnFractionOfMax") == nil {
-            if let obj = defaults.object(forKey: "StarsPerSecond") {
-                var starsPerSecond: Double?
-                if let n = obj as? NSNumber { starsPerSecond = n.doubleValue }
-                if let s = obj as? String, let dv = Double(s) { starsPerSecond = dv }
-                if let sps = starsPerSecond, sps >= 0 {
-                    // 1600 stars/sec == 100% of max at reference resolution.
-                    let norm = min(1.0, max(0.0, sps / 1600.0))
-                    defaults.set(norm, forKey: "StarSpawnFractionOfMax")
-                } else {
-                    defaults.set(defaultStarSpawnFractionOfMax, forKey: "StarSpawnFractionOfMax")
-                }
-            } else {
-                defaults.set(defaultStarSpawnFractionOfMax, forKey: "StarSpawnFractionOfMax")
-            }
+            defaults.set(defaultStarSpawnFractionOfMax, forKey: "StarSpawnFractionOfMax")
             defaults.synchronize()
         }
         
-        if defaults.object(forKey: "BuildingLightsPerSecond") == nil {
-            if defaults.object(forKey: "BuildingLightsPerUpdate") != nil {
-                let legacy = Swift.max(0, defaults.integer(forKey: "BuildingLightsPerUpdate"))
-                defaults.set(Double(legacy) * 10.0, forKey: "BuildingLightsPerSecond")
-            } else {
-                defaults.set(defaultBuildingLightsPerSecond, forKey: "BuildingLightsPerSecond")
-            }
+        // Initialize building lights fraction if missing.
+        if defaults.object(forKey: "BuildingLightsSpawnFractionOfMax") == nil {
+            defaults.set(defaultBuildingLightsSpawnFractionOfMax, forKey: "BuildingLightsSpawnFractionOfMax")
             defaults.synchronize()
         }
     }
@@ -275,31 +262,13 @@ class StarryDefaultsManager {
         }
     }
     
-    var buildingLightsPerUpdate: Int {
-        set {
-            let v = Swift.max(0, newValue)
-            defaults.set(v, forKey: "BuildingLightsPerUpdate")
-            defaults.synchronize()
-        }
+    var buildingLightsSpawnFractionOfMax: Double {
+        set { setClampedDouble(newValue, key: "BuildingLightsSpawnFractionOfMax", min: Self.buildingLightsSpawnFractionOfMaxMin, max: Self.buildingLightsSpawnFractionOfMaxMax) }
         get {
-            if let v = safeInt("BuildingLightsPerUpdate"), v >= 0 {
-                return v
-            }
-            return defaultBuildingLightsPerUpdate
-        }
-    }
-    
-    var buildingLightsPerSecond: Double {
-        set {
-            let v = Swift.max(Self.buildingLightsPerSecondMin, newValue)
-            defaults.set(v, forKey: "BuildingLightsPerSecond")
-            defaults.synchronize()
-        }
-        get {
-            if let v = safeDouble("BuildingLightsPerSecond"), v >= Self.buildingLightsPerSecondMin {
-                return v
-            }
-            return Double(buildingLightsPerUpdate) * 10.0
+            validatedDouble(safeDouble("BuildingLightsSpawnFractionOfMax"),
+                            min: Self.buildingLightsSpawnFractionOfMaxMin,
+                            max: Self.buildingLightsSpawnFractionOfMaxMax,
+                            defaultValue: defaultBuildingLightsSpawnFractionOfMax)
         }
     }
     
