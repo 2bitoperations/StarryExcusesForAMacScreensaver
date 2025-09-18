@@ -1,4 +1,4 @@
-//
+﻿//
 //  StarryExcuseForAView.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -328,9 +328,8 @@ class StarryExcuseForAView: ScreenSaverView {
             debugDropBaseEveryNFrames: 0,
             debugForceClearEveryNFrames: 0,
             debugLogEveryFrame: false,
-            buildingLightsPerUpdate: defaultsManager.buildingLightsPerUpdate,
+            buildingLightsSpawnPerSecFractionOfMax: defaultsManager.buildingLightsSpawnFractionOfMax,
             disableFlasherOnBase: false,
-            buildingLightsPerSecond: 0,
             starSpawnPerSecFractionOfMax: defaultsManager.starSpawnFractionOfMax
         )
     }
