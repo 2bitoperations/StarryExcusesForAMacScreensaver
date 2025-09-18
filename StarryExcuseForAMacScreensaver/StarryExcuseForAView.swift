@@ -1,4 +1,4 @@
-﻿//
+//
 //  StarryExcuseForAView.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -47,13 +47,7 @@ class StarryExcuseForAView: ScreenSaverView {
     private let cgWindowRecheckIntervalFrames: UInt64 = 30     // ~0.5s at 60 FPS
     private var lastVisibilityReason: String = "initial"
     private var lastVisibilityDecisionPath: String = "initial"
-    
-    // Explicit list of additional screensaver notifications we want to observe.
-    private let otherScreensaverNotificationNames: [Notification.Name] = [
-        Notification.Name("com.apple.screensaver.willstart"),
-        Notification.Name("com.apple.screensaver.didstart")
-    ]
-    
+
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
         super.init(frame: frame, isPreview: isPreview)
@@ -409,20 +403,6 @@ class StarryExcuseForAView: ScreenSaverView {
             name: Notification.Name("com.apple.screensaver.didstop"),
             object: nil
         )
-        
-        for name in otherScreensaverNotificationNames {
-            DistributedNotificationCenter.default.addObserver(
-                self,
-                selector: #selector(self.anyScreensaverNotification(_:)),
-                name: name,
-                object: nil
-            )
-        }
-        
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(rendererDrawableAvailabilityChanged(_:)),
-                                               name: StarryMetalRenderer.drawableAvailabilityNotification,
-                                               object: nil)
     }
     
     private func createFallbackSheetWindow() -> NSWindow {
