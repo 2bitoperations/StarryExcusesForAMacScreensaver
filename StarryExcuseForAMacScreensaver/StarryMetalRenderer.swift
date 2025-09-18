@@ -10,7 +10,6 @@ final class StarryMetalRenderer {
 
     private struct LayerTextures {
         var base: MTLTexture?
-        var baseScratch: MTLTexture?
         var satellites: MTLTexture?
         var satellitesScratch: MTLTexture?
         var shooting: MTLTexture?
@@ -390,7 +389,6 @@ final class StarryMetalRenderer {
         switch target {
         case "base":
             clr(layerTex.base, label: "base")
-            clr(layerTex.baseScratch, label: "baseScratch")
         case "satellites":
             clr(layerTex.satellites, label: "satellites")
             clr(layerTex.satellitesScratch, label: "satellitesScratch")
@@ -1207,15 +1205,6 @@ final class StarryMetalRenderer {
                     ? "DropBaseEveryN (headless N=\(dropBaseEveryNFrames))"
                     : "DropBaseEveryN (N=\(dropBaseEveryNFrames))"
             )
-            if let baseScratch = layerTex.baseScratch {
-                clearTexture(
-                    baseScratch,
-                    commandBuffer: commandBuffer,
-                    label: headless
-                        ? "DropBaseEveryN Scratch (headless)"
-                        : "DropBaseEveryN Scratch"
-                )
-            }
         }
 
         if debugClearBasePending {
@@ -1228,36 +1217,10 @@ final class StarryMetalRenderer {
                         : "Debug One-Time Base Clear"
                 )
             }
-            if let baseScratch = layerTex.baseScratch {
-                clearTexture(
-                    baseScratch,
-                    commandBuffer: commandBuffer,
-                    label: headless
-                        ? "Debug One-Time BaseScratch Clear (headless)"
-                        : "Debug One-Time BaseScratch Clear"
-                )
-            }
             debugClearBasePending = false
         }
 
-        if let baseTex = layerTex.base, let baseScratch = layerTex.baseScratch {
-            if !drawData.baseSprites.isEmpty {
-                renderSprites(
-                    into: baseTex,
-                    sprites: drawData.baseSprites,
-                    pipeline: spriteOverPipeline,
-                    commandBuffer: commandBuffer,
-                    provenance: .base
-                )
-            }
-            blitCopy(
-                from: baseTex,
-                to: baseScratch,
-                using: commandBuffer,
-                label: headless
-                    ? "Base copy -> Scratch (headless)" : "Base copy -> Scratch"
-            )
-        } else if let baseTex = layerTex.base {
+        if let baseTex = layerTex.base {
             if !drawData.baseSprites.isEmpty {
                 renderSprites(
                     into: baseTex,
@@ -1377,14 +1340,14 @@ final class StarryMetalRenderer {
             )
         }
         switch debugCompositeMode {
-        case .satellitesOnly:
-            drawTex(layerTex.satellites)
-        case .baseOnly:
-            drawTex(layerTex.baseScratch)
-        case .normal:
-            drawTex(layerTex.baseScratch)
-            drawTex(layerTex.satellites)
-            drawTex(layerTex.shooting)
+            case .satellitesOnly:
+                drawTex(layerTex.satellites)
+            case .baseOnly:
+                drawTex(layerTex.base)
+            case .normal:
+                drawTex(layerTex.base)
+                drawTex(layerTex.satellites)
+                drawTex(layerTex.shooting)
         }
 
         if debugCompositeMode == .normal, let moon = drawData.moon {
@@ -1456,8 +1419,6 @@ final class StarryMetalRenderer {
         desc.storageMode = .private
         layerTex.base = device.makeTexture(descriptor: desc)
         layerTex.base?.label = "BaseLayer"
-        layerTex.baseScratch = device.makeTexture(descriptor: desc)
-        layerTex.baseScratch?.label = "BaseLayerScratch"
         layerTex.satellites = device.makeTexture(descriptor: desc)
         layerTex.satellites?.label = "SatellitesLayer"
         layerTex.satellitesScratch = device.makeTexture(descriptor: desc)
@@ -1468,15 +1429,14 @@ final class StarryMetalRenderer {
         layerTex.shootingScratch?.label = "ShootingStarsLayerScratch"
 
         os_log(
-            "Allocated textures: base=%@ baseScratch=%@ sat=%@ satScratch=%@ shoot=%@ shootScratch=%@",
+            "Allocated textures: base=%@ sat=%@ satScratch=%@ shoot=%@ shootScratch=%@",
             log: log,
             type: .info,
-            ptrString(layerTex.base!),
-            ptrString(layerTex.baseScratch!),
-            ptrString(layerTex.satellites!),
-            ptrString(layerTex.satellitesScratch!),
-            ptrString(layerTex.shooting!),
-            ptrString(layerTex.shootingScratch!)
+            layerTex.base.map { ptrString($0) } ?? "nil",
+            layerTex.satellites.map { ptrString($0) } ?? "nil",
+            layerTex.satellitesScratch.map { ptrString($0) } ?? "nil",
+            layerTex.shooting.map { ptrString($0) } ?? "nil",
+            layerTex.shootingScratch.map { ptrString($0) } ?? "nil"
         )
     }
 
@@ -1529,7 +1489,7 @@ final class StarryMetalRenderer {
         }
         if releaseMemory {
             approxBytes =
-                bytes(layerTex.base) + bytes(layerTex.baseScratch)
+                bytes(layerTex.base)
                 + bytes(layerTex.satellites) + bytes(layerTex.satellitesScratch)
                 + bytes(layerTex.shooting) + bytes(layerTex.shootingScratch)
                 + bytes(offscreenComposite)
@@ -1561,7 +1521,6 @@ final class StarryMetalRenderer {
             }
         }
         clear(texture: layerTex.base)
-        clear(texture: layerTex.baseScratch)
         clear(texture: layerTex.satellites)
         clear(texture: layerTex.satellitesScratch)
         clear(texture: layerTex.shooting)
@@ -1784,7 +1743,6 @@ final class StarryMetalRenderer {
 
         if (pipeline === spriteAdditivePipeline)
             && (isSameTexture(target, layerTex.base)
-                || isSameTexture(target, layerTex.baseScratch)
                 || labelContains(target, "BaseLayer"))
         {
             os_log(
@@ -1973,10 +1931,8 @@ final class StarryMetalRenderer {
             let b = layerTex.satellitesScratch
             let aIsBase =
                 labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base)
-                || isSameTexture(a, layerTex.baseScratch)
             let bIsBase =
                 labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base)
-                || isSameTexture(b, layerTex.baseScratch)
             if a != nil && !aIsBase { return a }
             if b != nil && !bIsBase { return b }
             return nil
@@ -1985,10 +1941,8 @@ final class StarryMetalRenderer {
             let b = layerTex.shootingScratch
             let aIsBase =
                 labelContains(a, "BaseLayer") || isSameTexture(a, layerTex.base)
-                || isSameTexture(a, layerTex.baseScratch)
             let bIsBase =
                 labelContains(b, "BaseLayer") || isSameTexture(b, layerTex.base)
-                || isSameTexture(b, layerTex.baseScratch)
             if a != nil && !aIsBase { return a }
             if b != nil && !bIsBase { return b }
             return nil
@@ -2119,7 +2073,6 @@ final class StarryMetalRenderer {
         }
         let baseSnap = snapshot(layerTex.base)
         let satSnap = snapshot(layerTex.satellites)
-        theight: do { _ = snapshot(layerTex.satellitesScratch) }
         let satScratchSnap = snapshot(layerTex.satellitesScratch)
         let shootSnap = snapshot(layerTex.shooting)
         let shootScratchSnap = snapshot(layerTex.shootingScratch)
