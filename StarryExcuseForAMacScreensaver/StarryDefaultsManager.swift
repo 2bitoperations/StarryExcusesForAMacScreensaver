@@ -106,7 +106,6 @@ class StarryDefaultsManager {
     init() {
         let identifier = Bundle(for: StarryDefaultsManager.self).bundleIdentifier
         defaults = ScreenSaverDefaults.init(forModuleWithName: identifier!)!
-        migrateLegacyKeysIfNeeded()
     }
     
     // MARK: - Defensive helpers
@@ -157,98 +156,6 @@ class StarryDefaultsManager {
         defaults.synchronize()
     }
     
-    // MARK: - Migration
-    // No legacy migration required for building lights or star density beyond initial fraction-based keys.
-    
-    private func migrateLegacyKeysIfNeeded() {
-        if defaults.object(forKey: "ShowLightAreaTextureFillMask") == nil,
-           defaults.object(forKey: "ShowCrescentClipMask") != nil {
-            let legacy = defaults.bool(forKey: "ShowCrescentClipMask")
-            defaults.set(legacy, forKey: "ShowLightAreaTextureFillMask")
-            defaults.removeObject(forKey: "ShowCrescentClipMask")
-            defaults.synchronize()
-        }
-        if defaults.object(forKey: "DarkMinorityOversizeOverrideEnabled") != nil {
-            defaults.removeObject(forKey: "DarkMinorityOversizeOverrideEnabled")
-        }
-        if defaults.object(forKey: "DarkMinorityOversizeOverrideValue") != nil {
-            defaults.removeObject(forKey: "DarkMinorityOversizeOverrideValue")
-        }
-        if defaults.object(forKey: "MoonMinRadius") != nil {
-            defaults.removeObject(forKey: "MoonMinRadius")
-        }
-        if defaults.object(forKey: "MoonMaxRadius") != nil {
-            defaults.removeObject(forKey: "MoonMaxRadius")
-        }
-        
-        if defaults.object(forKey: "ShootingStarsTrailHalfLifeSeconds") == nil {
-            if let _ = defaults.object(forKey: "ShootingStarsTrailDecay") {
-                let factor = defaults.double(forKey: "ShootingStarsTrailDecay")
-                let fps = 60.0
-                let f = Swift.max(0.0001, Swift.min(0.9999, factor))
-                let hl = Swift.max(Self.shootingStarsTrailHalfLifeMin,
-                                   Swift.min(Self.shootingStarsTrailHalfLifeMax,
-                                             log(0.5) / (fps * log(f))))
-                defaults.set(hl, forKey: "ShootingStarsTrailHalfLifeSeconds")
-            } else {
-                defaults.set(defaultShootingStarsTrailHalfLifeSeconds, forKey: "ShootingStarsTrailHalfLifeSeconds")
-            }
-            defaults.synchronize()
-        } else {
-            let hl = defaults.double(forKey: "ShootingStarsTrailHalfLifeSeconds")
-            let clamped = Swift.max(Self.shootingStarsTrailHalfLifeMin,
-                                    Swift.min(Self.shootingStarsTrailHalfLifeMax, hl))
-            if clamped != hl {
-                defaults.set(clamped, forKey: "ShootingStarsTrailHalfLifeSeconds")
-            }
-            defaults.synchronize()
-        }
-        
-        if defaults.object(forKey: "SatellitesTrailHalfLifeSeconds") == nil {
-            if let _ = defaults.object(forKey: "SatellitesTrailDecay") {
-                let v = defaults.double(forKey: "SatellitesTrailDecay")
-                var hl: Double
-                if v > 0.0 && v <= 1.0 {
-                    let fps = 60.0
-                    let f = Swift.max(0.0001, Swift.min(0.9999, v))
-                    hl = Swift.max(Self.shootingStarsTrailHalfLifeMin,
-                                   Swift.min(Self.shootingStarsTrailHalfLifeMax,
-                                             log(0.5) / (fps * log(f))))
-                } else {
-                    let t = Swift.max(0.01, Swift.min(120.0, v))
-                    hl = t * log(2.0) / log(100.0)
-                    hl = Swift.max(Self.shootingStarsTrailHalfLifeMin,
-                                   Swift.min(Self.shootingStarsTrailHalfLifeMax, hl))
-                }
-                defaults.set(hl, forKey: "SatellitesTrailHalfLifeSeconds")
-            } else {
-                defaults.set(defaultSatellitesTrailHalfLifeSeconds, forKey: "SatellitesTrailHalfLifeSeconds")
-            }
-            defaults.synchronize()
-        }
-        
-        let oldHL = defaults.double(forKey: "SatellitesTrailHalfLifeSeconds")
-        if oldHL.isNaN || oldHL < Self.satellitesTrailHalfLifeMin || oldHL > Self.satellitesTrailHalfLifeMax {
-            let clamped = Swift.max(Self.satellitesTrailHalfLifeMin,
-                                    Swift.min(Self.satellitesTrailHalfLifeMax,
-                                              oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : oldHL))
-            defaults.set(clamped == oldHL ? clamped : (oldHL.isNaN ? defaultSatellitesTrailHalfLifeSeconds : clamped),
-                         forKey: "SatellitesTrailHalfLifeSeconds")
-            defaults.synchronize()
-        }
-        
-        // Initialize star fraction if missing.
-        if defaults.object(forKey: "StarSpawnFractionOfMax") == nil {
-            defaults.set(defaultStarSpawnFractionOfMax, forKey: "StarSpawnFractionOfMax")
-            defaults.synchronize()
-        }
-        
-        // Initialize building lights fraction if missing.
-        if defaults.object(forKey: "BuildingLightsSpawnFractionOfMax") == nil {
-            defaults.set(defaultBuildingLightsSpawnFractionOfMax, forKey: "BuildingLightsSpawnFractionOfMax")
-            defaults.synchronize()
-        }
-    }
     
     // MARK: - Stored properties (defensive getters)
     
