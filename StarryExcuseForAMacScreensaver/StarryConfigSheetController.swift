@@ -157,40 +157,16 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private let maxStarsAtReference: Double = 1600.0
     private let maxBuildingLightsAtReference: Double = 600.0
 
-    // MARK: - Dynamic window sizing
-    // We size the settings window as a square consuming 80% of the smaller visible dimension
-    // of the screen it opens on. This improves usability on smaller displays.
-    private static let windowRelativeScale: CGFloat = 0.80
-    private static let windowMinSide: CGFloat = 600  // Reasonable lower bound
-    private static let windowMaxSide: CGFloat = 1600 // Upper safety bound
-
-    private static func computeInitialWindowSize(for screen: NSScreen?) -> CGSize {
-        let targetScreen = screen ?? NSScreen.main
-        if let vf = targetScreen?.visibleFrame {
-            let minSide = min(vf.width, vf.height)
-            var side = floor(minSide * windowRelativeScale)
-            side = max(windowMinSide, min(side, windowMaxSide))
-            return CGSize(width: side, height: side)
-        }
-        // Fallback if screen info unavailable
-        return CGSize(width: 900, height: 900)
-    }
-
     // MARK: - Init
 
     convenience init() {
-        // Determine target screen (main for now — when shown as a sheet it will already be on the correct display)
-        let screen = NSScreen.main
-        let size = StarryConfigSheetController.computeInitialWindowSize(for: screen)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height),
-            styleMask: [.titled, .closable],  // Deliberately not resizable
+            contentRect: NSRect(x: 0, y: 0, width: 1382, height: 1050),
+            styleMask: [.titled, .closable],
             backing: .buffered,
-            defer: false,
-            screen: screen
+            defer: false
         )
         window.title = "Starry Excuses Settings"
-        window.center()
         self.init(window: window)
     }
 
@@ -483,13 +459,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private func buildUI() {
         guard let contentView = window?.contentView else { return }
 
-        // Dynamic left width: proportionally sized, capped to keep adequate preview space
-        let windowWidth = contentView.bounds.width
-        let leftWidth: CGFloat = {
-            // Aim for ~35% of width but clamp between 260 and 320
-            let proportional = windowWidth * 0.35
-            return max(260, min(320, proportional))
-        }()
+        let leftWidth: CGFloat = 320
 
         let leftContainer = NSView()
         leftContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -1645,11 +1615,6 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         win.isMovableByWindowBackground = true
         win.standardWindowButton(.zoomButton)?.isHidden = true
         win.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        // Explicitly ensure not resizable
-        win.styleMask.remove(.resizable)
-        // Prevent accidental live resizing via constraints (just in case)
-        win.contentMinSize = win.frame.size
-        win.contentMaxSize = win.frame.size
     }
 
     private func applyButtonKeyEquivalents() {
