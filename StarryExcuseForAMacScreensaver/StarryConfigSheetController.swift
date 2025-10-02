@@ -32,8 +32,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     var debugOverlayEnabledCheckbox: NSSwitch?  // now visible in UI
     var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch?  // moved to General section
 
-    // Optional (not in simplified UI layout but retained for logic compatibility)
-    var moonTraversalMinutes: NSTextField?
+    // Moon traversal (new slider)
+    var moonTraversalMinutesSlider: NSSlider?
+    var moonTraversalMinutesPreview: NSTextField?
 
     // Moon sizing & brightness sliders
     var moonSizePercentSlider: NSSlider!  // present
@@ -254,6 +255,14 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         debugOverlayEnabledCheckbox?.state =
             defaultsManager.debugOverlayEnabled ? .on : .off
 
+        // Moon traversal minutes slider init
+        if let trav = moonTraversalMinutesSlider {
+            trav.doubleValue =
+                Double(defaultsManager.moonTraversalMinutes)
+        }
+        moonTraversalMinutesPreview?.stringValue =
+            "\(defaultsManager.moonTraversalMinutes) min"
+
         moonSizePercentSlider.doubleValue =
             defaultsManager.moonDiameterScreenWidthPercent
 
@@ -387,6 +396,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             ?? defaultsManager.buildingFrequency
         lastSecsBetweenClears =
             secsBetweenClears?.doubleValue ?? defaultsManager.secsBetweenClears
+        lastMoonTraversalMinutes = defaultsManager.moonTraversalMinutes
         lastMoonSizePercent = moonSizePercentSlider.doubleValue
         lastBrightBrightness =
             brightBrightnessSlider?.doubleValue
@@ -670,6 +680,41 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         let moonBox = makeBox(title: "Moon")
         let moonStack = makeVStack(spacing: 8)
 
+        // Traversal minutes slider
+        let travLabelRow = NSStackView()
+        travLabelRow.orientation = .horizontal
+        travLabelRow.alignment = .firstBaseline
+        travLabelRow.spacing = 4
+        travLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let travLabel = makeLabel("Traversal minutes")
+        let travPreview = makeSmallLabel("-- min")
+        self.moonTraversalMinutesPreview = travPreview
+        travLabelRow.addArrangedSubview(travLabel)
+        travLabelRow.addArrangedSubview(travPreview)
+        let travSlider = NSSlider(
+            value: Double(defaultsManager.moonTraversalMinutes),
+            minValue: Double(StarryDefaultsManager.moonTraversalMinutesMin),
+            maxValue: Double(StarryDefaultsManager.moonTraversalMinutesMax),
+            target: self,
+            action: #selector(moonTraversalMinutesSliderChanged(_:))
+        )
+        travSlider.numberOfTickMarks = 0
+        travSlider.allowsTickMarkValuesOnly = false
+        travSlider.translatesAutoresizingMaskIntoConstraints = false
+        travSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        self.moonTraversalMinutesSlider = travSlider
+        let travSliderRow = NSStackView(views: [travSlider])
+        travSliderRow.orientation = .horizontal
+        travSliderRow.alignment = .centerY
+        travSliderRow.spacing = 4
+        travSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        travSlider.leadingAnchor.constraint(
+            equalTo: travSliderRow.leadingAnchor
+        ).isActive = true
+        travSlider.trailingAnchor.constraint(
+            equalTo: travSliderRow.trailingAnchor
+        ).isActive = true
+
         // Size
         let moonLabelRow = NSStackView()
         moonLabelRow.orientation = .horizontal
@@ -830,7 +875,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         maskRow.addArrangedSubview(maskSwitch)
         maskRow.addArrangedSubview(maskLabel)
 
-        // Add moon controls
+        // Add moon controls (order matters)
+        moonStack.addArrangedSubview(travLabelRow)
+        moonStack.addArrangedSubview(travSliderRow)
         moonStack.addArrangedSubview(moonLabelRow)
         moonStack.addArrangedSubview(moonSliderRow)
         moonStack.addArrangedSubview(brightRow)
@@ -849,7 +896,8 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
 
         // Enforce full-width for moon slider rows
         for row in [
-            moonSliderRow, brightSliderRow, darkSliderRow, phaseSliderRow,
+            travSliderRow, moonSliderRow, brightSliderRow, darkSliderRow,
+            phaseSliderRow,
         ] {
             row.leadingAnchor.constraint(equalTo: moonStack.leadingAnchor)
                 .isActive = true
@@ -1638,6 +1686,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         shootingStarsDebugSpawnBoundsCheckbox?.setAccessibilityLabel(
             "Show satellite and shooting star spawn bounds"
         )
+        moonTraversalMinutesSlider?.setAccessibilityLabel(
+            "Moon traversal duration in minutes"
+        )
         moonSizePercentSlider.setAccessibilityLabel(
             "Moon size as percent of screen width"
         )
@@ -1855,6 +1906,29 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
         maybeClearAndRestartPreview(reason: "buildingLightsDensityChanged")
+    }
+
+    @IBAction func moonTraversalMinutesSliderChanged(_ sender: Any) {
+        guard let slider = moonTraversalMinutesSlider else { return }
+        let newVal = Int(slider.doubleValue.rounded())
+        // Snap slider value visually to the integer (avoid fractional display)
+        if Int(slider.doubleValue) != newVal {
+            slider.doubleValue = Double(newVal)
+        }
+        if newVal != lastMoonTraversalMinutes {
+            logChange(
+                changedKey: "moonTraversalMinutes",
+                oldValue: "\(lastMoonTraversalMinutes)",
+                newValue: "\(newVal)"
+            )
+            lastMoonTraversalMinutes = newVal
+        }
+        moonTraversalMinutesPreview?.stringValue = "\(newVal) min"
+        updatePreviewLabels()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+        validateInputs()
+        maybeClearAndRestartPreview(reason: "moonTraversalMinutesChanged")
     }
 
     private func updateStarDensityPreview() {
@@ -2447,6 +2521,11 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             satellitesAvg = defaultsManager.satellitesAvgSpawnSeconds
         }
 
+        let traversalMinutes = Int(
+            round(moonTraversalMinutesSlider?.doubleValue
+                ?? Double(lastMoonTraversalMinutes))
+        )
+
         return StarryRuntimeConfig(
             buildingHeight: buildingHeightSlider?.doubleValue
                 ?? lastBuildingHeight,
@@ -2454,8 +2533,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 ?? lastBuildingFrequency,
             secsBetweenClears: secsBetweenClears?.doubleValue
                 ?? lastSecsBetweenClears,
-            moonTraversalMinutes: moonTraversalMinutes?.integerValue
-                ?? lastMoonTraversalMinutes,
+            moonTraversalMinutes: traversalMinutes,
             moonDiameterScreenWidthPercent: moonSizePercentSlider.doubleValue,
             moonBrightBrightness: brightBrightnessSlider?.doubleValue
                 ?? lastBrightBrightness,
@@ -2521,6 +2599,14 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     }
 
     private func updatePreviewLabels() {
+        // Moon traversal minutes
+        if let travSlider = moonTraversalMinutesSlider,
+            let travPrev = moonTraversalMinutesPreview
+        {
+            let minutes = Int(travSlider.doubleValue.rounded())
+            travPrev.stringValue = "\(minutes) min"
+        }
+
         let percent = moonSizePercentSlider.doubleValue * 100.0
         moonSizePercentPreview.stringValue = String(format: "%.2f%%", percent)
         updateStarDensityPreview()
@@ -2670,6 +2756,10 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             buildingLightsDensitySlider.doubleValue
         defaultsManager.moonDiameterScreenWidthPercent =
             moonSizePercentSlider.doubleValue
+        if let travSlider = moonTraversalMinutesSlider {
+            defaultsManager.moonTraversalMinutes =
+                Int(travSlider.doubleValue.rounded())
+        }
         if let bh = buildingHeightSlider {
             defaultsManager.buildingHeight = bh.doubleValue
         }
@@ -2812,6 +2902,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         )
         parts.append(
             "spawnBounds=\(shootingStarsDebugSpawnBoundsCheckbox?.state == .on ? "true" : "false")"
+        )
+        parts.append(
+            "moonTraversalMinutes=\(lastMoonTraversalMinutes)"
         )
         parts.append(
             "moonSizePercent=\(format(moonSizePercentSlider.doubleValue))"
