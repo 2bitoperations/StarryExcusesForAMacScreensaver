@@ -1,5 +1,4 @@
 //
-//
 //  StarryExcuseForAView.swift
 //  StarryExcuseForAMacScreensaver
 //
@@ -57,62 +56,18 @@ class StarryExcuseForAView: ScreenSaverView {
     // Periodic visibility diagnostics (every 2 seconds)
     private let visibilityCheckIntervalSeconds: CFTimeInterval = 2.0
     private var lastVisibilityCheckWallTime: CFTimeInterval = 0
-
-    // MARK: - Exception Wrapping Helpers
-
-    /// Execute a block inside an Objective-C @try/@catch (via helper), logging any NSException.
-    private func withExceptionLogging(context: String, _ block: () -> Void) {
-        guard let log = log else {
-            block()
-            return
-        }
-        #if canImport(ObjectiveC)
-        ExceptionCatcherTry({
-            block()
-        }, { exception in
-            let reason = exception.reason ?? "no-reason"
-            let stack = exception.callStackSymbols.joined(separator: "\n")
-            os_log(
-                "UNCAUGHT NSException in %{public}@ : %{public}@\nStack:\n%{public}@",
-                log: log,
-                type: .fault,
-                context,
-                reason,
-                stack
-            )
-        })
-        #else
-        // Fallback: run without exception barrier (platform without ObjC, unlikely on macOS)
-        block()
-        #endif
-    }
-
-    /// Return-producing variant for computed properties (e.g. configureSheet).
-    private func withExceptionLoggingReturn<T>(
-        context: String,
-        _ block: () -> T?
-    ) -> T? {
-        var result: T?
-        withExceptionLogging(context: context) {
-            result = block()
-        }
-        return result
-    }
+    // (We removed the per-frame visibility check; now we only evaluate every 2 seconds or on explicit triggers.)
 
     override init?(frame: NSRect, isPreview: Bool) {
         self.traceEnabled = false
         super.init(frame: frame, isPreview: isPreview)
-        withExceptionLogging(context: "init(frame:isPreview:)") {
-            self.requiredInternalInit()
-        }
+        self.requiredInternalInit()
     }
 
     required init?(coder decoder: NSCoder) {
         self.traceEnabled = false
         super.init(coder: decoder)
-        withExceptionLogging(context: "init(coder:)") {
-            self.requiredInternalInit()
-        }
+        self.requiredInternalInit()
     }
 
     private func requiredInternalInit() {
@@ -141,373 +96,344 @@ class StarryExcuseForAView: ScreenSaverView {
         registerListeners()
     }
 
-    deinit {
-        withExceptionLogging(context: "deinit") {
-            deallocateResources()
-        }
-    }
+    deinit { deallocateResources() }
 
     override var configureSheet: NSWindow? {
-        return withExceptionLoggingReturn(context: "configureSheet") {
-            os_log("configureSheet requested", log: log!, type: .info)
-            configSheetController.setView(view: self)
-            _ = configSheetController.window
-            if let win = configSheetController.window {
-                os_log(
-                    "Programmatic config sheet window ready",
-                    log: log!,
-                    type: .info
-                )
-                return win
-            } else {
-                os_log(
-                    "Programmatic config sheet failed to create window; using fallback sheet window",
-                    log: log!,
-                    type: .fault
-                )
-                return createFallbackSheetWindow()
-            }
+        os_log("configureSheet requested", log: log!, type: .info)
+        configSheetController.setView(view: self)
+        _ = configSheetController.window
+        if let win = configSheetController.window {
+            os_log(
+                "Programmatic config sheet window ready",
+                log: log!,
+                type: .info
+            )
+            return win
+        } else {
+            os_log(
+                "Programmatic config sheet failed to create window; using fallback sheet window",
+                log: log!,
+                type: .fault
+            )
+            return createFallbackSheetWindow()
         }
     }
 
     override var hasConfigureSheet: Bool { true }
 
     override func animateOneFrame() {
-        withExceptionLogging(context: "animateOneFrame") {
-            if stoppedRunning {
-                if defaultsManager.debugOverlayEnabled {
-                    os_log(
-                        "animateOneFrame[#%{public}llu] skipped (already stopped)",
-                        log: log ?? .default,
-                        type: .info,
-                        frameIndex
-                    )
-                }
-                return
-            }
-
-            if firstAnimationWallTime == nil {
-                firstAnimationWallTime = CACurrentMediaTime()
-            }
-
-            frameIndex &+= 1
-
-            // Perform visibility check every visibilityCheckIntervalSeconds
-            let now = CACurrentMediaTime()
-            if now - lastVisibilityCheckWallTime
-                >= visibilityCheckIntervalSeconds
-            {
-                lastVisibilityCheckWallTime = now
-                // Force evaluation & always request decision (internal suppression may skip logging)
-                inferVisibilityState(
-                    frameIndex: frameIndex,
-                    force: true,
-                    logEveryCheck: true
-                )
-            }
-
-            // New rule: if not currently visible (and thus not transitioning to visible in this frame),
-            // do NOT advance the engine or render.
-            if !shouldRenderCurrentFrame() {
-                if defaultsManager.debugOverlayEnabled
-                    && (frameIndex <= 5 || frameIndex % 120 == 0)
-                {
-                    os_log(
-                        "animateOneFrame[#%{public}llu] skipped (visible=%{public}@ drawable=%{public}@ released=%{public}@ reason=%{public}@ path=%{public}@)",
-                        log: log!,
-                        type: .info,
-                        frameIndex,
-                        lastVisibilityState ? "yes" : "no",
-                        rendererDrawableAvailable ? "yes" : "no",
-                        resourcesReleasedWhileInvisible ? "yes" : "no",
-                        lastVisibilityReason,
-                        lastVisibilityDecisionPath
-                    )
-                }
-                return
-            }
-
-            if pendingVisibilityReinit {
-                pendingVisibilityReinit = false
-                if resourcesReleasedWhileInvisible {
-                    os_log(
-                        "Visibility restored: recreating resources before frame #%{public}llu",
-                        log: log!,
-                        type: .info,
-                        frameIndex
-                    )
-                    recreateResourcesIfNeeded()
-                }
-            }
-
-            let loggingEnabled = defaultsManager.debugOverlayEnabled
-            let cadenceLog =
-                loggingEnabled && (frameIndex <= 5 || frameIndex % 60 == 0)
-            if cadenceLog {
+        if stoppedRunning {
+            if defaultsManager.debugOverlayEnabled {
                 os_log(
-                    "animateOneFrame[#%{public}llu] begin",
-                    log: log!,
+                    "animateOneFrame[#%{public}llu] skipped (already stopped)",
+                    log: log ?? .default,
                     type: .info,
                     frameIndex
                 )
             }
+            return
+        }
 
-            autoreleasepool {
-                let size = bounds.size
-                if !(size.width >= 1 && size.height >= 1) {
-                    if loggingEnabled {
-                        os_log(
-                            "animateOneFrame[#%{public}llu] invalid bounds size %.1f x %.1f — skipped",
-                            log: log!,
-                            type: .error,
-                            frameIndex,
-                            Double(size.width),
-                            Double(size.height)
-                        )
-                    }
-                    return
-                }
-                guard let engine = engine else {
-                    if loggingEnabled {
-                        os_log(
-                            "animateOneFrame[#%{public}llu] engine nil — skipped",
-                            log: log!,
-                            type: .error,
-                            frameIndex
-                        )
-                    }
-                    return
-                }
-                guard let metalRenderer = metalRenderer else {
-                    if loggingEnabled {
-                        os_log(
-                            "animateOneFrame[#%{public}llu] metalRenderer nil — skipped",
-                            log: log!,
-                            type: .error,
-                            frameIndex
-                        )
-                    }
-                    return
-                }
-                guard let metalLayer = metalLayer else {
-                    if loggingEnabled {
-                        os_log(
-                            "animateOneFrame[#%{public}llu] metalLayer nil — skipped",
-                            log: log!,
-                            type: .error,
-                            frameIndex
-                        )
-                    }
-                    return
-                }
+        if firstAnimationWallTime == nil {
+            firstAnimationWallTime = CACurrentMediaTime()
+        }
 
-                let backingScale =
-                    window?.screen?.backingScaleFactor
-                    ?? window?.backingScaleFactor
-                    ?? NSScreen.main?.backingScaleFactor
-                    ?? 2.0
-                let wPx = Int(round(size.width * backingScale))
-                let hPx = Int(round(size.height * backingScale))
-                if cadenceLog {
+        frameIndex &+= 1
+
+        // Perform visibility check every visibilityCheckIntervalSeconds
+        let now = CACurrentMediaTime()
+        if now - lastVisibilityCheckWallTime >= visibilityCheckIntervalSeconds {
+            lastVisibilityCheckWallTime = now
+            // Force evaluation & always request decision (internal suppression may skip logging)
+            inferVisibilityState(
+                frameIndex: frameIndex,
+                force: true,
+                logEveryCheck: true
+            )
+        }
+
+        // New rule: if not currently visible (and thus not transitioning to visible in this frame),
+        // do NOT advance the engine or render.
+        if !shouldRenderCurrentFrame() {
+            if defaultsManager.debugOverlayEnabled
+                && (frameIndex <= 5 || frameIndex % 120 == 0)
+            {
+                os_log(
+                    "animateOneFrame[#%{public}llu] skipped (visible=%{public}@ drawable=%{public}@ released=%{public}@ reason=%{public}@ path=%{public}@)",
+                    log: log!,
+                    type: .info,
+                    frameIndex,
+                    lastVisibilityState ? "yes" : "no",
+                    rendererDrawableAvailable ? "yes" : "no",
+                    resourcesReleasedWhileInvisible ? "yes" : "no",
+                    lastVisibilityReason,
+                    lastVisibilityDecisionPath
+                )
+            }
+            return
+        }
+
+        if pendingVisibilityReinit {
+            pendingVisibilityReinit = false
+            if resourcesReleasedWhileInvisible {
+                os_log(
+                    "Visibility restored: recreating resources before frame #%{public}llu",
+                    log: log!,
+                    type: .info,
+                    frameIndex
+                )
+                recreateResourcesIfNeeded()
+            }
+        }
+
+        let loggingEnabled = defaultsManager.debugOverlayEnabled
+        let cadenceLog =
+            loggingEnabled && (frameIndex <= 5 || frameIndex % 60 == 0)
+        if cadenceLog {
+            os_log(
+                "animateOneFrame[#%{public}llu] begin",
+                log: log!,
+                type: .info,
+                frameIndex
+            )
+        }
+
+        autoreleasepool {
+            let size = bounds.size
+            if !(size.width >= 1 && size.height >= 1) {
+                if loggingEnabled {
                     os_log(
-                        "animateOneFrame[#%{public}llu] bounds=%.1fx%.1f scale=%.2f drawableTarget=%dx%d",
+                        "animateOneFrame[#%{public}llu] invalid bounds size %.1f x %.1f — skipped",
                         log: log!,
-                        type: .info,
+                        type: .error,
                         frameIndex,
                         Double(size.width),
-                        Double(size.height),
-                        Double(backingScale),
+                        Double(size.height)
+                    )
+                }
+                return
+            }
+            guard let engine = engine else {
+                if loggingEnabled {
+                    os_log(
+                        "animateOneFrame[#%{public}llu] engine nil — skipped",
+                        log: log!,
+                        type: .error,
+                        frameIndex
+                    )
+                }
+                return
+            }
+            guard let metalRenderer = metalRenderer else {
+                if loggingEnabled {
+                    os_log(
+                        "animateOneFrame[#%{public}llu] metalRenderer nil — skipped",
+                        log: log!,
+                        type: .error,
+                        frameIndex
+                    )
+                }
+                return
+            }
+            guard let metalLayer = metalLayer else {
+                if loggingEnabled {
+                    os_log(
+                        "animateOneFrame[#%{public}llu] metalLayer nil — skipped",
+                        log: log!,
+                        type: .error,
+                        frameIndex
+                    )
+                }
+                return
+            }
+
+            let backingScale =
+                window?.screen?.backingScaleFactor
+                ?? window?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor
+                ?? 2.0
+            let wPx = Int(round(size.width * backingScale))
+            let hPx = Int(round(size.height * backingScale))
+            if cadenceLog {
+                os_log(
+                    "animateOneFrame[#%{public}llu] bounds=%.1fx%.1f scale=%.2f drawableTarget=%dx%d",
+                    log: log!,
+                    type: .info,
+                    frameIndex,
+                    Double(size.width),
+                    Double(size.height),
+                    Double(backingScale),
+                    wPx,
+                    hPx
+                )
+            }
+            guard wPx > 0, hPx > 0 else {
+                if loggingEnabled {
+                    os_log(
+                        "animateOneFrame[#%{public}llu] invalid drawable size w=%d h=%d — skipped",
+                        log: log!,
+                        type: .error,
+                        frameIndex,
                         wPx,
                         hPx
                     )
                 }
-                guard wPx > 0, hPx > 0 else {
-                    if loggingEnabled {
-                        os_log(
-                            "animateOneFrame[#%{public}llu] invalid drawable size w=%d h=%d — skipped",
-                            log: log!,
-                            type: .error,
-                            frameIndex,
-                            wPx,
-                            hPx
-                        )
-                    }
-                    return
-                }
+                return
+            }
 
-                engine.resizeIfNeeded(newSize: size)
-                metalLayer.frame = bounds
-                metalRenderer.updateDrawableSize(
-                    size: size,
-                    scale: backingScale
+            engine.resizeIfNeeded(newSize: size)
+            metalLayer.frame = bounds
+            metalRenderer.updateDrawableSize(size: size, scale: backingScale)
+
+            let t0 = CACurrentMediaTime()
+            let drawData = engine.advanceFrameGPU()
+            if cadenceLog {
+                os_log(
+                    "animateOneFrame[#%{public}llu] sprites base=%d sat=%d shooting=%d moon=%{public}@ clearAll=%{public}@",
+                    log: log!,
+                    type: .info,
+                    frameIndex,
+                    drawData.baseSprites.count,
+                    drawData.satellitesSprites.count,
+                    drawData.shootingSprites.count,
+                    drawData.moon != nil ? "yes" : "no",
+                    drawData.clearAll ? "yes" : "no"
                 )
-
-                let t0 = CACurrentMediaTime()
-                let drawData = engine.advanceFrameGPU()
-                if cadenceLog {
-                    os_log(
-                        "animateOneFrame[#%{public}llu] sprites base=%d sat=%d shooting=%d moon=%{public}@ clearAll=%{public}@",
-                        log: log!,
-                        type: .info,
-                        frameIndex,
-                        drawData.baseSprites.count,
-                        drawData.satellitesSprites.count,
-                        drawData.shootingSprites.count,
-                        drawData.moon != nil ? "yes" : "no",
-                        drawData.clearAll ? "yes" : "no"
-                    )
-                }
-                metalRenderer.render(drawData: drawData)
-                if cadenceLog {
-                    let t1 = CACurrentMediaTime()
-                    os_log(
-                        "animateOneFrame[#%{public}llu] end (%.2f ms)",
-                        log: log!,
-                        type: .info,
-                        frameIndex,
-                        (t1 - t0) * 1000.0
-                    )
-                }
+            }
+            metalRenderer.render(drawData: drawData)
+            if cadenceLog {
+                let t1 = CACurrentMediaTime()
+                os_log(
+                    "animateOneFrame[#%{public}llu] end (%.2f ms)",
+                    log: log!,
+                    type: .info,
+                    frameIndex,
+                    (t1 - t0) * 1000.0
+                )
             }
         }
     }
 
     override func startAnimation() {
-        withExceptionLogging(context: "startAnimation") {
-            super.startAnimation()
-            stoppedRunning = false
-            os_log("startAnimation called", log: log!, type: .info)
-            Task { await self.setupAnimationSafely() }
-        }
-    }
-
-    private func setupAnimationSafely() async {
-        // Wrapper to ensure any async path also logs exceptions (Swift concurrency errors won't raise NSException,
-        // but internal Objective-C APIs might).
-        withExceptionLogging(context: "setupAnimation(async-entry)") {
-            Task { await self.setupAnimation() }
-        }
+        super.startAnimation()
+        stoppedRunning = false
+        os_log("startAnimation called", log: log!, type: .info)
+        Task { await setupAnimation() }
     }
 
     override func stopAnimation() {
-        withExceptionLogging(context: "stopAnimation") {
-            os_log("stopAnimation called", log: log!, type: .info)
-            stoppedRunning = true
-            super.stopAnimation()
-        }
+        os_log("stopAnimation called", log: log!, type: .info)
+        stoppedRunning = true
+        super.stopAnimation()
     }
 
     private func setupAnimation() async {
-        withExceptionLogging(context: "setupAnimation") {
-            os_log("starting setupAnimation", log: log!)
-            if engine == nil {
-                engine = StarryEngine(
-                    size: bounds.size,
-                    log: log!,
-                    config: currentRuntimeConfig()
-                )
-                os_log(
-                    "Engine created (size=%.0fx%.0f)",
-                    log: log!,
-                    type: .info,
-                    Double(bounds.width),
-                    Double(bounds.height)
-                )
-            }
-            Task { @MainActor in
-                if self.metalLayer == nil {
-                    self.wantsLayer = true
-                    let mLayer = CAMetalLayer()
-                    mLayer.frame = self.bounds
-                    let scale =
-                        self.window?.screen?.backingScaleFactor
-                        ?? self.window?.backingScaleFactor
-                        ?? NSScreen.main?.backingScaleFactor
-                        ?? 2.0
-                    mLayer.contentsScale = scale
-                    self.layer?.addSublayer(mLayer)
-                    self.metalLayer = mLayer
-                    os_log(
-                        "CAMetalLayer created and added. contentsScale=%.2f",
-                        log: self.log!,
-                        type: .info,
-                        Double(scale)
-                    )
-                    if let log = self.log {
-                        self.metalRenderer = StarryMetalRenderer(
-                            layer: mLayer,
-                            log: log
-                        )
-                        if self.metalRenderer == nil {
-                            os_log(
-                                "Failed to create StarryMetalRenderer",
-                                log: self.log!,
-                                type: .fault
-                            )
-                        } else {
-                            os_log(
-                                "StarryMetalRenderer created",
-                                log: self.log!,
-                                type: .info
-                            )
-                        }
-                        let size = self.bounds.size
-                        let wPx = Int(round(size.width * scale))
-                        let hPx = Int(round(size.height * scale))
-                        if wPx > 0, hPx > 0 {
-                            self.metalRenderer?.updateDrawableSize(
-                                size: size,
-                                scale: scale
-                            )
-                            os_log(
-                                "Initial drawableSize update applied (%dx%d)",
-                                log: self.log!,
-                                type: .info,
-                                wPx,
-                                hPx
-                            )
-                        } else {
-                            os_log(
-                                "Initial drawableSize update skipped invalid (%dx%d)",
-                                log: self.log!,
-                                type: .error,
-                                wPx,
-                                hPx
-                            )
-                        }
-                        self.metalRenderer?.setTrailHalfLives(
-                            satellites: self.defaultsManager
-                                .satellitesTrailHalfLifeSeconds,
-                            shooting: self.defaultsManager
-                                .shootingStarsTrailHalfLifeSeconds
-                        )
-                    }
-                    if let win = self.window {
-                        NotificationCenter.default.addObserver(
-                            self,
-                            selector: #selector(
-                                self.windowOcclusionChanged(_:)
-                            ),
-                            name: NSWindow.didChangeOcclusionStateNotification,
-                            object: win
-                        )
-                    }
-                } else {
-                    os_log(
-                        "setupAnimation: reusing existing CAMetalLayer",
-                        log: self.log!,
-                        type: .info
-                    )
-                    self.metalLayer?.frame = self.bounds
-                }
-            }
-            os_log(
-                "leaving setupAnimation %.0f %.0f",
+        os_log("starting setupAnimation", log: log!)
+        if engine == nil {
+            engine = StarryEngine(
+                size: bounds.size,
                 log: log!,
+                config: currentRuntimeConfig()
+            )
+            os_log(
+                "Engine created (size=%.0fx%.0f)",
+                log: log!,
+                type: .info,
                 Double(bounds.width),
                 Double(bounds.height)
             )
         }
+        await MainActor.run {
+            if self.metalLayer == nil {
+                self.wantsLayer = true
+                let mLayer = CAMetalLayer()
+                mLayer.frame = self.bounds
+                let scale =
+                    self.window?.screen?.backingScaleFactor
+                    ?? self.window?.backingScaleFactor
+                    ?? NSScreen.main?.backingScaleFactor
+                    ?? 2.0
+                mLayer.contentsScale = scale
+                self.layer?.addSublayer(mLayer)
+                self.metalLayer = mLayer
+                os_log(
+                    "CAMetalLayer created and added. contentsScale=%.2f",
+                    log: self.log!,
+                    type: .info,
+                    Double(scale)
+                )
+                if let log = self.log {
+                    self.metalRenderer = StarryMetalRenderer(
+                        layer: mLayer,
+                        log: log
+                    )
+                    if self.metalRenderer == nil {
+                        os_log(
+                            "Failed to create StarryMetalRenderer",
+                            log: self.log!,
+                            type: .fault
+                        )
+                    } else {
+                        os_log(
+                            "StarryMetalRenderer created",
+                            log: self.log!,
+                            type: .info
+                        )
+                    }
+                    let size = self.bounds.size
+                    let wPx = Int(round(size.width * scale))
+                    let hPx = Int(round(size.height * scale))
+                    if wPx > 0, hPx > 0 {
+                        self.metalRenderer?.updateDrawableSize(
+                            size: size,
+                            scale: scale
+                        )
+                        os_log(
+                            "Initial drawableSize update applied (%dx%d)",
+                            log: self.log!,
+                            type: .info,
+                            wPx,
+                            hPx
+                        )
+                    } else {
+                        os_log(
+                            "Initial drawableSize update skipped invalid (%dx%d)",
+                            log: self.log!,
+                            type: .error,
+                            wPx,
+                            hPx
+                        )
+                    }
+                    self.metalRenderer?.setTrailHalfLives(
+                        satellites: self.defaultsManager
+                            .satellitesTrailHalfLifeSeconds,
+                        shooting: self.defaultsManager
+                            .shootingStarsTrailHalfLifeSeconds
+                    )
+                }
+                if let win = self.window {
+                    NotificationCenter.default.addObserver(
+                        self,
+                        selector: #selector(self.windowOcclusionChanged(_:)),
+                        name: NSWindow.didChangeOcclusionStateNotification,
+                        object: win
+                    )
+                }
+            } else {
+                os_log(
+                    "setupAnimation: reusing existing CAMetalLayer",
+                    log: self.log!,
+                    type: .info
+                )
+                metalLayer?.frame = bounds
+            }
+        }
+        os_log(
+            "leaving setupAnimation %.0f %.0f",
+            log: log!,
+            Double(bounds.width),
+            Double(bounds.height)
+        )
     }
 
     private func currentRuntimeConfig() -> StarryRuntimeConfig {
@@ -554,57 +480,50 @@ class StarryExcuseForAView: ScreenSaverView {
     }
 
     func settingsChanged() {
-        withExceptionLogging(context: "settingsChanged") {
-            os_log(
-                "settingsChanged: applying updated defaults to engine",
+        os_log(
+            "settingsChanged: applying updated defaults to engine",
+            log: log!,
+            type: .info
+        )
+        if let engine = engine {
+            engine.updateConfig(currentRuntimeConfig())
+        } else {
+            self.engine = StarryEngine(
+                size: bounds.size,
                 log: log!,
-                type: .info
-            )
-            if let engine = engine {
-                engine.updateConfig(currentRuntimeConfig())
-            } else {
-                self.engine = StarryEngine(
-                    size: bounds.size,
-                    log: log!,
-                    config: currentRuntimeConfig()
-                )
-            }
-            metalRenderer?.setTrailHalfLives(
-                satellites: defaultsManager.satellitesTrailHalfLifeSeconds,
-                shooting: defaultsManager.shootingStarsTrailHalfLifeSeconds
+                config: currentRuntimeConfig()
             )
         }
+        metalRenderer?.setTrailHalfLives(
+            satellites: defaultsManager.satellitesTrailHalfLifeSeconds,
+            shooting: defaultsManager.shootingStarsTrailHalfLifeSeconds
+        )
     }
 
     @objc func willStopHandler(_ note: Notification) {
-        withExceptionLogging(context: "willStopHandler") {
-            if !isPreview {
-                os_log("willStop received, exiting.", log: log!)
-                NSApplication.shared.terminate(nil)
-            } else {
-                os_log(
-                    "willStop received (preview mode), ignoring terminate",
-                    log: log!,
-                    type: .info
-                )
-            }
+        if !isPreview {
+            os_log("willStop received, exiting.", log: log!)
+            NSApplication.shared.terminate(nil)
+        } else {
+            os_log(
+                "willStop received (preview mode), ignoring terminate",
+                log: log!,
+                type: .info
+            )
         }
     }
 
     @objc func anyScreensaverNotification(_ note: Notification) {
-        withExceptionLogging(context: "anyScreensaverNotification") {
-            let name = note.name.rawValue
-            guard name.hasPrefix("com.apple.screensaver.") else { return }
-            os_log(
-                "Received screensaver notification %{public}@ (object=%{public}@ userInfoKeys=%{public}@)",
-                log: log ?? .default,
-                type: .info,
-                name,
-                String(describing: note.object),
-                note.userInfo?.keys.map { "\($0)" }.joined(separator: ",")
-                    ?? "none"
-            )
-        }
+        let name = note.name.rawValue
+        guard name.hasPrefix("com.apple.screensaver.") else { return }
+        os_log(
+            "Received screensaver notification %{public}@ (object=%{public}@ userInfoKeys=%{public}@)",
+            log: log ?? .default,
+            type: .info,
+            name,
+            String(describing: note.object),
+            note.userInfo?.keys.map { "\($0)" }.joined(separator: ",") ?? "none"
+        )
     }
 
     private func deallocateResources() {
@@ -640,26 +559,24 @@ class StarryExcuseForAView: ScreenSaverView {
     }
 
     private func registerListeners() {
-        withExceptionLogging(context: "registerListeners") {
-            os_log(
-                "Registering distributed screensaver listeners",
-                log: log!,
-                type: .info
-            )
+        os_log(
+            "Registering distributed screensaver listeners",
+            log: log!,
+            type: .info
+        )
 
-            DistributedNotificationCenter.default.addObserver(
-                self,
-                selector: #selector(self.willStopHandler(_:)),
-                name: Notification.Name("com.apple.screensaver.willstop"),
-                object: nil
-            )
-            DistributedNotificationCenter.default.addObserver(
-                self,
-                selector: #selector(self.willStopHandler(_:)),
-                name: Notification.Name("com.apple.screensaver.didstop"),
-                object: nil
-            )
-        }
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.willStopHandler(_:)),
+            name: Notification.Name("com.apple.screensaver.willstop"),
+            object: nil
+        )
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.willStopHandler(_:)),
+            name: Notification.Name("com.apple.screensaver.didstop"),
+            object: nil
+        )
     }
 
     private func createFallbackSheetWindow() -> NSWindow {
@@ -688,10 +605,8 @@ class StarryExcuseForAView: ScreenSaverView {
     }
 
     @objc private func closeFallbackSheet() {
-        withExceptionLogging(context: "closeFallbackSheet") {
-            if let sheetParent = self.window {
-                sheetParent.endSheet(sheetParent.attachedSheet ?? NSWindow())
-            }
+        if let sheetParent = self.window {
+            sheetParent.endSheet(sheetParent.attachedSheet ?? NSWindow())
         }
     }
 
@@ -699,33 +614,29 @@ class StarryExcuseForAView: ScreenSaverView {
 
     @objc private func rendererDrawableAvailabilityChanged(_ note: Notification)
     {
-        withExceptionLogging(context: "rendererDrawableAvailabilityChanged") {
-            if let available = note.userInfo?["available"] as? Bool {
-                rendererDrawableAvailable = available
-                if defaultsManager.debugOverlayEnabled {
-                    os_log(
-                        "Drawable availability changed -> %{public}@",
-                        log: log ?? .default,
-                        type: .info,
-                        available ? "AVAILABLE" : "UNAVAILABLE"
-                    )
-                }
-                if available {
-                    pendingVisibilityReinit = true
-                }
+        if let available = note.userInfo?["available"] as? Bool {
+            rendererDrawableAvailable = available
+            if defaultsManager.debugOverlayEnabled {
+                os_log(
+                    "Drawable availability changed -> %{public}@",
+                    log: log ?? .default,
+                    type: .info,
+                    available ? "AVAILABLE" : "UNAVAILABLE"
+                )
+            }
+            if available {
+                pendingVisibilityReinit = true
             }
         }
     }
 
     @objc private func windowOcclusionChanged(_ note: Notification) {
-        withExceptionLogging(context: "windowOcclusionChanged") {
-            // Force immediate re-evaluation & log it
-            inferVisibilityState(
-                frameIndex: frameIndex,
-                force: true,
-                logEveryCheck: true
-            )
-        }
+        // Force immediate re-evaluation & log it
+        inferVisibilityState(
+            frameIndex: frameIndex,
+            force: true,
+            logEveryCheck: true
+        )
     }
 
     private func inferVisibilityState(
