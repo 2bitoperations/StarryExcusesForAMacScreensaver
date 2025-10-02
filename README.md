@@ -2,6 +2,9 @@
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://github.com/kimar/DeveloperExcuses/blob/master/LICENSE.md)
 
+## What is this?
+This is a screensaver for MacOS that tries to be an homage to the old AfterDark Starry Night screensaver from the late 90s. Largely implemented in Swift with a Metal renderer. 
+
 ## Status
 Very basic implementation.
 - [x] buildings
@@ -9,11 +12,10 @@ Very basic implementation.
 - [x] flasher
 - [x] configuration panel
 - [ ] rain
-- [ ] shooting stars
+- [x] shooting stars
 
 ## Provenance
 Fork of https://github.com/kimar/DeveloperExcuses and https://github.com/evangreen/starryn 
-
 
 And feel free to fork and contribute ;-)
 
