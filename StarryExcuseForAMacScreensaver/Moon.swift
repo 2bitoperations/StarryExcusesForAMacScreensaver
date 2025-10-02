@@ -3,20 +3,34 @@ import Foundation
 import os
 
 // Represents the moon, its phase, and traversal across the screen.
-// Improvements (Tier 3):
-//  - High‑resolution traversal time using a monotonic startTime instead of discrete H/M/S.
-//  - Illuminated fraction & waxing state are now computed dynamically each access (unless
-//    a phase override is enabled) so the phase actually advances over time.
-//  - Provides smooth continuous motion suitable for subpixel rendering.
+//
+// Traversal behavior (reintroduced feature):
+//  - The moon traverses left -> right along a single arch once per configured
+//    traversal duration (traversalSeconds).
+//  - Position is tied to wall‐clock time, not the object’s creation time:
+//        progress = (wallClockSeconds % traversalSeconds) / traversalSeconds
+//    This guarantees deterministic synchronization if multiple Moons were
+//    created simultaneously and allows “popping” back to the left edge exactly
+//    at the moment the modulo resets.
+//  - Horizontal motion is linear across the usable width.
+//  - Vertical motion is a smooth single arch using a half‑sine curve:
+//        y = verticalBaseY + verticalArchHeight * sin(pi * progress)
+//    Which yields: y(left) = verticalBaseY, y(mid) = verticalBaseY + verticalArchHeight,
+//                  y(right) = verticalBaseY
+//
+//  verticalBaseY and verticalArchHeight are randomized once at initialization
+//  (constrained so the moon remains fully visible and above buildings).
 //
 // Phase behavior:
-// - If phaseOverrideEnabled == true, the override slider value (0.0 -> 1.0) maps
-//   to illuminated fraction via a triangular wave:
-//      p in [0,0.5]  -> illum = 2p (waxing)
-//      p in (0.5,1] -> illum = 2 - 2p (waning)
-// - If not overridden, we compute the live phase for the current instant using a
-//   synodic month period and a reference epoch.
+//  - If phaseOverrideEnabled == true, the override slider value (0.0 -> 1.0) maps
+//    to illuminated fraction via a triangular wave:
+//       p in [0,0.5]  -> illum = 2p   (waxing)
+//       p in (0.5,1]  -> illum = 2 - 2p (waning)
+//  - Otherwise we compute live phase based on a reference new‑moon epoch
+//    using the synodic month length. This is evaluated each access so the
+//    phase naturally advances over time without explicit ticking.
 struct Moon {
+    // Astronomical constants
     static let synodicMonthDays: Double = 29.530588853
 
     // Reference new moon epoch (UTC) used to compute phase angle.
@@ -34,18 +48,22 @@ struct Moon {
     // CONFIG / INITIAL STATE
     let movingLeftToRight: Bool
     let radius: Int
-    let arcAmplitude: Double
-    let arcBaseY: Double
+
+    // Vertical arch parameters (randomized once)
+    // verticalBaseY: baseline Y value at left/right ends of traversal
+    // verticalArchHeight: additional height reached at traversal midpoint (peak)
+    let verticalBaseY: Double
+    let verticalArchHeight: Double
+
+    // Total seconds for one full left->right traversal (honors config)
     let traversalSeconds: Double
+
     let screenWidth: Int
     let screenHeight: Int
 
     // Phase override settings (stored; applied dynamically each access)
     private let phaseOverrideEnabled: Bool
     private let phaseOverrideValueClamped: Double
-
-    // Motion timing
-    private let startTime: TimeInterval  // monotonic reference (TimeInterval since reference date)
 
     // Texture (static grayscale albedo map)
     let textureImage: CGImage?
@@ -62,39 +80,48 @@ struct Moon {
     ) {
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
-        self.traversalSeconds = traversalSeconds
 
-        // Always move left -> right (legacy variable logic removed for determinism).
+        // Honor traversalSeconds passed in (minimum safeguard to avoid div-by-zero)
+        self.traversalSeconds = traversalSeconds > 1.0 ? traversalSeconds : 3600.0
+
+        // Always move left -> right for deterministic simplicity (legacy random direction removed).
         self.movingLeftToRight = true
 
         self.radius = max(1, radius)
 
-        // Base Y for the traversal arc (randomized within a constrained band once at init).
+        // --- Vertical arch randomization ---
+        //
+        // We ensure the baseline stays above the tallest buildings + padding so the
+        // moon does not clip, and also leaves room for the arch peak.
+        //
+        // verticalBaseY is chosen within a band:
+        //   minimumBase = buildingMaxHeight + radius + 10
+        //   maximumBaseCandidate = minimumBase + 10% of screen height
+        //   Also must allow room for peak (verticalArchHeight) without exceeding screen.
+        //
+        // verticalArchHeight: chosen so the peak remains on-screen (radius margin).
         let minBaseUnclamped = buildingMaxHeight + self.radius + 10
         let minBase = max(minBaseUnclamped, self.radius + 10)
-        let maxBaseCandidate = minBase + Int(0.10 * Double(screenHeight))
+        let baseUpperCandidate = minBase + Int(0.10 * Double(screenHeight))
         let maxBaseAllowed = screenHeight - self.radius - 10
-        let baseUpper = min(maxBaseCandidate, maxBaseAllowed)
+        let baseUpper = min(baseUpperCandidate, maxBaseAllowed)
         let chosenBase =
             (baseUpper >= minBase)
             ? Int.random(in: minBase...baseUpper) : minBase
-        self.arcBaseY = Double(chosenBase)
+        self.verticalBaseY = Double(chosenBase)
 
-        // Arc amplitude — limited so moon stays clear of screen edges.
+        // Determine maximum possible arch height given remaining headroom.
         let verticalHeadroom =
-            Double(screenHeight - self.radius) - self.arcBaseY - 10.0
+            Double(screenHeight - self.radius) - self.verticalBaseY - 10.0
         let suggested = 0.15 * Double(screenHeight)
-        let minAmp = 20.0
-        self.arcAmplitude = min(
-            max(minAmp, suggested),
+        let minArch = 20.0
+        self.verticalArchHeight = min(
+            max(minArch, suggested),
             max(0.0, verticalHeadroom)
         )
 
         self.phaseOverrideEnabled = phaseOverrideEnabled
         self.phaseOverrideValueClamped = min(max(phaseOverrideValue, 0.0), 1.0)
-
-        // High-resolution motion start reference (use system uptime-like reference for smooth progression).
-        self.startTime = CFAbsoluteTimeGetCurrent()
 
         // Create albedo once (will be mipmapped later by Metal path).
         self.textureImage = MoonTexture.createMoonTexture(
@@ -103,7 +130,7 @@ struct Moon {
 
         let (initIllum, initWax) = currentIllumination(now: Date())
         os_log(
-            "Moon init r=%{public}d illum=%.3f waxing=%{public}@ trav=%.0fs override=%{public}@ val=%.3f",
+            "Moon init r=%{public}d illum=%.3f waxing=%{public}@ traversal=%.0fs (wall-clock modulo) override=%{public}@ val=%.3f baseY=%.1f archH=%.1f",
             log: log,
             type: .info,
             self.radius,
@@ -111,7 +138,9 @@ struct Moon {
             initWax ? "true" : "false",
             self.traversalSeconds,
             phaseOverrideEnabled ? "true" : "false",
-            phaseOverrideValueClamped
+            phaseOverrideValueClamped,
+            self.verticalBaseY,
+            self.verticalArchHeight
         )
     }
 
@@ -128,24 +157,25 @@ struct Moon {
     }
 
     // Compute the moon position at the supplied Date (or now).
+    // Traversal progress is derived from wall-clock time modulo traversalSeconds
+    // so that multiple instances stay synchronized and the moon "pops" back to
+    // the left when the cycle completes.
     func currentCenter(now: Date = Date()) -> CGPoint {
-        // Use high-resolution delta since start (seconds).
-        let t = now.timeIntervalSinceReferenceDate
-        let elapsed = t - startTime
-        let loop =
-            traversalSeconds > 0
-            ? elapsed.truncatingRemainder(dividingBy: traversalSeconds) : 0
-        let progress = traversalSeconds > 0 ? loop / traversalSeconds : 0
+        let cycleDuration = traversalSeconds > 0 ? traversalSeconds : 3600.0
+        let t = now.timeIntervalSince1970
+        let cycleElapsed = t.truncatingRemainder(dividingBy: cycleDuration)
+        let progress = cycleElapsed / cycleDuration  // 0 -> <1
 
         let usableWidth = Double(screenWidth - 2 * radius)
-        let baseX = Double(radius)
+        let leftX = Double(radius)
         let x: Double =
             movingLeftToRight
-            ? (progress * usableWidth + baseX)
-            : ((1.0 - progress) * usableWidth + baseX)
+            ? (progress * usableWidth + leftX)
+            : ((1.0 - progress) * usableWidth + leftX)
 
-        // Vertical sinusoidal arc (half sine over traversal).
-        let y = arcBaseY + arcAmplitude * sin(Double.pi * progress)
+        // Vertical half-sine arch
+        let y = verticalBaseY + verticalArchHeight * sin(Double.pi * progress)
+
         return CGPoint(x: x, y: y)
     }
 
