@@ -14,6 +14,7 @@ class SkylineCoreRenderer {
     let traceEnabled: Bool
 
     private var frameCounter: Int = 0
+    private var sprites: [SpriteInstance] = []
 
     // When true, do NOT emit the flasher sprite into the BaseLayer.
     // This prevents a moving/blinking dot from "baking" trails into the persistent base.
@@ -108,6 +109,7 @@ class SkylineCoreRenderer {
         starAccumulator = 0
         buildingLightAccumulator = 0
         frameCounter = 0
+        sprites.removeAll()
         os_log(
             "SkylineCoreRenderer: counters reset for memory release",
             log: log,
@@ -161,7 +163,7 @@ class SkylineCoreRenderer {
             )
         }
 
-        var sprites: [SpriteInstance] = []
+        sprites.removeAll(keepingCapacity: true)
         let startCount = sprites.count
         appendStars(into: &sprites, count: starSpawnCount)
         let afterStars = sprites.count

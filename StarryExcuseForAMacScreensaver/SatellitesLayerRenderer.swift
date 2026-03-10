@@ -68,6 +68,7 @@ final class SatellitesLayerRenderer {
 
     /// Active satellites.
     private var satellites: [Satellite] = []
+    private var sprites: [SpriteInstance] = []
 
     private let width: Int
     private let height: Int
@@ -160,6 +161,7 @@ final class SatellitesLayerRenderer {
     /// Convenience to fully reset, disable, and clear state.
     func resetAndDisable() {
         satellites.removeAll()
+        sprites.removeAll()
         isEnabled = false
         if debugOverlayEnabled {
             os_log(
@@ -173,6 +175,7 @@ final class SatellitesLayerRenderer {
     /// Reset satellites and timers (preserves current parameter values and enabled state).
     func reset() {
         satellites.removeAll()
+        sprites.removeAll()
         scheduleNextSpawn()
         if debugOverlayEnabled {
             os_log(
@@ -403,7 +406,7 @@ final class SatellitesLayerRenderer {
             break  // emit at most one new satellite per frame; loop kept for robustness
         }
 
-        var sprites: [SpriteInstance] = []
+        sprites.removeAll(keepingCapacity: true)
         sprites.reserveCapacity(
             satellites.count + (debugShowSpawnBounds ? 1 : 0)
         )

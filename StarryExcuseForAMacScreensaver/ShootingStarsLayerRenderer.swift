@@ -58,6 +58,7 @@ final class ShootingStarsLayerRenderer {
     private var debugShowSpawnBounds: Bool
 
     private var active: [ShootingStar] = []
+    private var sprites: [SpriteInstance] = []
     private var rng = SystemRandomNumberGenerator()
 
     // Spawn constraints
@@ -117,6 +118,7 @@ final class ShootingStarsLayerRenderer {
 
     func reset() {
         active.removeAll()
+        sprites.removeAll()
         if debugOverlayEnabled {
             os_log(
                 "ShootingStarsLayerRenderer reset: cleared active stars",
@@ -171,7 +173,7 @@ final class ShootingStarsLayerRenderer {
         active.removeAll { $0.done }
         let removed = before - active.count
 
-        var sprites: [SpriteInstance] = []
+        sprites.removeAll(keepingCapacity: true)
         for s in active {
             appendStarSprites(s, into: &sprites)
         }
