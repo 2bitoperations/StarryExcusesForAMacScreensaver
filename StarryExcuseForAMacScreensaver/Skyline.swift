@@ -29,6 +29,10 @@ class Skyline {
     let clearAfterDuration: TimeInterval
     let traceEnabled: Bool
 
+    /// For each screen-x column, the lowest y that is above all buildings (i.e. open sky).
+    /// Pre-computed at init so star sampling is O(1) instead of rejection-loop.
+    private let skyFloor: [Int]
+
     private let moon: Moon?
     let moonBrightBrightness: Double
     let moonDarkBrightness: Double
@@ -137,6 +141,17 @@ class Skyline {
 
         buildings = buildingWorkingList.sorted { a, b in a.startX < b.startX }
 
+        // Build per-column sky floor: the lowest y above all buildings at each x.
+        var floor = [Int](repeating: 0, count: max(screenXMax + 1, 1))
+        for b in buildings {
+            let topY = b.startY + b.height
+            let endX = min(b.startX + b.width, screenXMax + 1)
+            for x in b.startX..<endX where x >= 0 {
+                if topY > floor[x] { floor[x] = topY }
+            }
+        }
+        self.skyFloor = floor
+
         for b in buildings {
             os_log(
                 "created building at %{public}d, width %{public}d, height %{public}d",
@@ -173,12 +188,20 @@ class Skyline {
     }
 
     func getSingleStar() -> Point {
-        var y: Int
-        var x: Int
-        repeat {
-            y = Skyline.getWeightedRandomHeight(maxHeight: self.height)
-            x = Int.random(in: 0...self.width)
-        } while getBuildingAtPoint(screenXPos: x, screenYPos: y) != nil
+        let x = Int.random(in: 0...self.width)
+        let minY = skyFloor[min(x, skyFloor.count - 1)]
+        let range = self.height - minY
+        guard range > 0 else {
+            return Point(
+                xPos: x, yPos: self.height,
+                color: Color(
+                    red: Double.random(in: 0.0...0.5),
+                    green: Double.random(in: 0.0...0.5),
+                    blue: Double.random(in: 0.0...1)
+                ))
+        }
+        let weighted = pow(Double.random(in: 0.01...1), 2)
+        let y = minY + max(1, Int(weighted * Double(range)))
         let color = Color(
             red: Double.random(in: 0.0...0.5),
             green: Double.random(in: 0.0...0.5),

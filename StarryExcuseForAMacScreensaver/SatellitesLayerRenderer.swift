@@ -376,27 +376,17 @@ final class SatellitesLayerRenderer {
             return ([], 0.0)
         }
 
-        // Advance satellites & prune
-        var idx = 0
+        // Advance satellites & prune off-screen in a single O(n) pass
         let dtf = CGFloat(dt)
-        var removed = 0
-        while idx < satellites.count {
+        for idx in satellites.indices {
             satellites[idx].x += satellites[idx].vx * dtf
-            if satellites[idx].vx > 0
-                && satellites[idx].x - satellites[idx].size > CGFloat(width)
-            {
-                satellites.remove(at: idx)
-                removed += 1
-                continue
-            } else if satellites[idx].vx < 0
-                && satellites[idx].x + satellites[idx].size < 0
-            {
-                satellites.remove(at: idx)
-                removed += 1
-                continue
-            }
-            idx += 1
         }
+        let countBefore = satellites.count
+        satellites.removeAll(where: { sat in
+            (sat.vx > 0 && sat.x - sat.size > CGFloat(width))
+                || (sat.vx < 0 && sat.x + sat.size < 0)
+        })
+        let removed = countBefore - satellites.count
 
         // Spawning
         timeUntilNextSpawn -= dt
