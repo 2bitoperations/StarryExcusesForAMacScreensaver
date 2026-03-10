@@ -803,11 +803,12 @@ final class StarryEngine {
 
         var moonParams: MoonParams?
         if let moon = skyline?.getMoon() {
-            let c = moon.currentCenter()
-            let centerPx = SIMD2<Float>(Float(c.x), Float(c.y))
+            let now = Date()
+            let state = moon.frameState(now: now)
+            let centerPx = SIMD2<Float>(Float(state.center.x), Float(state.center.y))
             let r = Float(moon.radius)
-            let f = Float(moon.illuminatedFraction)  // illuminated fraction
-            let waxSign: Float = moon.waxing ? 1.0 : -1.0
+            let f = Float(state.illuminatedFraction)
+            let waxSign: Float = state.waxing ? 1.0 : -1.0
             moonParams = MoonParams(
                 centerPx: centerPx,
                 radiusPx: r,
@@ -972,11 +973,12 @@ final class StarryEngine {
 
         var moonParams: MoonParams?
         if let moon = skyline?.getMoon() {
-            let c = moon.currentCenter()
-            let centerPx = SIMD2<Float>(Float(c.x), Float(c.y))
+            let now = Date()
+            let state = moon.frameState(now: now)
+            let centerPx = SIMD2<Float>(Float(state.center.x), Float(state.center.y))
             let r = Float(moon.radius)
-            let f = Float(moon.illuminatedFraction)
-            let waxSign: Float = moon.waxing ? 1.0 : -1.0
+            let f = Float(state.illuminatedFraction)
+            let waxSign: Float = state.waxing ? 1.0 : -1.0
             moonParams = MoonParams(
                 centerPx: centerPx,
                 radiusPx: r,

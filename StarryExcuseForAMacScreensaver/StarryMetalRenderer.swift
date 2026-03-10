@@ -53,6 +53,7 @@ final class StarryMetalRenderer {
         "StarryDiagnostics"
     )
     private static let clearNotification = Notification.Name("StarryClear")
+    private static let iso8601Formatter = ISO8601DateFormatter()
 
     static func postCompositeMode(_ mode: CompositeDebugMode) {
         NotificationCenter.default.post(
@@ -2105,7 +2106,7 @@ final class StarryMetalRenderer {
         let shootSnap = snapshot(layerTex.shooting)
         let shootScratchSnap = snapshot(layerTex.shootingScratch)
         let frame = frameIndex
-        let stamp = ISO8601DateFormatter().string(from: Date())
+        let stamp = Self.iso8601Formatter.string(from: Date())
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop", isDirectory: true)
             .appendingPathComponent(

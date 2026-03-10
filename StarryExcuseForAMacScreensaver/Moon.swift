@@ -179,6 +179,15 @@ struct Moon {
         return CGPoint(x: x, y: y)
     }
 
+    // Compute position, illumination, and waxing state for a single Date.
+    // Use this on the per-frame hot path to avoid redundant Date() allocations
+    // and duplicate phase calculations.
+    func frameState(now: Date) -> (center: CGPoint, illuminatedFraction: Double, waxing: Bool) {
+        let center = currentCenter(now: now)
+        let (f, w) = currentIllumination(now: now)
+        return (center, f, w)
+    }
+
     // MARK: - Phase Computation
 
     private static func julianDay(from date: Date) -> Double {
