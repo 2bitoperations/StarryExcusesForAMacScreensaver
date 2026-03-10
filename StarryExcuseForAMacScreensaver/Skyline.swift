@@ -190,8 +190,8 @@ class Skyline {
     func getSingleStar() -> Point {
         let x = Int.random(in: 0...self.width)
         let minY = skyFloor[min(x, skyFloor.count - 1)]
-        let range = self.height - minY
-        guard range > 0 else {
+        let h = Double(self.height)
+        guard h > 0 else {
             return Point(
                 xPos: x, yPos: self.height,
                 color: Color(
@@ -200,8 +200,9 @@ class Skyline {
                     blue: Double.random(in: 0.0...1)
                 ))
         }
-        let weighted = pow(Double.random(in: 0.01...1), 2)
-        let y = minY + max(1, Int(weighted * Double(range)))
+        let tMin = sqrt(Double(minY) / h)
+        let t = Double.random(in: tMin...1.0)
+        let y = max(minY, Int(t * t * h))
         let color = Color(
             red: Double.random(in: 0.0...0.5),
             green: Double.random(in: 0.0...0.5),
