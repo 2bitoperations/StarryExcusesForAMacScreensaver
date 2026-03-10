@@ -50,6 +50,9 @@ public struct MoonParams {
     public var brightBrightness: Float  // multiplier for lit side
     public var darkBrightness: Float  // multiplier for dark side
     public var waxingSign: Float  // +1 (waxing), -1 (waning)
+    public var terminatorMode: Int  // 0 = hard, 1 = smooth, 2 = banded
+    public var terminatorWidth: Float  // half-width of smooth transition zone
+    public var terminatorBands: Int  // number of discrete brightness bands (mode 2)
 
     public init(
         centerPx: SIMD2<Float>,
@@ -57,7 +60,10 @@ public struct MoonParams {
         phaseFraction: Float,
         brightBrightness: Float,
         darkBrightness: Float,
-        waxingSign: Float
+        waxingSign: Float,
+        terminatorMode: Int = 0,
+        terminatorWidth: Float = 0.06,
+        terminatorBands: Int = 4
     ) {
         self.centerPx = centerPx
         self.radiusPx = radiusPx
@@ -65,6 +71,9 @@ public struct MoonParams {
         self.brightBrightness = brightBrightness
         self.darkBrightness = darkBrightness
         self.waxingSign = waxingSign
+        self.terminatorMode = terminatorMode
+        self.terminatorWidth = terminatorWidth
+        self.terminatorBands = terminatorBands
     }
 }
 

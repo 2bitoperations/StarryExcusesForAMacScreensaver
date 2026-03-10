@@ -152,11 +152,16 @@ fragment float4 SpriteFragment(SpriteVarying in [[stage_in]]) {
 // Moon shading uniforms:
 // params0: (radiusPx, illuminatedFraction, brightBrightness, darkBrightness)
 // params1: (debugShowMaskFlag, waxingSign(+1 / -1), unused, unused)
+// params2: (terminatorMode, terminatorWidth, terminatorBands, unused)
+//   terminatorMode: 0 = hard step (default), 1 = smooth, 2 = banded
+//   terminatorWidth: half-width of the smooth transition zone (used by modes 1 & 2)
+//   terminatorBands: number of discrete brightness bands (used by mode 2)
 struct MoonUniforms {
     float2 viewportSize;
     float2 centerPx;
     float4 params0;
     float4 params1;
+    float4 params2;
 };
 
 struct MoonVarying {
@@ -216,7 +221,28 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
     float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
 
     float ndotl = dot(n, l);
-    float litMask = ndotl >= 0.0 ? 1.0 : 0.0;
+
+    // Terminator mode selection
+    int termMode = int(uni.params2.x);
+    float termWidth = uni.params2.y;
+    float termBands = uni.params2.z;
+
+    float litMask;
+    if (termMode == 1) {
+        // Smooth: gentle gradient across the terminator
+        litMask = smoothstep(-termWidth, termWidth, ndotl);
+    } else if (termMode == 2) {
+        // Banded: quantized brightness steps with softened band edges
+        float smooth = smoothstep(-termWidth, termWidth, ndotl);
+        float raw = smooth * termBands;
+        float f = fract(raw);
+        float edge = clamp(termWidth * termBands, 0.01, 0.5);
+        float softEdge = smoothstep(0.0, edge, f);
+        litMask = clamp((floor(raw) + softEdge) / (termBands - 1.0), 0.0, 1.0);
+    } else {
+        // Hard (default): original binary step
+        litMask = ndotl >= 0.0 ? 1.0 : 0.0;
+    }
 
     float debugShowMask = uni.params1.x;
 

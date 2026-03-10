@@ -552,6 +552,9 @@ class StarryExcuseForAView: ScreenSaverView {
             moonDarkBrightness: defaultsManager.moonDarkBrightness,
             moonPhaseOverrideEnabled: defaultsManager.moonPhaseOverrideEnabled,
             moonPhaseOverrideValue: defaultsManager.moonPhaseOverrideValue,
+            moonTerminatorMode: defaultsManager.moonTerminatorMode,
+            moonTerminatorWidth: defaultsManager.moonTerminatorWidth,
+            moonTerminatorBands: defaultsManager.moonTerminatorBands,
             traceEnabled: traceEnabled,
             showLightAreaTextureFillMask: defaultsManager
                 .showLightAreaTextureFillMask,

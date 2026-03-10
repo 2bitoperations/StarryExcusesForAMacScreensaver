@@ -89,8 +89,12 @@ The result: bright points that leave smoothly fading trails behind them. ✨
 The moon gets special treatment with its own shader pipeline:
 
 1. **Albedo texture**: Generated procedurally by `MoonTexture.swift` — a cratered, slightly noisy lunar surface. Uploaded once via a staging→private blit with mipmap generation.
-2. **Moon shader**: A dedicated vertex/fragment shader pair that receives `MoonUniforms` — position, radius, phase angle, brightness, and albedo texture. The fragment shader uses the phase to illuminate the correct portion of the disk.
-3. **Drawn last** in the composite pass so it composites correctly over the star field.
+2. **Moon shader**: A dedicated vertex/fragment shader pair that receives `MoonUniforms` — position, radius, phase angle, brightness, albedo texture, and terminator parameters (via `params2`). The fragment shader uses the phase to illuminate the correct portion of the disk.
+3. **Terminator modes**: The transition between the lit and dark sides of the moon supports three rendering modes, controlled by `params2.x`:
+   - **Mode 0 — Hard** (default): Binary step at the terminator line. Classic retro look.
+   - **Mode 1 — Smooth**: `smoothstep` transition with configurable width (`params2.y`). Softer, more natural edge.
+   - **Mode 2 — Banded**: Quantized brightness bands with soft transitions. Configurable band count (`params2.z`) and width (`params2.y`). Preserves the stylized 8-bit aesthetic while softening the terminator.
+4. **Drawn last** in the composite pass so it composites correctly over the star field.
 
 ## Headless Rendering
 

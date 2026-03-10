@@ -36,6 +36,14 @@ class StarryDefaultsManager {
     static let moonTraversalMinutesMin: Int = 1
     static let moonTraversalMinutesMax: Int = 720
 
+    // Moon terminator
+    static let moonTerminatorModeMin: Int = 0
+    static let moonTerminatorModeMax: Int = 2
+    static let moonTerminatorWidthMin: Double = 0.01
+    static let moonTerminatorWidthMax: Double = 0.30
+    static let moonTerminatorBandsMin: Int = 2
+    static let moonTerminatorBandsMax: Int = 16
+
     // Shooting Stars
     static let shootingStarsAvgSecondsMin: Double = 0.5
     static let shootingStarsAvgSecondsMax: Double = 600.0
@@ -80,6 +88,9 @@ class StarryDefaultsManager {
     private let defaultMoonDarkBrightness = 0.15
     private let defaultMoonPhaseOverrideEnabled = false
     private let defaultMoonPhaseOverrideValue = 0.0
+    private let defaultMoonTerminatorMode = 0
+    private let defaultMoonTerminatorWidth = 0.06
+    private let defaultMoonTerminatorBands = 4
     private let defaultShowLightAreaTextureFillMask = false
     private let defaultDebugOverlayEnabled = false
 
@@ -377,6 +388,63 @@ class StarryDefaultsManager {
                 min: Self.moonPhaseValueMin,
                 max: Self.moonPhaseValueMax,
                 defaultValue: defaultMoonPhaseOverrideValue
+            )
+        }
+    }
+
+    var moonTerminatorMode: Int {
+        set {
+            setClampedInt(
+                newValue,
+                key: "MoonTerminatorMode",
+                min: Self.moonTerminatorModeMin,
+                max: Self.moonTerminatorModeMax
+            )
+        }
+        get {
+            validatedInt(
+                safeInt("MoonTerminatorMode"),
+                min: Self.moonTerminatorModeMin,
+                max: Self.moonTerminatorModeMax,
+                defaultValue: defaultMoonTerminatorMode
+            )
+        }
+    }
+
+    var moonTerminatorWidth: Double {
+        set {
+            setClampedDouble(
+                newValue,
+                key: "MoonTerminatorWidth",
+                min: Self.moonTerminatorWidthMin,
+                max: Self.moonTerminatorWidthMax
+            )
+        }
+        get {
+            validatedDouble(
+                safeDouble("MoonTerminatorWidth"),
+                min: Self.moonTerminatorWidthMin,
+                max: Self.moonTerminatorWidthMax,
+                defaultValue: defaultMoonTerminatorWidth
+            )
+        }
+    }
+
+    var moonTerminatorBands: Int {
+        set {
+            setClampedInt(
+                newValue,
+                key: "MoonTerminatorBands",
+                min: Self.moonTerminatorBandsMin,
+                max: Self.moonTerminatorBandsMax
+            )
+        }
+        get {
+            validatedInt(
+                safeInt("MoonTerminatorBands"),
+                min: Self.moonTerminatorBandsMin,
+                max: Self.moonTerminatorBandsMax,
+                defaultValue: defaultMoonTerminatorBands
             )
         }
     }

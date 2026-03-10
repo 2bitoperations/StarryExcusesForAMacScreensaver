@@ -22,6 +22,7 @@ final class StarryMetalRenderer {
         var centerPx: SIMD2<Float>
         var params0: SIMD4<Float>  // x=radius, y=illuminatedFraction, z=bright, w=dark
         var params1: SIMD4<Float>  // x=debugMaskFlag, y=waxingSign (+1 / -1), z/w unused
+        var params2: SIMD4<Float>  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=unused
     }
 
     private enum FragmentBufferIndex {
@@ -1368,6 +1369,12 @@ final class StarryMetalRenderer {
                     drawData.showLightAreaTextureFillMask ? 1.0 : 0.0,
                     moon.waxingSign,
                     0,
+                    0
+                ),
+                params2: SIMD4<Float>(
+                    Float(moon.terminatorMode),
+                    moon.terminatorWidth,
+                    Float(moon.terminatorBands),
                     0
                 )
             )

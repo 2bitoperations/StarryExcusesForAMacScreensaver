@@ -19,6 +19,9 @@ struct StarryRuntimeConfig {
     var moonDarkBrightness: Double
     var moonPhaseOverrideEnabled: Bool
     var moonPhaseOverrideValue: Double
+    var moonTerminatorMode: Int = 0
+    var moonTerminatorWidth: Double = 0.06
+    var moonTerminatorBands: Int = 4
     var traceEnabled: Bool
     var showLightAreaTextureFillMask: Bool
 
@@ -808,7 +811,10 @@ final class StarryEngine {
                 phaseFraction: f,
                 brightBrightness: Float(config.moonBrightBrightness),
                 darkBrightness: Float(config.moonDarkBrightness),
-                waxingSign: waxSign
+                waxingSign: waxSign,
+                terminatorMode: config.moonTerminatorMode,
+                terminatorWidth: Float(config.moonTerminatorWidth),
+                terminatorBands: config.moonTerminatorBands
             )
         }
 
@@ -972,7 +978,10 @@ final class StarryEngine {
                 phaseFraction: f,
                 brightBrightness: Float(config.moonBrightBrightness),
                 darkBrightness: Float(config.moonDarkBrightness),
-                waxingSign: waxSign
+                waxingSign: waxSign,
+                terminatorMode: config.moonTerminatorMode,
+                terminatorWidth: Float(config.moonTerminatorWidth),
+                terminatorBands: config.moonTerminatorBands
             )
         }
 

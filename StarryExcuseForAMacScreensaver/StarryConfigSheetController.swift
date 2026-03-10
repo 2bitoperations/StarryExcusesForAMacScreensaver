@@ -53,6 +53,13 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     // Debug toggle (moon mask)
     var showLightAreaTextureFillMaskCheckbox: NSSwitch?
 
+    // Moon terminator controls
+    var moonTerminatorModePopup: NSPopUpButton?
+    var moonTerminatorWidthSlider: NSSlider?
+    var moonTerminatorWidthPreview: NSTextField?
+    var moonTerminatorBandsSlider: NSSlider?
+    var moonTerminatorBandsPreview: NSTextField?
+
     // Shooting Stars controls
     var shootingStarsEnabledCheckbox: NSSwitch!
     var shootingStarsAvgSecondsField: NSTextField!
@@ -114,6 +121,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private var lastDarkBrightness: Double = 0
     private var lastMoonPhaseOverrideEnabled: Bool = false
     private var lastMoonPhaseOverrideValue: Double = 0.0
+    private var lastMoonTerminatorMode: Int = 0
+    private var lastMoonTerminatorWidth: Double = 0.06
+    private var lastMoonTerminatorBands: Int = 4
     private var lastShowLightAreaTextureFillMask: Bool = false
     private var lastDebugOverlayEnabled: Bool = false
 
@@ -286,6 +296,24 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 defaultsManager.showLightAreaTextureFillMask ? .on : .off
         }
 
+        if let popup = moonTerminatorModePopup {
+            popup.selectItem(at: defaultsManager.moonTerminatorMode)
+        }
+        if let widthSlider = moonTerminatorWidthSlider {
+            widthSlider.doubleValue = defaultsManager.moonTerminatorWidth
+            moonTerminatorWidthPreview?.stringValue = String(
+                format: "%.3f",
+                widthSlider.doubleValue
+            )
+        }
+        if let bandsSlider = moonTerminatorBandsSlider {
+            bandsSlider.doubleValue = Double(defaultsManager.moonTerminatorBands)
+            moonTerminatorBandsPreview?.stringValue = String(
+                format: "%.0f",
+                bandsSlider.doubleValue
+            )
+        }
+
         // Shooting stars
         shootingStarsEnabledCheckbox.state =
             defaultsManager.shootingStarsEnabled ? .on : .off
@@ -401,6 +429,15 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         lastShowLightAreaTextureFillMask =
             showLightAreaTextureFillMaskCheckbox?.state == .on
             ? true : defaultsManager.showLightAreaTextureFillMask
+        lastMoonTerminatorMode =
+            moonTerminatorModePopup?.indexOfSelectedItem
+            ?? defaultsManager.moonTerminatorMode
+        lastMoonTerminatorWidth =
+            moonTerminatorWidthSlider?.doubleValue
+            ?? defaultsManager.moonTerminatorWidth
+        lastMoonTerminatorBands =
+            Int(moonTerminatorBandsSlider?.doubleValue
+            ?? Double(defaultsManager.moonTerminatorBands))
         lastShootingStarsEnabled = (shootingStarsEnabledCheckbox.state == .on)
         lastShootingStarsAvgSeconds = shootingStarsAvgSecondsField.doubleValue
         lastShootingStarsDirectionMode =
@@ -444,6 +481,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
 
         updatePreviewLabels()
         updatePhaseOverrideUIEnabled()
+        updateTerminatorUIEnabled()
         updateShootingStarsUIEnabled()
         updateSatellitesUIEnabled()
 
@@ -801,6 +839,85 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             equalTo: darkSliderRow.trailingAnchor
         ).isActive = true
 
+        let terminatorModeRow = NSStackView()
+        terminatorModeRow.orientation = .horizontal
+        terminatorModeRow.alignment = .centerY
+        terminatorModeRow.spacing = 4
+        terminatorModeRow.translatesAutoresizingMaskIntoConstraints = false
+        let terminatorModeLabel = makeLabel("Terminator mode")
+        let terminatorModePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        terminatorModePopup.translatesAutoresizingMaskIntoConstraints = false
+        terminatorModePopup.addItems(withTitles: ["Hard", "Smooth", "Banded"])
+        terminatorModePopup.target = self
+        terminatorModePopup.action = #selector(moonTerminatorModeChanged(_:))
+        self.moonTerminatorModePopup = terminatorModePopup
+        terminatorModeRow.addArrangedSubview(terminatorModeLabel)
+        terminatorModeRow.addArrangedSubview(terminatorModePopup)
+
+        let termWidthRow = NSStackView()
+        termWidthRow.orientation = .horizontal
+        termWidthRow.alignment = .firstBaseline
+        termWidthRow.spacing = 4
+        termWidthRow.translatesAutoresizingMaskIntoConstraints = false
+        let termWidthLabel = makeLabel("Terminator width")
+        let termWidthPreview = makeSmallLabel("0.060")
+        self.moonTerminatorWidthPreview = termWidthPreview
+        termWidthRow.addArrangedSubview(termWidthLabel)
+        termWidthRow.addArrangedSubview(termWidthPreview)
+        let termWidthSlider = NSSlider(
+            value: defaultsManager.moonTerminatorWidth,
+            minValue: StarryDefaultsManager.moonTerminatorWidthMin,
+            maxValue: StarryDefaultsManager.moonTerminatorWidthMax,
+            target: self,
+            action: #selector(moonTerminatorSliderChanged(_:))
+        )
+        termWidthSlider.translatesAutoresizingMaskIntoConstraints = false
+        termWidthSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        self.moonTerminatorWidthSlider = termWidthSlider
+        let termWidthSliderRow = NSStackView(views: [termWidthSlider])
+        termWidthSliderRow.orientation = .horizontal
+        termWidthSliderRow.alignment = .centerY
+        termWidthSliderRow.spacing = 4
+        termWidthSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        termWidthSlider.leadingAnchor.constraint(
+            equalTo: termWidthSliderRow.leadingAnchor
+        ).isActive = true
+        termWidthSlider.trailingAnchor.constraint(
+            equalTo: termWidthSliderRow.trailingAnchor
+        ).isActive = true
+
+        let termBandsRow = NSStackView()
+        termBandsRow.orientation = .horizontal
+        termBandsRow.alignment = .firstBaseline
+        termBandsRow.spacing = 4
+        termBandsRow.translatesAutoresizingMaskIntoConstraints = false
+        let termBandsLabel = makeLabel("Terminator bands")
+        let termBandsPreview = makeSmallLabel("4")
+        self.moonTerminatorBandsPreview = termBandsPreview
+        termBandsRow.addArrangedSubview(termBandsLabel)
+        termBandsRow.addArrangedSubview(termBandsPreview)
+        let termBandsSlider = NSSlider(
+            value: Double(defaultsManager.moonTerminatorBands),
+            minValue: Double(StarryDefaultsManager.moonTerminatorBandsMin),
+            maxValue: Double(StarryDefaultsManager.moonTerminatorBandsMax),
+            target: self,
+            action: #selector(moonTerminatorSliderChanged(_:))
+        )
+        termBandsSlider.translatesAutoresizingMaskIntoConstraints = false
+        termBandsSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        self.moonTerminatorBandsSlider = termBandsSlider
+        let termBandsSliderRow = NSStackView(views: [termBandsSlider])
+        termBandsSliderRow.orientation = .horizontal
+        termBandsSliderRow.alignment = .centerY
+        termBandsSliderRow.spacing = 4
+        termBandsSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        termBandsSlider.leadingAnchor.constraint(
+            equalTo: termBandsSliderRow.leadingAnchor
+        ).isActive = true
+        termBandsSlider.trailingAnchor.constraint(
+            equalTo: termBandsSliderRow.trailingAnchor
+        ).isActive = true
+
         // Phase override enable
         let phaseToggleRow = NSStackView()
         phaseToggleRow.orientation = .horizontal
@@ -871,6 +988,11 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         moonStack.addArrangedSubview(brightSliderRow)
         moonStack.addArrangedSubview(darkRow)
         moonStack.addArrangedSubview(darkSliderRow)
+        moonStack.addArrangedSubview(terminatorModeRow)
+        moonStack.addArrangedSubview(termWidthRow)
+        moonStack.addArrangedSubview(termWidthSliderRow)
+        moonStack.addArrangedSubview(termBandsRow)
+        moonStack.addArrangedSubview(termBandsSliderRow)
         moonStack.addArrangedSubview(phaseToggleRow)
         moonStack.addArrangedSubview(phaseRow)
         moonStack.addArrangedSubview(phaseSliderRow)
@@ -884,6 +1006,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         // Enforce full-width for moon slider rows
         for row in [
             travSliderRow, moonSliderRow, brightSliderRow, darkSliderRow,
+            termWidthSliderRow, termBandsSliderRow,
             phaseSliderRow,
         ] {
             row.leadingAnchor.constraint(equalTo: moonStack.leadingAnchor)
@@ -1692,6 +1815,15 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         showLightAreaTextureFillMaskCheckbox?.setAccessibilityLabel(
             "Show moon light-area texture fill mask"
         )
+        moonTerminatorModePopup?.setAccessibilityLabel(
+            "Moon terminator mode"
+        )
+        moonTerminatorWidthSlider?.setAccessibilityLabel(
+            "Moon terminator width"
+        )
+        moonTerminatorBandsSlider?.setAccessibilityLabel(
+            "Moon terminator bands"
+        )
         shootingStarsEnabledCheckbox.setAccessibilityLabel(
             "Enable shooting stars"
         )
@@ -2056,6 +2188,62 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 newValue: newVal ? "true" : "false"
             )
             lastShowLightAreaTextureFillMask = newVal
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
+    @IBAction func moonTerminatorModeChanged(_ sender: Any) {
+        guard let popup = moonTerminatorModePopup else { return }
+        let mode = popup.indexOfSelectedItem
+        if mode != lastMoonTerminatorMode {
+            logChange(
+                changedKey: "moonTerminatorMode",
+                oldValue: "\(lastMoonTerminatorMode)",
+                newValue: "\(mode)"
+            )
+            lastMoonTerminatorMode = mode
+        }
+        updateTerminatorUIEnabled()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
+    @IBAction func moonTerminatorSliderChanged(_ sender: Any) {
+        if let widthSlider = moonTerminatorWidthSlider,
+            sender as AnyObject === widthSlider
+        {
+            let val = widthSlider.doubleValue
+            moonTerminatorWidthPreview?.stringValue = String(
+                format: "%.3f",
+                val
+            )
+            if val != lastMoonTerminatorWidth {
+                logChange(
+                    changedKey: "moonTerminatorWidth",
+                    oldValue: format(lastMoonTerminatorWidth),
+                    newValue: format(val)
+                )
+                lastMoonTerminatorWidth = val
+            }
+        }
+        if let bandsSlider = moonTerminatorBandsSlider,
+            sender as AnyObject === bandsSlider
+        {
+            let val = Int(bandsSlider.doubleValue.rounded())
+            bandsSlider.doubleValue = Double(val)
+            moonTerminatorBandsPreview?.stringValue = String(
+                format: "%.0f",
+                bandsSlider.doubleValue
+            )
+            if val != lastMoonTerminatorBands {
+                logChange(
+                    changedKey: "moonTerminatorBands",
+                    oldValue: "\(lastMoonTerminatorBands)",
+                    newValue: "\(val)"
+                )
+                lastMoonTerminatorBands = val
+            }
         }
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
@@ -2436,6 +2624,13 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 ? true : lastMoonPhaseOverrideEnabled,
             moonPhaseOverrideValue: moonPhaseSlider?.doubleValue
                 ?? lastMoonPhaseOverrideValue,
+            moonTerminatorMode: moonTerminatorModePopup?.indexOfSelectedItem
+                ?? lastMoonTerminatorMode,
+            moonTerminatorWidth: moonTerminatorWidthSlider?.doubleValue
+                ?? lastMoonTerminatorWidth,
+            moonTerminatorBands: Int(
+                moonTerminatorBandsSlider?.doubleValue
+                ?? Double(lastMoonTerminatorBands)),
             traceEnabled: false,
             showLightAreaTextureFillMask: showLightAreaTextureFillMaskCheckbox?
                 .state == .on ? true : lastShowLightAreaTextureFillMask,
@@ -2529,6 +2724,16 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         if let phaseSlider = moonPhaseSlider, let phasePrev = moonPhasePreview {
             phasePrev.stringValue = formatPhase(phaseSlider.doubleValue)
         }
+        if let widthSlider = moonTerminatorWidthSlider,
+            let lbl = moonTerminatorWidthPreview
+        {
+            lbl.stringValue = String(format: "%.3f", widthSlider.doubleValue)
+        }
+        if let bandsSlider = moonTerminatorBandsSlider,
+            let lbl = moonTerminatorBandsPreview
+        {
+            lbl.stringValue = String(format: "%.0f", bandsSlider.doubleValue)
+        }
         if let len = shootingStarsLengthSlider,
             let lbl = shootingStarsLengthPreview
         {
@@ -2587,6 +2792,20 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             mp.isEnabled = enabled
             mp.alphaValue = enabled ? 1.0 : 0.5
         }
+    }
+
+    private func updateTerminatorUIEnabled() {
+        let mode = moonTerminatorModePopup?.indexOfSelectedItem ?? 0
+        let widthEnabled = mode != 0
+        let bandsEnabled = mode == 2
+        let widthAlpha: CGFloat = widthEnabled ? 1.0 : 0.4
+        let bandsAlpha: CGFloat = bandsEnabled ? 1.0 : 0.4
+        moonTerminatorWidthSlider?.isEnabled = widthEnabled
+        moonTerminatorWidthSlider?.alphaValue = widthAlpha
+        moonTerminatorWidthPreview?.alphaValue = widthAlpha
+        moonTerminatorBandsSlider?.isEnabled = bandsEnabled
+        moonTerminatorBandsSlider?.alphaValue = bandsAlpha
+        moonTerminatorBandsPreview?.alphaValue = bandsAlpha
     }
 
     private func updateShootingStarsUIEnabled() {
@@ -2675,6 +2894,17 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         }
         if let maskCB = showLightAreaTextureFillMaskCheckbox {
             defaultsManager.showLightAreaTextureFillMask = (maskCB.state == .on)
+        }
+
+        if let popup = moonTerminatorModePopup {
+            defaultsManager.moonTerminatorMode = popup.indexOfSelectedItem
+        }
+        if let widthSlider = moonTerminatorWidthSlider {
+            defaultsManager.moonTerminatorWidth = widthSlider.doubleValue
+        }
+        if let bandsSlider = moonTerminatorBandsSlider {
+            defaultsManager.moonTerminatorBands =
+                Int(bandsSlider.doubleValue.rounded())
         }
 
         // Shooting stars
@@ -2811,6 +3041,15 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         )
         parts.append(
             "showLightAreaMask=\(showLightAreaTextureFillMaskCheckbox?.state == .on ? "true" : "false")"
+        )
+        parts.append(
+            "moonTerminatorMode=\(lastMoonTerminatorMode)"
+        )
+        parts.append(
+            "moonTerminatorWidth=\(format(lastMoonTerminatorWidth))"
+        )
+        parts.append(
+            "moonTerminatorBands=\(lastMoonTerminatorBands)"
         )
         parts.append(
             "shootingStarsEnabled=\(shootingStarsEnabledCheckbox.state == .on)"
