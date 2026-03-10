@@ -29,6 +29,14 @@ class StarryExcuseForAView: ScreenSaverView {
     private var frameIndex: UInt64 = 0
     private var stoppedRunning: Bool = false  // Tracks whether stopAnimation has been invoked (legacy path)
 
+    var showBuildOverlay: Bool = false
+
+    /// Override the defaults domain used by this view. Must be called before
+    /// `startAnimation()` so the engine picks up the correct settings.
+    func useDefaultsModule(_ identifier: String) {
+        defaultsManager = StarryDefaultsManager(moduleIdentifier: identifier)
+    }
+
     // Inferred visibility / availability state
     private var rendererDrawableAvailable: Bool = true
     private var lastVisibilityState: Bool = true
@@ -582,7 +590,8 @@ class StarryExcuseForAView: ScreenSaverView {
             buildingLightsSpawnPerSecFractionOfMax: defaultsManager
                 .buildingLightsSpawnFractionOfMax,
             disableFlasherOnBase: false,
-            starSpawnPerSecFractionOfMax: defaultsManager.starSpawnFractionOfMax
+            starSpawnPerSecFractionOfMax: defaultsManager.starSpawnFractionOfMax,
+            showBuildInfo: showBuildOverlay
         )
     }
 

@@ -22,6 +22,14 @@ final class DebugLayerRenderer {
     private var lastOverlayDrawnFrame: UInt64 = 0
     private var lastOverlayLogTime: CFTimeInterval = 0
 
+    // Build info overlay state (static text, rendered once)
+    private var buildInfoTexture: MTLTexture?
+    private var buildInfoQuadVertexBuffer: MTLBuffer?
+    private var buildInfoWidthPx: Int = 0
+    private var buildInfoHeightPx: Int = 0
+    private var buildInfoRendered: Bool = false
+    private var buildInfoLastScreenSize: CGSize = .zero
+
     init(device: MTLDevice, log: OSLog) {
         self.device = device
         self.log = log
@@ -30,8 +38,10 @@ final class DebugLayerRenderer {
     var hasOverlayTexture: Bool { overlayTexture != nil }
 
     func approxTextureBytes() -> Int {
-        guard let tex = overlayTexture else { return 0 }
-        return tex.width * tex.height * 4
+        var total = 0
+        if let tex = overlayTexture { total += tex.width * tex.height * 4 }
+        if let tex = buildInfoTexture { total += tex.width * tex.height * 4 }
+        return total
     }
 
     func releaseResources() {
@@ -41,6 +51,12 @@ final class DebugLayerRenderer {
         overlayWidthPx = 0
         overlayHeightPx = 0
         lastOverlayDrawnFrame = 0
+        buildInfoTexture = nil
+        buildInfoQuadVertexBuffer = nil
+        buildInfoRendered = false
+        buildInfoWidthPx = 0
+        buildInfoHeightPx = 0
+        buildInfoLastScreenSize = .zero
     }
 
     func update(drawData: StarryDrawData, effectiveEnabled: Bool) {
@@ -259,6 +275,180 @@ final class DebugLayerRenderer {
             )
             lastOverlayLogTime = now
         }
+    }
+
+    func updateBuildInfo(text: String, screenSize: CGSize) {
+        guard !text.isEmpty else { return }
+        let screenSizeChanged = screenSize != buildInfoLastScreenSize
+        if buildInfoRendered && !screenSizeChanged { return }
+        buildInfoLastScreenSize = screenSize
+
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let green = NSColor(
+            calibratedRed: 0.0,
+            green: 1.0,
+            blue: 0.0,
+            alpha: 1.0
+        )
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: green,
+        ]
+        let textSize = (text as NSString).size(withAttributes: attributes)
+        let padH: CGFloat = 6
+        let padV: CGFloat = 3
+        let texWidth = Int(ceil(textSize.width + padH * 2))
+        let texHeight = Int(ceil(textSize.height + padV * 2))
+
+        let maxW = 1024
+        let maxH = 128
+        buildInfoWidthPx = min(texWidth, maxW)
+        buildInfoHeightPx = min(texHeight, maxH)
+        let rowBytes = buildInfoWidthPx * 4
+        var bytes = [UInt8](repeating: 0, count: rowBytes * buildInfoHeightPx)
+
+        if let ctx = CGContext(
+            data: &bytes,
+            width: buildInfoWidthPx,
+            height: buildInfoHeightPx,
+            bitsPerComponent: 8,
+            bytesPerRow: rowBytes,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                | CGBitmapInfo.byteOrder32Little.rawValue
+        ) {
+            ctx.clear(
+                CGRect(
+                    x: 0,
+                    y: 0,
+                    width: buildInfoWidthPx,
+                    height: buildInfoHeightPx
+                )
+            )
+            ctx.setFillColor(
+                NSColor(
+                    calibratedRed: 0.0,
+                    green: 0.05,
+                    blue: 0.0,
+                    alpha: 0.55
+                ).cgColor
+            )
+            ctx.fill(
+                CGRect(
+                    x: 0,
+                    y: 0,
+                    width: buildInfoWidthPx,
+                    height: buildInfoHeightPx
+                )
+            )
+
+            let nsGC = NSGraphicsContext(cgContext: ctx, flipped: false)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = nsGC
+            (text as NSString).draw(
+                at: CGPoint(x: padH, y: padV),
+                withAttributes: attributes
+            )
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
+        if buildInfoTexture == nil || buildInfoTexture!.width != buildInfoWidthPx
+            || buildInfoTexture!.height != buildInfoHeightPx
+        {
+            let desc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .bgra8Unorm,
+                width: buildInfoWidthPx,
+                height: buildInfoHeightPx,
+                mipmapped: false
+            )
+            desc.usage = [.shaderRead]
+            desc.storageMode = .shared
+            buildInfoTexture = device.makeTexture(descriptor: desc)
+            buildInfoTexture?.label = "BuildInfoOverlay"
+        }
+        if let tex = buildInfoTexture {
+            let region = MTLRegionMake2D(0, 0, buildInfoWidthPx, buildInfoHeightPx)
+            tex.replace(
+                region: region,
+                mipmapLevel: 0,
+                withBytes: bytes,
+                bytesPerRow: rowBytes
+            )
+        }
+
+        buildBuildInfoQuad(screenSize: screenSize)
+        buildInfoRendered = true
+    }
+
+    private func buildBuildInfoQuad(screenSize: CGSize) {
+        guard buildInfoWidthPx > 0, buildInfoHeightPx > 0 else { return }
+        let margin: CGFloat = 8
+        let W = screenSize.width
+        let H = screenSize.height
+        guard W > 0 && H > 0 else { return }
+
+        let x1: CGFloat = W - margin
+        let x0: CGFloat = max(x1 - CGFloat(buildInfoWidthPx), 0)
+        let y1: CGFloat = H - margin
+        let y0: CGFloat = max(y1 - CGFloat(buildInfoHeightPx), 0)
+
+        func toClipX(_ x: CGFloat) -> Float {
+            return Float((x / W) * 2.0 - 1.0)
+        }
+        func toClipY(_ y: CGFloat) -> Float {
+            return Float(1.0 - (y / H) * 2.0)
+        }
+
+        let tl = SIMD2<Float>(toClipX(x0), toClipY(y0))
+        let tr = SIMD2<Float>(toClipX(x1), toClipY(y0))
+        let bl = SIMD2<Float>(toClipX(x0), toClipY(y1))
+        let br = SIMD2<Float>(toClipX(x1), toClipY(y1))
+
+        struct V {
+            var p: SIMD2<Float>
+            var t: SIMD2<Float>
+        }
+        let verts: [V] = [
+            V(p: bl, t: [0, 1]),
+            V(p: br, t: [1, 1]),
+            V(p: tl, t: [0, 0]),
+            V(p: tl, t: [0, 0]),
+            V(p: br, t: [1, 1]),
+            V(p: tr, t: [1, 0]),
+        ]
+        let len = MemoryLayout<V>.stride * verts.count
+        if buildInfoQuadVertexBuffer == nil
+            || buildInfoQuadVertexBuffer!.length < len
+        {
+            buildInfoQuadVertexBuffer = device.makeBuffer(
+                bytes: verts,
+                length: len,
+                options: .storageModeShared
+            )
+            buildInfoQuadVertexBuffer?.label = "BuildInfoQuad"
+        } else {
+            memcpy(buildInfoQuadVertexBuffer!.contents(), verts, len)
+        }
+    }
+
+    func drawBuildInfoIfNeeded(
+        encoder: MTLRenderCommandEncoder,
+        pipeline: MTLRenderPipelineState
+    ) {
+        guard let tex = buildInfoTexture,
+            let vb = buildInfoQuadVertexBuffer
+        else { return }
+
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setVertexBuffer(vb, offset: 0, index: 0)
+        encoder.setFragmentTexture(tex, index: 0)
+        var whiteTint = SIMD4<Float>(1, 1, 1, 1)
+        encoder.setFragmentBytes(
+            &whiteTint,
+            length: MemoryLayout<SIMD4<Float>>.stride,
+            index: 0
+        )
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
     }
 
     func encodeClearOverlayTextureIfNeeded(commandBuffer: MTLCommandBuffer) {

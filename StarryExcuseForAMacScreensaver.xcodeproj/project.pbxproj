@@ -27,6 +27,27 @@
 		F9FE28052E57A067000772F9 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = F9FE28022E57A067000772F9 /* Shaders.metal */; };
 		F9FE28072E57A661000772F9 /* MetalTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FE28062E57A661000772F9 /* MetalTypes.swift */; };
 		B1D2E3F40000000100000001 /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D2E3F30000000100000001 /* BuildInfo.swift */; };
+		C1000002000000010000000A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000001000000010000000A /* main.swift */; };
+		C1000002000000010000000B /* PreviewAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000001000000010000000B /* PreviewAppDelegate.swift */; };
+		C100000200000001000000E1 /* StarryConfigSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E597E0E227BA8780092CA49 /* StarryConfigSheetController.swift */; };
+		C100000200000001000000E2 /* StarryDefaultsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E597E10227BAE390092CA49 /* StarryDefaultsManager.swift */; };
+		C100000200000001000000E3 /* StarryExcuseForAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA85FE22792D30009F5745 /* StarryExcuseForAView.swift */; };
+		C100000200000001000000E4 /* Buildings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA860022795E14009F5745 /* Buildings.swift */; };
+		C100000200000001000000E5 /* Skyline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA860222795E3C009F5745 /* Skyline.swift */; };
+		C100000200000001000000E6 /* Points.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA860422795E4C009F5745 /* Points.swift */; };
+		C100000200000001000000E7 /* SkylineCoreRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA86062279605D009F5745 /* SkylineCoreRenderer.swift */; };
+		C100000200000001000000E8 /* Moon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D30000000100000001 /* Moon.swift */; };
+		C100000200000001000000E9 /* SatellitesLayerRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9104B462E54F27C007322E2 /* SatellitesLayerRenderer.swift */; };
+		C100000200000001000000EA /* DebugLayerRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F91F62A92E7B221E007F9283 /* DebugLayerRenderer.swift */; };
+		C100000200000001000000EB /* DebugSprites.swift in Sources */ = {isa = PBXBuildFile; fileRef = F91F62AB2E7B23A0007F9283 /* DebugSprites.swift */; };
+		C100000200000001000000EC /* StarryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9295FE32E4E567500083F85 /* StarryEngine.swift */; };
+		C100000200000001000000ED /* MoonLayerRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9295FE52E4E68BD00083F85 /* MoonLayerRenderer.swift */; };
+		C100000200000001000000EE /* ShootingStarsLayerRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9295FE72E4FA78800083F85 /* ShootingStarsLayerRenderer.swift */; };
+		C100000200000001000000EF /* MoonTexture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E3C8F02E4D34D500FDBD91 /* MoonTexture.swift */; };
+		C100000200000001000000F0 /* StarryMetalRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FE28032E57A067000772F9 /* StarryMetalRenderer.swift */; };
+		C100000200000001000000F1 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = F9FE28022E57A067000772F9 /* Shaders.metal */; };
+		C100000200000001000000F2 /* MetalTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FE28062E57A661000772F9 /* MetalTypes.swift */; };
+		C100000200000001000000F3 /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D2E3F30000000100000001 /* BuildInfo.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,10 +73,21 @@
 		F9FE28032E57A067000772F9 /* StarryMetalRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarryMetalRenderer.swift; sourceTree = "<group>"; };
 		F9FE28062E57A661000772F9 /* MetalTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalTypes.swift; sourceTree = "<group>"; };
 		B1D2E3F30000000100000001 /* BuildInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.swift; sourceTree = "<group>"; };
+		C1000001000000010000000A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		C1000001000000010000000B /* PreviewAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewAppDelegate.swift; sourceTree = "<group>"; };
+		C1000001000000010000000C /* PreviewApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "PreviewApp-Info.plist"; sourceTree = "<group>"; };
+		C1000001000000010000000D /* StarryPreview.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StarryPreview.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		3EAA85EE22792D13009F5745 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C1000004000000010000000B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -70,6 +102,7 @@
 			children = (
 				F9104B3E2E54D3A0007322E2 /* aider-prompts.md */,
 				3EAA85F322792D13009F5745 /* StarryExcuseForAMacScreensaver */,
+				C1000003000000010000000A /* PreviewApp */,
 				3EAA85F222792D13009F5745 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -78,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				3EAA85F122792D13009F5745 /* StarryExcuseForAMacScreensaver.saver */,
+				C1000001000000010000000D /* StarryPreview.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -107,6 +141,16 @@
 				B1D2E3F30000000100000001 /* BuildInfo.swift */,
 			);
 			path = StarryExcuseForAMacScreensaver;
+			sourceTree = "<group>";
+		};
+		C1000003000000010000000A /* PreviewApp */ = {
+			isa = PBXGroup;
+			children = (
+				C1000001000000010000000A /* main.swift */,
+				C1000001000000010000000B /* PreviewAppDelegate.swift */,
+				C1000001000000010000000C /* PreviewApp-Info.plist */,
+			);
+			path = PreviewApp;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -141,6 +185,23 @@
 			productReference = 3EAA85F122792D13009F5745 /* StarryExcuseForAMacScreensaver.saver */;
 			productType = "com.apple.product-type.bundle";
 		};
+		C1000005000000010000000A /* StarryPreview */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C1000007000000010000000A /* Build configuration list for PBXNativeTarget "StarryPreview" */;
+			buildPhases = (
+				C1000004000000010000000C /* Generate BuildInfo */,
+				C1000004000000010000000A /* Sources */,
+				C1000004000000010000000B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StarryPreview;
+			productName = StarryPreview;
+			productReference = C1000001000000010000000D /* StarryPreview.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -154,6 +215,9 @@
 					3EAA85F022792D13009F5745 = {
 						CreatedOnToolsVersion = 10.2.1;
 						LastSwiftMigration = 1020;
+					};
+					C1000005000000010000000A = {
+						CreatedOnToolsVersion = 16.0;
 					};
 				};
 			};
@@ -171,6 +235,7 @@
 			projectRoot = "";
 			targets = (
 				3EAA85F022792D13009F5745 /* StarryExcuseForAMacScreensaver */,
+				C1000005000000010000000A /* StarryPreview */,
 			);
 		};
 /* End PBXProject section */
@@ -213,10 +278,57 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C1000004000000010000000A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1000002000000010000000A /* main.swift in Sources */,
+				C1000002000000010000000B /* PreviewAppDelegate.swift in Sources */,
+				C100000200000001000000E1 /* StarryConfigSheetController.swift in Sources */,
+				C100000200000001000000E2 /* StarryDefaultsManager.swift in Sources */,
+				C100000200000001000000E3 /* StarryExcuseForAView.swift in Sources */,
+				C100000200000001000000E4 /* Buildings.swift in Sources */,
+				C100000200000001000000E5 /* Skyline.swift in Sources */,
+				C100000200000001000000E6 /* Points.swift in Sources */,
+				C100000200000001000000E7 /* SkylineCoreRenderer.swift in Sources */,
+				C100000200000001000000E8 /* Moon.swift in Sources */,
+				C100000200000001000000E9 /* SatellitesLayerRenderer.swift in Sources */,
+				C100000200000001000000EA /* DebugLayerRenderer.swift in Sources */,
+				C100000200000001000000EB /* DebugSprites.swift in Sources */,
+				C100000200000001000000EC /* StarryEngine.swift in Sources */,
+				C100000200000001000000ED /* MoonLayerRenderer.swift in Sources */,
+				C100000200000001000000EE /* ShootingStarsLayerRenderer.swift in Sources */,
+				C100000200000001000000EF /* MoonTexture.swift in Sources */,
+				C100000200000001000000F0 /* StarryMetalRenderer.swift in Sources */,
+				C100000200000001000000F1 /* Shaders.metal in Sources */,
+				C100000200000001000000F2 /* MetalTypes.swift in Sources */,
+				C100000200000001000000F3 /* BuildInfo.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		B1D2E3F50000000100000001 /* Generate BuildInfo */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate BuildInfo";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/StarryExcuseForAMacScreensaver/BuildInfo.swift",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "COMMIT=$(git -C \"${SRCROOT}\" rev-parse --short HEAD 2>/dev/null || echo unknown)\necho \"// Auto-generated by build script — do not edit manually.\" > \"${SRCROOT}/StarryExcuseForAMacScreensaver/BuildInfo.swift\"\necho \"let buildCommit: String = \\\"${COMMIT}\\\"\" >> \"${SRCROOT}/StarryExcuseForAMacScreensaver/BuildInfo.swift\"\n";
+		};
+		C1000004000000010000000C /* Generate BuildInfo */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -410,6 +522,51 @@
 			};
 			name = Release;
 		};
+		C1000006000000010000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development: 2bitoperations@gmail.com (4JXQZU8S67)";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = P9X3RB9T75;
+				INFOPLIST_FILE = PreviewApp/PreviewApp-Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.2bitoperations.screensaver.StarryPreview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C1000006000000010000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development: 2bitoperations@gmail.com (4JXQZU8S67)";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = P9X3RB9T75;
+				INFOPLIST_FILE = PreviewApp/PreviewApp-Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.2bitoperations.screensaver.StarryPreview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -427,6 +584,15 @@
 			buildConfigurations = (
 				3EAA85FC22792D13009F5745 /* Debug */,
 				3EAA85FD22792D13009F5745 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C1000007000000010000000A /* Build configuration list for PBXNativeTarget "StarryPreview" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C1000006000000010000000A /* Debug */,
+				C1000006000000010000000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -114,10 +114,10 @@ class StarryDefaultsManager {
     private let defaultSatellitesTrailing = true
     private let defaultSatellitesTrailHalfLifeSeconds = 0.10
 
-    init() {
-        let identifier = Bundle(for: StarryDefaultsManager.self)
-            .bundleIdentifier
-        defaults = ScreenSaverDefaults.init(forModuleWithName: identifier!)!
+    init(moduleIdentifier: String? = nil) {
+        let identifier = moduleIdentifier
+            ?? Bundle(for: StarryDefaultsManager.self).bundleIdentifier
+        defaults = ScreenSaverDefaults(forModuleWithName: identifier!)!
     }
 
     // MARK: - Defensive helpers

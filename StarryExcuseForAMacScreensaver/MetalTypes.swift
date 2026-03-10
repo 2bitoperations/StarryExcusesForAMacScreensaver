@@ -125,6 +125,10 @@ public struct StarryDrawData {
     public var debugFPS: Float
     public var debugCPUPercent: Float
 
+    // Build info overlay (preview app only)
+    public var showBuildInfo: Bool
+    public var buildInfoText: String
+
     // Full initializer (new)
     public init(
         size: CGSize,
@@ -137,7 +141,9 @@ public struct StarryDrawData {
         showLightAreaTextureFillMask: Bool,
         debugOverlayEnabled: Bool,
         debugFPS: Float,
-        debugCPUPercent: Float
+        debugCPUPercent: Float,
+        showBuildInfo: Bool = false,
+        buildInfoText: String = ""
     ) {
         self.size = size
         self.clearAll = clearAll
@@ -150,6 +156,8 @@ public struct StarryDrawData {
         self.debugOverlayEnabled = debugOverlayEnabled
         self.debugFPS = debugFPS
         self.debugCPUPercent = debugCPUPercent
+        self.showBuildInfo = showBuildInfo
+        self.buildInfoText = buildInfoText
     }
 
     // Backward-compatible convenience initializer (legacy signature)
@@ -174,7 +182,9 @@ public struct StarryDrawData {
             showLightAreaTextureFillMask: showLightAreaTextureFillMask,
             debugOverlayEnabled: false,
             debugFPS: 0,
-            debugCPUPercent: 0
+            debugCPUPercent: 0,
+            showBuildInfo: false,
+            buildInfoText: ""
         )
     }
 }

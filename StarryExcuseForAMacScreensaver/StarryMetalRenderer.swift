@@ -922,6 +922,13 @@ final class StarryMetalRenderer {
             effectiveEnabled: debugOverlayEnabled
         )
 
+        if drawData.showBuildInfo {
+            debugOverlayRenderer.updateBuildInfo(
+                text: drawData.buildInfoText,
+                screenSize: drawData.size
+            )
+        }
+
         let now = CACurrentMediaTime()
         let dt: CFTimeInterval? = lastRenderTime.map { now - $0 }
         lastRenderTime = now
@@ -1075,6 +1082,13 @@ final class StarryMetalRenderer {
             drawData: drawData,
             effectiveEnabled: debugOverlayEnabled
         )
+
+        if drawData.showBuildInfo {
+            debugOverlayRenderer.updateBuildInfo(
+                text: drawData.buildInfoText,
+                screenSize: drawData.size
+            )
+        }
 
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             return nil
@@ -1407,6 +1421,13 @@ final class StarryMetalRenderer {
             engineOverlayEnabled: debugOverlayEnabled,
             userOverlayEnabled: debugOverlayEnabled
         )
+
+        if drawData.showBuildInfo {
+            debugOverlayRenderer.drawBuildInfoIfNeeded(
+                encoder: encoder,
+                pipeline: compositePipeline
+            )
+        }
 
         encoder.popDebugGroup()
         encoder.endEncoding()

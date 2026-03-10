@@ -53,6 +53,9 @@ struct StarryRuntimeConfig {
 
     // Existing (already refactored) star density fraction.
     var starSpawnPerSecFractionOfMax: Double = 0
+
+    // Show build commit hash overlay (preview app only).
+    var showBuildInfo: Bool = false
 }
 
 extension StarryRuntimeConfig: CustomStringConvertible {
@@ -847,7 +850,9 @@ final class StarryEngine {
             showLightAreaTextureFillMask: config.showLightAreaTextureFillMask,
             debugOverlayEnabled: config.debugOverlayEnabled,
             debugFPS: Float(currentFPS),
-            debugCPUPercent: Float(currentCPUPercent)
+            debugCPUPercent: Float(currentCPUPercent),
+            showBuildInfo: config.showBuildInfo,
+            buildInfoText: buildCommit
         )
         if moonAlbedoDirty && logThisFrame {
             os_log(
@@ -1014,7 +1019,9 @@ final class StarryEngine {
             showLightAreaTextureFillMask: config.showLightAreaTextureFillMask,
             debugOverlayEnabled: config.debugOverlayEnabled,
             debugFPS: Float(currentFPS),
-            debugCPUPercent: Float(currentCPUPercent)
+            debugCPUPercent: Float(currentCPUPercent),
+            showBuildInfo: config.showBuildInfo,
+            buildInfoText: buildCommit
         )
         if moonAlbedoDirty && logThisFrame {
             os_log(
