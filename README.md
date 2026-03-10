@@ -13,6 +13,8 @@ Very basic implementation.
 - [x] configuration panel
 - [ ] rain
 - [x] shooting stars
+- [x] satellites
+- [x] moon
 
 ## Provenance
 Fork of https://github.com/kimar/DeveloperExcuses and https://github.com/evangreen/starryn 
