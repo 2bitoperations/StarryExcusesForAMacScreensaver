@@ -382,7 +382,7 @@ final class ShootingStarsLayerRenderer {
             let px = tail.x + dir.dx * len * t
             let py = tail.y + dir.dy * len * t
 
-            let intensity = brightnessFactor * pow(t, 2.0)
+            let intensity = brightnessFactor * t * t
             let radius = (s.thickness * 0.3) + (s.thickness * 0.7 * t)
 
             // Blend color from tail white to warm head
