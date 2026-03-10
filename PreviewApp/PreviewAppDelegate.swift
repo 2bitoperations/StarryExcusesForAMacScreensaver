@@ -12,7 +12,13 @@ class PreviewAppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private var screensaverView: StarryExcuseForAView?
 
+    private static let saverModuleIdentifier =
+        "com.2bitoperations.screensaver.StarryExcuseForAMacScreensaver"
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupMainMenu()
+        seedDefaultsFromScreenSaverContainer()
+
         // Use the main screen size for a near-fullscreen experience, or a
         // reasonable fallback when running headless.
         let screenFrame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
@@ -53,10 +59,7 @@ class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
         screensaverView = saverView
         saverView.showBuildOverlay = true
-
-        // Use the screensaver's defaults domain so the preview app picks up
-        // whatever the user configured in System Preferences / System Settings.
-        saverView.useDefaultsModule("com.2bitoperations.screensaver.StarryExcuseForAMacScreensaver")
+        saverView.useDefaultsModule(Self.saverModuleIdentifier)
 
         window.contentView = saverView
         window.makeKeyAndOrderFront(nil)
@@ -65,11 +68,87 @@ class PreviewAppDelegate: NSObject, NSApplicationDelegate {
         saverView.startAnimation()
     }
 
+    // MARK: - Sandboxed-container defaults bridge
+    //
+    // On modern macOS, screensavers run inside the sandboxed container
+    // com.apple.ScreenSaver.Engine.legacyScreenSaver. ScreenSaverDefaults
+    // persists preferences into that container's ByHost directory:
+    //
+    //   ~/Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/
+    //     Data/Library/Preferences/ByHost/<module-id>.<hardware-uuid>.plist
+    //
+    // A standalone app can't see those values through ScreenSaverDefaults
+    // because it resolves to a different (non-containerized) location.
+    //
+    // This method reads the container plist directly and seeds the values
+    // into the ScreenSaverDefaults instance the preview app will use.
+    // If the plist isn't found (e.g. screensaver was never configured),
+    // StarryDefaultsManager's built-in fallback defaults take over.
+    //
+    // If this breaks after a macOS update, check whether Apple changed the
+    // container name or the ByHost storage path. See AGENTS.md for more
+    // context on this quirk.
+
+    private func seedDefaultsFromScreenSaverContainer() {
+        let containerPath = NSHomeDirectory()
+            + "/Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver"
+            + "/Data/Library/Preferences/ByHost"
+
+        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: containerPath)
+        else {
+            NSLog("StarryPreview: container ByHost dir not found — using default settings")
+            return
+        }
+
+        let prefix = Self.saverModuleIdentifier + "."
+        guard let plistName = contents.first(where: {
+            $0.hasPrefix(prefix) && $0.hasSuffix(".plist")
+        }) else {
+            NSLog("StarryPreview: no matching plist in container — using default settings")
+            return
+        }
+
+        let plistPath = containerPath + "/" + plistName
+        guard let dict = NSDictionary(contentsOfFile: plistPath) as? [String: Any] else {
+            NSLog("StarryPreview: failed to read plist at %@", plistPath)
+            return
+        }
+
+        guard let target = ScreenSaverDefaults(forModuleWithName: Self.saverModuleIdentifier)
+        else {
+            NSLog("StarryPreview: failed to create ScreenSaverDefaults for seeding")
+            return
+        }
+
+        for (key, value) in dict {
+            target.set(value, forKey: key)
+        }
+        target.synchronize()
+
+        NSLog("StarryPreview: seeded %d settings from container plist", dict.count)
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         screensaverView?.stopAnimation()
+    }
+
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+
+        let appMenu = NSMenu()
+        appMenu.addItem(
+            withTitle: "Quit StarryPreview",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        appMenuItem.submenu = appMenu
+
+        NSApplication.shared.mainMenu = mainMenu
     }
 }

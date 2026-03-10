@@ -33,7 +33,13 @@ This project is supposed to serve as a fun learning test bed for agentic program
 
 ### Configuration
  - `StarryConfigSheetController.swift` - Handles drawing the screensaver options panel and associated controls.
- - `StarryDefaultsManager.swift` - Handles storing and fetching screensaver options values. Reasonable default fallback values for each option live here.
+ - `StarryDefaultsManager.swift` - Handles storing and fetching screensaver options values. Reasonable default fallback values for each option live here. Accepts an optional `moduleIdentifier` parameter to override the defaults domain.
+ - `BuildInfo.swift` - Auto-generated at build time by a Run Script phase. Contains the git commit hash constant `buildCommit`.
+
+### Preview App (`PreviewApp/`)
+ - `main.swift` - Entry point for the standalone StarryPreview app.
+ - `PreviewAppDelegate.swift` - Creates a borderless window hosting the screensaver view. Reads the user's saved settings from the sandboxed screensaver container (see Known Quirks below) and displays a build-info overlay.
+ - `PreviewApp-Info.plist` - Minimal app plist for the preview target.
 
 
 ## Documentation Guidelines
@@ -47,3 +53,24 @@ Any changes to code must be paired with updates to the relevant documentation if
 Simplicity and understandability are highly valued. Fancy performance optimizations should only be used if they will significantly improve rendering speed or efficiency. 
 
 Swift best practices must be followed unless we have a tremendously compelling reason to deviate from them.
+
+
+## Known Quirks
+
+### Screensaver Defaults Live in a Sandboxed Container
+
+On modern macOS (Ventura+), screensavers run inside the `com.apple.ScreenSaver.Engine.legacyScreenSaver` sandbox container. `ScreenSaverDefaults(forModuleWithName:)` persists preferences into that container's **ByHost** directory, not the user's global `~/Library/Preferences/`:
+
+```
+~/Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/
+  Data/Library/Preferences/ByHost/<bundle-id>.<hardware-uuid>.plist
+```
+
+This means a standalone app (like StarryPreview) can't read those settings through the normal `ScreenSaverDefaults` API — it resolves to a different, non-containerized location and finds nothing.
+
+**Our workaround**: `PreviewAppDelegate.seedDefaultsFromScreenSaverContainer()` reads the plist directly from the container path and seeds the values into the local `ScreenSaverDefaults` instance before the engine starts. If the plist isn't found (screensaver was never configured), the built-in fallback defaults in `StarryDefaultsManager` take over gracefully.
+
+**If this breaks after a macOS update**, check whether Apple changed:
+ - The container name (`com.apple.ScreenSaver.Engine.legacyScreenSaver`)
+ - The storage path within the container (`Data/Library/Preferences/ByHost/`)
+ - The plist naming convention (`<bundle-id>.<hardware-uuid>.plist`)
