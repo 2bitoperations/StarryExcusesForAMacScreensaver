@@ -1472,6 +1472,11 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         sectionsStack.addArrangedSubview(shootingBox)
         sectionsStack.addArrangedSubview(satellitesBox)
 
+        let commitLabel = makeSmallLabel("Build: \(buildCommit)")
+        commitLabel.textColor = .tertiaryLabelColor
+        commitLabel.alignment = .center
+        sectionsStack.addArrangedSubview(commitLabel)
+
         // Force full-width for non-General sections
         let boxesToExpand: [NSBox] = [moonBox, shootingBox, satellitesBox]
         for box in boxesToExpand {
