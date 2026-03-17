@@ -13,6 +13,18 @@ enum StateError: Error {
     case ConstraintViolation(msg: String)
 }
 
+/// Selects the algorithm used to sample star positions above the skyline.
+/// All three produce a quadratic vertical bias (denser near the horizon)
+/// while avoiding the density-stripe artifact of the original per-column CDF.
+enum StarSamplingStrategy: Int {
+    /// Pick a global quadratic (x,y), reject if behind a building. Simple and correct.
+    case rejection = 0
+    /// Pick x uniform, y uniform in open sky, accept with probability proportional to desired density.
+    case twoStage = 1
+    /// Per-column truncated quadratic CDF with proper normalization so density is consistent.
+    case correctedCDF = 2
+}
+
 class Skyline {
     let buildings: [Building]
     let width: Int
@@ -32,6 +44,8 @@ class Skyline {
     /// For each screen-x column, the lowest y that is above all buildings (i.e. open sky).
     /// Pre-computed at init so star sampling is O(1) instead of rejection-loop.
     private let skyFloor: [Int]
+
+    let starSamplingStrategy: StarSamplingStrategy
 
     private let moon: Moon?
     let moonBrightBrightness: Double
@@ -63,9 +77,11 @@ class Skyline {
         // Default chosen so on a 3000px wide screen you get ~80px diameter (80/3000 ≈ 0.0266667).
         moonDiameterScreenWidthPercent: Double = (80.0 / 3000.0),
         moonPhaseOverrideEnabled: Bool = false,
-        moonPhaseOverrideValue: Double = 0.0
+        moonPhaseOverrideValue: Double = 0.0,
+        starSamplingStrategy: StarSamplingStrategy = .rejection
     ) throws {
         self.log = log
+        self.starSamplingStrategy = starSamplingStrategy
         var buildingWorkingList = [Building]()
         self.width = screenXMax
         self.height = screenYMax
@@ -188,27 +204,73 @@ class Skyline {
     }
 
     func getSingleStar() -> Point {
-        let x = Int.random(in: 0...self.width)
-        let minY = skyFloor[min(x, skyFloor.count - 1)]
         let h = Double(self.height)
         guard h > 0 else {
             return Point(
-                xPos: x, yPos: self.height,
-                color: Color(
-                    red: Double.random(in: 0.0...0.5),
-                    green: Double.random(in: 0.0...0.5),
-                    blue: Double.random(in: 0.0...1)
-                ))
+                xPos: Int.random(in: 0...self.width),
+                yPos: self.height,
+                color: randomStarColor()
+            )
         }
-        let tMin = sqrt(Double(minY) / h)
-        let t = Double.random(in: tMin...1.0)
-        let y = max(minY, Int(t * t * h))
-        let color = Color(
+
+        let x: Int
+        let y: Int
+
+        switch starSamplingStrategy {
+        case .rejection:
+            // Global horizon-weighted sample, reject if behind a building.
+            // Density ∝ (h − y): stars cluster near the horizon, thin toward zenith.
+            while true {
+                let cx = Int.random(in: 0...self.width)
+                let t = Double.random(in: 0.0...1.0)
+                let cy = Int(h * (1.0 - sqrt(1.0 - t)))
+                let minY = skyFloor[min(cx, skyFloor.count - 1)]
+                if cy >= minY {
+                    x = cx
+                    y = cy
+                    break
+                }
+            }
+
+        case .twoStage:
+            // Uniform x, uniform y in open sky, accept with horizon-weighted
+            // probability ∝ (h − y).
+            while true {
+                let cx = Int.random(in: 0...self.width)
+                let minY = skyFloor[min(cx, skyFloor.count - 1)]
+                guard minY < self.height else { continue }
+                let cy = Int.random(in: minY...self.height)
+                let acceptance = 1.0 - Double(cy) / h
+                if Double.random(in: 0.0...1.0) < acceptance {
+                    x = cx
+                    y = cy
+                    break
+                }
+            }
+
+        case .correctedCDF:
+            // Truncated horizon-weighted CDF with proper normalization.
+            // PDF ∝ (h − y) on [minY, h].
+            // CDF: F(y) = [2h(y−m) − (y²−m²)] / [2h(h−m) − (h²−m²)]
+            // Inverse: y = h − √((h−m)² · (1 − u))  =  h − (h−m)·√(1−u)
+            let cx = Int.random(in: 0...self.width)
+            let minY = skyFloor[min(cx, skyFloor.count - 1)]
+            let span = h - Double(minY)
+            let u = Double.random(in: 0.0...1.0)
+            let cy = max(minY, Int(h - span * sqrt(1.0 - u)))
+            x = cx
+            y = cy
+        }
+
+        return Point(xPos: x, yPos: y, color: randomStarColor())
+    }
+
+    private func randomStarColor() -> Color {
+        Color(
             red: Double.random(in: 0.0...0.5),
             green: Double.random(in: 0.0...0.5),
             blue: Double.random(in: 0.0...1)
         )
-        return Point(xPos: x, yPos: y, color: color)
     }
 
     func getSingleBuildingPoint() -> Point {

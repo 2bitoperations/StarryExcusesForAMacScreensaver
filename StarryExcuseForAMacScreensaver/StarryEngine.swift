@@ -43,6 +43,8 @@ struct StarryRuntimeConfig {
 
     var debugOverlayEnabled: Bool = false
 
+    var starSamplingMode: Int = 0
+
     var debugDropBaseEveryNFrames: Int = 0
     var debugForceClearEveryNFrames: Int = 0
     var debugLogEveryFrame: Bool = false
@@ -93,7 +95,8 @@ extension StarryRuntimeConfig: CustomStringConvertible {
               debugLogEveryFrame: \(debugLogEveryFrame),
               buildingLightsSpawnPerSecFractionOfMax: \(buildingLightsSpawnPerSecFractionOfMax),
               disableFlasherOnBase: \(disableFlasherOnBase),
-              starSpawnPerSecFractionOfMax: \(starSpawnPerSecFractionOfMax)
+              starSpawnPerSecFractionOfMax: \(starSpawnPerSecFractionOfMax),
+              starSamplingMode: \(starSamplingMode)
             )
             """
     }
@@ -376,6 +379,7 @@ final class StarryEngine {
                 != newConfig.starSpawnPerSecFractionOfMax
             || config.buildingLightsSpawnPerSecFractionOfMax
                 != newConfig.buildingLightsSpawnPerSecFractionOfMax
+            || config.starSamplingMode != newConfig.starSamplingMode
 
         if skylineAffecting {
             os_log(
@@ -563,7 +567,8 @@ final class StarryEngine {
                 moonDiameterScreenWidthPercent: config
                     .moonDiameterScreenWidthPercent,
                 moonPhaseOverrideEnabled: config.moonPhaseOverrideEnabled,
-                moonPhaseOverrideValue: config.moonPhaseOverrideValue
+                moonPhaseOverrideValue: config.moonPhaseOverrideValue,
+                starSamplingStrategy: StarSamplingStrategy(rawValue: config.starSamplingMode) ?? .rejection
             )
             if let skyline = skyline {
                 os_log(

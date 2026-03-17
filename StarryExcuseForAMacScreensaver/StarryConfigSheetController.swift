@@ -31,6 +31,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     var buildingFrequencyPreview: NSTextField?
     var debugOverlayEnabledCheckbox: NSSwitch?  // now visible in UI
     var shootingStarsDebugSpawnBoundsCheckbox: NSSwitch?  // moved to General section
+    var starSamplingModePopup: NSPopUpButton?
 
     // Moon traversal (new slider)
     var moonTraversalMinutesSlider: NSSlider?
@@ -126,6 +127,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private var lastMoonTerminatorBands: Int = 4
     private var lastShowLightAreaTextureFillMask: Bool = false
     private var lastDebugOverlayEnabled: Bool = false
+    private var lastStarSamplingMode: Int = 0
 
     // Shooting stars last-known
     private var lastShootingStarsEnabled: Bool = false
@@ -220,6 +222,10 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
 
         starDensitySlider.doubleValue = defaultsManager.starSpawnFractionOfMax
         updateStarDensityPreview()
+
+        if let popup = starSamplingModePopup {
+            popup.selectItem(at: defaultsManager.starSamplingMode)
+        }
 
         buildingLightsDensitySlider.doubleValue =
             defaultsManager.buildingLightsSpawnFractionOfMax
@@ -478,6 +484,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             satellitesTrailDecaySlider?.doubleValue
             ?? defaultsManager.satellitesTrailHalfLifeSeconds
         lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
+        lastStarSamplingMode =
+            starSamplingModePopup?.indexOfSelectedItem
+            ?? defaultsManager.starSamplingMode
 
         updatePreviewLabels()
         updatePhaseOverrideUIEnabled()
@@ -685,8 +694,43 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         spawnBoundsRow.addArrangedSubview(spawnBoundsSwitch)
         spawnBoundsRow.addArrangedSubview(spawnBoundsLabel)
 
+        let starSamplingRow = NSStackView()
+        starSamplingRow.orientation = .horizontal
+        starSamplingRow.alignment = .centerY
+        starSamplingRow.spacing = 4
+        starSamplingRow.translatesAutoresizingMaskIntoConstraints = false
+        let starSamplingLabel = makeLabel("Star sampling")
+        let starSamplingPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        starSamplingPopup.translatesAutoresizingMaskIntoConstraints = false
+        starSamplingPopup.addItems(withTitles: [
+            "Rejection", "Two-Stage", "Corrected CDF",
+        ])
+        starSamplingPopup.target = self
+        starSamplingPopup.action = #selector(starSamplingModeChanged(_:))
+        starSamplingPopup.toolTip =
+            "Controls how stars are distributed across the sky. "
+            + "All modes concentrate stars near the horizon and thin them toward the zenith."
+        if let menu = starSamplingPopup.menu {
+            menu.item(at: 0)?.toolTip =
+                "Rejection sampling: draws candidate positions from a global density curve, "
+                + "then discards any that fall behind a building. Simple but may waste cycles "
+                + "on columns with tall buildings."
+            menu.item(at: 1)?.toolTip =
+                "Two-stage sampling: picks a column first, then a height in the open sky, "
+                + "and accepts with a probability that favors the horizon. "
+                + "Never wastes draws on hidden pixels."
+            menu.item(at: 2)?.toolTip =
+                "Corrected CDF: uses a closed-form inverse CDF per column so every random "
+                + "draw produces a valid star with no rejection loop. "
+                + "Mathematically exact density with zero wasted work."
+        }
+        self.starSamplingModePopup = starSamplingPopup
+        starSamplingRow.addArrangedSubview(starSamplingLabel)
+        starSamplingRow.addArrangedSubview(starSamplingPopup)
+
         generalStack.addArrangedSubview(starDensityLabelRow)
         generalStack.addArrangedSubview(sdSliderRow)
+        generalStack.addArrangedSubview(starSamplingRow)
         generalStack.addArrangedSubview(bldLabelRow)
         generalStack.addArrangedSubview(bldSliderRow)
         generalStack.addArrangedSubview(sbcRow)
@@ -1820,6 +1864,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         showLightAreaTextureFillMaskCheckbox?.setAccessibilityLabel(
             "Show moon light-area texture fill mask"
         )
+        starSamplingModePopup?.setAccessibilityLabel(
+            "Star sampling strategy mode"
+        )
         moonTerminatorModePopup?.setAccessibilityLabel(
             "Moon terminator mode"
         )
@@ -2193,6 +2240,21 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 newValue: newVal ? "true" : "false"
             )
             lastShowLightAreaTextureFillMask = newVal
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
+    @IBAction func starSamplingModeChanged(_ sender: Any) {
+        guard let popup = starSamplingModePopup else { return }
+        let mode = popup.indexOfSelectedItem
+        if mode != lastStarSamplingMode {
+            logChange(
+                changedKey: "starSamplingMode",
+                oldValue: "\(lastStarSamplingMode)",
+                newValue: "\(mode)"
+            )
+            lastStarSamplingMode = mode
         }
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
@@ -2663,6 +2725,8 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 ?? lastSatellitesBrightness,
             satellitesTrailing: satellitesTrailingCheckbox?.state == .on,
             debugOverlayEnabled: debugOverlayEnabledCheckbox?.state == .on,
+            starSamplingMode: starSamplingModePopup?.indexOfSelectedItem
+                ?? lastStarSamplingMode,
             debugDropBaseEveryNFrames: 0,
             debugForceClearEveryNFrames: 0,
             debugLogEveryFrame: false,
@@ -2901,6 +2965,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             defaultsManager.showLightAreaTextureFillMask = (maskCB.state == .on)
         }
 
+        if let popup = starSamplingModePopup {
+            defaultsManager.starSamplingMode = popup.indexOfSelectedItem
+        }
         if let popup = moonTerminatorModePopup {
             defaultsManager.moonTerminatorMode = popup.indexOfSelectedItem
         }
@@ -3046,6 +3113,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         )
         parts.append(
             "showLightAreaMask=\(showLightAreaTextureFillMaskCheckbox?.state == .on ? "true" : "false")"
+        )
+        parts.append(
+            "starSamplingMode=\(lastStarSamplingMode)"
         )
         parts.append(
             "moonTerminatorMode=\(lastMoonTerminatorMode)"

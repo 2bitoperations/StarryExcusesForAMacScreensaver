@@ -55,6 +55,63 @@ Simplicity and understandability are highly valued. Fancy performance optimizati
 Swift best practices must be followed unless we have a tremendously compelling reason to deviate from them.
 
 
+## Building, Installing & Running
+
+The Xcode project has two targets:
+
+| Target | Scheme | Product | What it is |
+|--------|--------|---------|------------|
+| `StarryExcuseForAMacScreensaver` | `StarryExcuseForAMacScreensaver` | `StarryExcuseForAMacScreensaver.saver` | The screensaver bundle |
+| `StarryPreview` | `StarryPreview` | `StarryPreview.app` | Standalone preview app (borderless window, no System Prefs needed) |
+
+### Build from the command line
+
+```bash
+# Build the screensaver bundle (Debug)
+xcodebuild -project StarryExcuseForAMacScreensaver.xcodeproj \
+  -scheme StarryExcuseForAMacScreensaver \
+  -configuration Debug \
+  build
+
+# Build the preview app (Debug)
+xcodebuild -project StarryExcuseForAMacScreensaver.xcodeproj \
+  -scheme StarryPreview \
+  -configuration Debug \
+  build
+```
+
+Both products land in DerivedData:
+```
+~/Library/Developer/Xcode/DerivedData/StarryExcuseForAMacScreensaver-<hash>/Build/Products/Debug/
+```
+
+### Install the screensaver
+
+Copy the built `.saver` bundle into the user Screen Savers directory:
+```bash
+BUILT="$(xcodebuild -project StarryExcuseForAMacScreensaver.xcodeproj \
+  -scheme StarryExcuseForAMacScreensaver -showBuildSettings 2>/dev/null \
+  | grep ' TARGET_BUILD_DIR' | xargs | cut -d' ' -f3)"
+
+cp -R "$BUILT/StarryExcuseForAMacScreensaver.saver" ~/Library/Screen\ Savers/
+```
+
+After copying, open **System Settings → Screen Saver** and select it. (On first install macOS may prompt you to approve the bundle.)
+
+### Run the preview app
+
+The fastest way to visually verify changes — no screensaver activation required:
+```bash
+BUILT="$(xcodebuild -project StarryExcuseForAMacScreensaver.xcodeproj \
+  -scheme StarryPreview -showBuildSettings 2>/dev/null \
+  | grep ' TARGET_BUILD_DIR' | xargs | cut -d' ' -f3)"
+
+open "$BUILT/StarryPreview.app"
+```
+
+Or equivalently, run the `StarryPreview` scheme directly from Xcode (⌘R with that scheme selected).
+
+
 ## Known Quirks
 
 ### Screensaver Defaults Live in a Sandboxed Container

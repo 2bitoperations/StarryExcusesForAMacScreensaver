@@ -72,6 +72,10 @@ class StarryDefaultsManager {
     static let satellitesTrailHalfLifeMin: Double = 0.0
     static let satellitesTrailHalfLifeMax: Double = 0.5
 
+    // Star sampling strategy
+    static let starSamplingModeMin: Int = 0
+    static let starSamplingModeMax: Int = 2
+
     // Default fallback constants (single source of truth for values)
     // Star density: 0.5 ≈ previous default 800 stars/sec at reference screen (half of 1600).
     private let defaultStarSpawnFractionOfMax = 0.5
@@ -113,6 +117,7 @@ class StarryDefaultsManager {
     private let defaultSatellitesBrightness = 0.5
     private let defaultSatellitesTrailing = true
     private let defaultSatellitesTrailHalfLifeSeconds = 0.10
+    private let defaultStarSamplingMode = 0
 
     init(moduleIdentifier: String? = nil) {
         let identifier = moduleIdentifier
@@ -717,6 +722,27 @@ class StarryDefaultsManager {
                 min: Self.satellitesTrailHalfLifeMin,
                 max: Self.satellitesTrailHalfLifeMax,
                 defaultValue: defaultSatellitesTrailHalfLifeSeconds
+            )
+        }
+    }
+
+    // MARK: - Star Sampling
+
+    var starSamplingMode: Int {
+        set {
+            setClampedInt(
+                newValue,
+                key: "StarSamplingMode",
+                min: Self.starSamplingModeMin,
+                max: Self.starSamplingModeMax
+            )
+        }
+        get {
+            validatedInt(
+                safeInt("StarSamplingMode"),
+                min: Self.starSamplingModeMin,
+                max: Self.starSamplingModeMax,
+                defaultValue: defaultStarSamplingMode
             )
         }
     }
