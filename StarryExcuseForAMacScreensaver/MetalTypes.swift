@@ -77,6 +77,24 @@ public struct MoonParams {
     }
 }
 
+// Planet parameters per-frame (for renderer logic)
+// brightness is a simple overall multiplier (no terminator for now).
+public struct PlanetParams {
+    public var centerPx: SIMD2<Float>  // pixel center
+    public var radiusPx: Float         // pixel radius
+    public var brightness: Float       // overall brightness multiplier
+
+    public init(
+        centerPx: SIMD2<Float>,
+        radiusPx: Float,
+        brightness: Float
+    ) {
+        self.centerPx = centerPx
+        self.radiusPx = radiusPx
+        self.brightness = brightness
+    }
+}
+
 // Swift-side copy of the uniforms used by MoonVertex/MoonFragment in Shaders.metal
 // Must match memory layout exactly.
 public struct MoonUniforms {
@@ -117,6 +135,9 @@ public struct StarryDrawData {
     public var moon: MoonParams?  // draw on top (directly to final drawable)
     public var moonAlbedoImage: CGImage?  // provide when available/changed (optional)
 
+    public var planet: PlanetParams?         // draw planet on top (before moon)
+    public var planetAlbedoImage: CGImage?   // provide when available/changed (RGBA)
+
     // Debug: show the illuminated region mask (in red) instead of bright texture
     public var showLightAreaTextureFillMask: Bool
 
@@ -138,6 +159,8 @@ public struct StarryDrawData {
         shootingSprites: [SpriteInstance],
         moon: MoonParams?,
         moonAlbedoImage: CGImage?,
+        planet: PlanetParams? = nil,
+        planetAlbedoImage: CGImage? = nil,
         showLightAreaTextureFillMask: Bool,
         debugOverlayEnabled: Bool,
         debugFPS: Float,
@@ -152,6 +175,8 @@ public struct StarryDrawData {
         self.shootingSprites = shootingSprites
         self.moon = moon
         self.moonAlbedoImage = moonAlbedoImage
+        self.planet = planet
+        self.planetAlbedoImage = planetAlbedoImage
         self.showLightAreaTextureFillMask = showLightAreaTextureFillMask
         self.debugOverlayEnabled = debugOverlayEnabled
         self.debugFPS = debugFPS
@@ -179,6 +204,8 @@ public struct StarryDrawData {
             shootingSprites: shootingSprites,
             moon: moon,
             moonAlbedoImage: moonAlbedoImage,
+            planet: nil,
+            planetAlbedoImage: nil,
             showLightAreaTextureFillMask: showLightAreaTextureFillMask,
             debugOverlayEnabled: false,
             debugFPS: 0,

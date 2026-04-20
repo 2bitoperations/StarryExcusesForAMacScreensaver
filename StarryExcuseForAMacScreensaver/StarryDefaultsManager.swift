@@ -76,6 +76,10 @@ class StarryDefaultsManager {
     static let starSamplingModeMin: Int = 0
     static let starSamplingModeMax: Int = 2
 
+    // Planet
+    static let planetSizePercentMin: Double = 0.001
+    static let planetSizePercentMax: Double = 0.25
+
     // Default fallback constants (single source of truth for values)
     // Star density: 0.5 ≈ previous default 800 stars/sec at reference screen (half of 1600).
     private let defaultStarSpawnFractionOfMax = 0.5
@@ -118,6 +122,11 @@ class StarryDefaultsManager {
     private let defaultSatellitesTrailing = true
     private let defaultSatellitesTrailHalfLifeSeconds = 0.10
     private let defaultStarSamplingMode = 0
+
+    // Planet defaults
+    private let defaultPlanetEnabled = true
+    private let defaultPlanetSizeScreenWidthPercent = 0.016
+    private let defaultPlanetBelowHorizonBehavior = "hide"
 
     init(moduleIdentifier: String? = nil) {
         let identifier = moduleIdentifier
@@ -744,6 +753,50 @@ class StarryDefaultsManager {
                 max: Self.starSamplingModeMax,
                 defaultValue: defaultStarSamplingMode
             )
+        }
+    }
+
+    // MARK: - Planets
+
+    var planetEnabled: Bool {
+        set {
+            defaults.set(newValue, forKey: "PlanetEnabled")
+            defaults.synchronize()
+        }
+        get { safeBool("PlanetEnabled") ?? defaultPlanetEnabled }
+    }
+
+    var planetSizeScreenWidthPercent: Double {
+        set {
+            setClampedDouble(
+                newValue,
+                key: "PlanetSizeScreenWidthPercent",
+                min: Self.planetSizePercentMin,
+                max: Self.planetSizePercentMax
+            )
+        }
+        get {
+            validatedDouble(
+                safeDouble("PlanetSizeScreenWidthPercent"),
+                min: Self.planetSizePercentMin,
+                max: Self.planetSizePercentMax,
+                defaultValue: defaultPlanetSizeScreenWidthPercent
+            )
+        }
+    }
+
+    var planetBelowHorizonBehavior: String {
+        set {
+            let valid = (newValue == "hide" || newValue == "randomPosition") ? newValue : "hide"
+            defaults.set(valid, forKey: "PlanetBelowHorizonBehavior")
+            defaults.synchronize()
+        }
+        get {
+            if let s = defaults.string(forKey: "PlanetBelowHorizonBehavior"),
+               s == "hide" || s == "randomPosition" {
+                return s
+            }
+            return defaultPlanetBelowHorizonBehavior
         }
     }
 }

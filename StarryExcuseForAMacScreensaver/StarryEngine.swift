@@ -56,6 +56,10 @@ struct StarryRuntimeConfig {
     // Existing (already refactored) star density fraction.
     var starSpawnPerSecFractionOfMax: Double = 0
 
+    var planetEnabled: Bool = true
+    var planetSizeScreenWidthPercent: Double = 0.016
+    var planetBelowHorizonBehavior: String = "hide"
+
     // Show build commit hash overlay (preview app only).
     var showBuildInfo: Bool = false
 }
@@ -96,7 +100,10 @@ extension StarryRuntimeConfig: CustomStringConvertible {
               buildingLightsSpawnPerSecFractionOfMax: \(buildingLightsSpawnPerSecFractionOfMax),
               disableFlasherOnBase: \(disableFlasherOnBase),
               starSpawnPerSecFractionOfMax: \(starSpawnPerSecFractionOfMax),
-              starSamplingMode: \(starSamplingMode)
+              starSamplingMode: \(starSamplingMode),
+              planetEnabled: \(planetEnabled),
+              planetSizeScreenWidthPercent: \(planetSizeScreenWidthPercent),
+              planetBelowHorizonBehavior: \(planetBelowHorizonBehavior)
             )
             """
     }
@@ -110,6 +117,7 @@ final class StarryEngine {
     private var skylineRenderer: SkylineCoreRenderer?
     private var shootingStarsRenderer: ShootingStarsLayerRenderer?
     private var satellitesRenderer: SatellitesLayerRenderer?
+    private var planet: Planet?
 
     private var size: CGSize
     private var lastInitSize: CGSize
@@ -126,6 +134,9 @@ final class StarryEngine {
 
     private var moonAlbedoImage: CGImage?
     private var moonAlbedoDirty: Bool = false
+
+    private var planetAlbedoImage: CGImage?
+    private var planetAlbedoDirty: Bool = false
 
     private var previewMetalRenderer: StarryMetalRenderer?
 
@@ -355,9 +366,12 @@ final class StarryEngine {
         skylineRenderer = nil
         shootingStarsRenderer = nil
         satellitesRenderer = nil
+        planet = nil
 
         moonAlbedoImage = nil
         moonAlbedoDirty = false
+        planetAlbedoImage = nil
+        planetAlbedoDirty = false
         forceClearOnNextFrame = true
     }
 
@@ -615,6 +629,31 @@ final class StarryEngine {
                         type: .info
                     )
                 }
+
+                if config.planetEnabled {
+                    let screenW = Int(size.width)
+                    let screenH = Int(size.height)
+                    let planetRadius = max(1, Int(Double(screenW) * config.planetSizeScreenWidthPercent / 2.0))
+                    planet = Planet(
+                        screenWidth: screenW,
+                        screenHeight: screenH,
+                        buildingMaxHeight: skyline.buildingMaxHeight,
+                        log: log,
+                        radius: planetRadius,
+                        belowHorizonBehavior: config.planetBelowHorizonBehavior
+                    )
+                    if let tex = planet?.textureImage {
+                        planetAlbedoImage = tex
+                        planetAlbedoDirty = true
+                    } else {
+                        planetAlbedoImage = nil
+                        planetAlbedoDirty = false
+                    }
+                } else {
+                    planet = nil
+                    planetAlbedoImage = nil
+                    planetAlbedoDirty = false
+                }
             }
         } catch {
             os_log(
@@ -827,6 +866,18 @@ final class StarryEngine {
             )
         }
 
+        var planetParams: PlanetParams? = nil
+        var frameplanetAlbedoImage: CGImage? = nil
+        if let p = planet {
+            let state = p.frameState(now: Date())
+            planetParams = PlanetParams(
+                centerPx: SIMD2<Float>(Float(state.center.x), Float(state.center.y)),
+                radiusPx: Float(p.radius),
+                brightness: state.brightness
+            )
+            frameplanetAlbedoImage = planetAlbedoDirty ? planetAlbedoImage : nil
+        }
+
         if logThisFrame {
             os_log(
                 "advanceFrameGPU: sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsEff=%.2f/s lightsEff=%.2f/s fractions(star=%.4f light=%.4f)",
@@ -853,6 +904,8 @@ final class StarryEngine {
             shootingSprites: shootingSprites,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
+            planet: planetParams,
+            planetAlbedoImage: frameplanetAlbedoImage,
             showLightAreaTextureFillMask: config.showLightAreaTextureFillMask,
             debugOverlayEnabled: config.debugOverlayEnabled,
             debugFPS: Float(currentFPS),
@@ -868,6 +921,7 @@ final class StarryEngine {
             )
         }
         moonAlbedoDirty = false
+        planetAlbedoDirty = false
         return drawData
     }
 
@@ -997,6 +1051,18 @@ final class StarryEngine {
             )
         }
 
+        var planetParams: PlanetParams? = nil
+        var frameplanetAlbedoImage: CGImage? = nil
+        if let p = planet {
+            let state = p.frameState(now: Date())
+            planetParams = PlanetParams(
+                centerPx: SIMD2<Float>(Float(state.center.x), Float(state.center.y)),
+                radiusPx: Float(p.radius),
+                brightness: state.brightness
+            )
+            frameplanetAlbedoImage = planetAlbedoDirty ? planetAlbedoImage : nil
+        }
+
         if logThisFrame {
             os_log(
                 "advanceFrame(headless): sprites base=%{public}d sat=%{public}d shoot=%{public}d moon=%{public}@ clearAll=%{public}@ dt=%.4f starsEff=%.2f/s lightsEff=%.2f/s fractions(star=%.4f light=%.4f)",
@@ -1023,6 +1089,8 @@ final class StarryEngine {
             shootingSprites: shootingSprites,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
+            planet: planetParams,
+            planetAlbedoImage: frameplanetAlbedoImage,
             showLightAreaTextureFillMask: config.showLightAreaTextureFillMask,
             debugOverlayEnabled: config.debugOverlayEnabled,
             debugFPS: Float(currentFPS),
@@ -1038,6 +1106,7 @@ final class StarryEngine {
             )
         }
         moonAlbedoDirty = false
+        planetAlbedoDirty = false
 
         if previewMetalRenderer == nil {
             os_log(

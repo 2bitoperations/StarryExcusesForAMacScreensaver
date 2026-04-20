@@ -90,6 +90,12 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     var satellitesTrailDecaySlider: NSSlider?
     var satellitesTrailDecayPreview: NSTextField?
 
+    // Planet controls
+    var planetEnabledCheckbox: NSSwitch?
+    var planetSizeSlider: NSSlider?
+    var planetSizePreview: NSTextField?
+    var planetBelowHorizonPopup: NSPopUpButton?
+
     // Preview container
     var moonPreviewView: NSView!
 
@@ -148,6 +154,11 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private var lastSatellitesBrightness: Double = 0
     private var lastSatellitesTrailing: Bool = false
     private var lastSatellitesTrailHalfLifeSeconds: Double = 0
+
+    // Planets last-known
+    private var lastPlanetEnabled: Bool = true
+    private var lastPlanetSizePercent: Double = 0.016
+    private var lastPlanetBelowHorizon: String = "hide"
 
     // MARK: - One-time UI init flag
     private var uiInitialized = false
@@ -407,6 +418,18 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             )
         }
 
+        planetEnabledCheckbox?.state = defaultsManager.planetEnabled ? .on : .off
+        if let sizeSlider = planetSizeSlider {
+            sizeSlider.doubleValue = defaultsManager.planetSizeScreenWidthPercent
+            planetSizePreview?.stringValue = String(
+                format: "%.3f",
+                sizeSlider.doubleValue
+            )
+        }
+        if let popup = planetBelowHorizonPopup {
+            popup.selectItem(at: defaultsManager.planetBelowHorizonBehavior == "hide" ? 0 : 1)
+        }
+
         // Last-known capture
         lastStarSpawnFractionOfMax = starDensitySlider.doubleValue
         lastBuildingLightsSpawnFractionOfMax =
@@ -483,6 +506,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         lastSatellitesTrailHalfLifeSeconds =
             satellitesTrailDecaySlider?.doubleValue
             ?? defaultsManager.satellitesTrailHalfLifeSeconds
+        lastPlanetEnabled = defaultsManager.planetEnabled
+        lastPlanetSizePercent = defaultsManager.planetSizeScreenWidthPercent
+        lastPlanetBelowHorizon = defaultsManager.planetBelowHorizonBehavior
         lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         lastStarSamplingMode =
             starSamplingModePopup?.indexOfSelectedItem
@@ -493,6 +519,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         updateTerminatorUIEnabled()
         updateShootingStarsUIEnabled()
         updateSatellitesUIEnabled()
+        updatePlanetsUIEnabled()
 
         setupPreviewEngine()
         updatePauseToggleTitle()
@@ -1510,11 +1537,89 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             ).isActive = true
         }
 
+        let planetBox = makeBox(title: "Planets")
+        let planetStack = makeVStack(spacing: 8)
+
+        let planetEnableRow = NSStackView()
+        planetEnableRow.orientation = .horizontal
+        planetEnableRow.alignment = .centerY
+        planetEnableRow.spacing = 6
+        planetEnableRow.translatesAutoresizingMaskIntoConstraints = false
+        let planetSwitch = NSSwitch()
+        planetSwitch.target = self
+        planetSwitch.action = #selector(planetToggled(_:))
+        self.planetEnabledCheckbox = planetSwitch
+        let planetEnableLabel = makeLabel("Enable planets")
+        planetEnableRow.addArrangedSubview(planetSwitch)
+        planetEnableRow.addArrangedSubview(planetEnableLabel)
+
+        let planetSizeLabelRow = NSStackView()
+        planetSizeLabelRow.orientation = .horizontal
+        planetSizeLabelRow.alignment = .firstBaseline
+        planetSizeLabelRow.spacing = 4
+        planetSizeLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let planetSizeLabel = makeLabel("Size (% screen width)")
+        let planetSizePreviewLabel = makeSmallLabel("0.016")
+        self.planetSizePreview = planetSizePreviewLabel
+        planetSizeLabelRow.addArrangedSubview(planetSizeLabel)
+        planetSizeLabelRow.addArrangedSubview(planetSizePreviewLabel)
+        let planetSizeSliderControl = NSSlider(
+            value: defaultsManager.planetSizeScreenWidthPercent,
+            minValue: StarryDefaultsManager.planetSizePercentMin,
+            maxValue: StarryDefaultsManager.planetSizePercentMax,
+            target: self,
+            action: #selector(planetSliderChanged(_:))
+        )
+        planetSizeSliderControl.translatesAutoresizingMaskIntoConstraints = false
+        planetSizeSliderControl.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        self.planetSizeSlider = planetSizeSliderControl
+        let planetSizeSliderRow = NSStackView(views: [planetSizeSliderControl])
+        planetSizeSliderRow.orientation = .horizontal
+        planetSizeSliderRow.alignment = .centerY
+        planetSizeSliderRow.spacing = 4
+        planetSizeSliderRow.translatesAutoresizingMaskIntoConstraints = false
+        planetSizeSliderControl.leadingAnchor.constraint(
+            equalTo: planetSizeSliderRow.leadingAnchor
+        ).isActive = true
+        planetSizeSliderControl.trailingAnchor.constraint(
+            equalTo: planetSizeSliderRow.trailingAnchor
+        ).isActive = true
+
+        let planetBelowHorizonLabelRow = NSStackView()
+        planetBelowHorizonLabelRow.orientation = .horizontal
+        planetBelowHorizonLabelRow.alignment = .centerY
+        planetBelowHorizonLabelRow.spacing = 6
+        planetBelowHorizonLabelRow.translatesAutoresizingMaskIntoConstraints = false
+        let planetBelowHorizonLabel = makeLabel("When below horizon:")
+        let planetBelowHorizonPopupControl = NSPopUpButton()
+        planetBelowHorizonPopupControl.addItems(withTitles: ["Hide", "Random position"])
+        planetBelowHorizonPopupControl.target = self
+        planetBelowHorizonPopupControl.action = #selector(planetBelowHorizonChanged(_:))
+        self.planetBelowHorizonPopup = planetBelowHorizonPopupControl
+        planetBelowHorizonLabelRow.addArrangedSubview(planetBelowHorizonLabel)
+        planetBelowHorizonLabelRow.addArrangedSubview(planetBelowHorizonPopupControl)
+
+        planetStack.addArrangedSubview(planetEnableRow)
+        planetStack.addArrangedSubview(planetSizeLabelRow)
+        planetStack.addArrangedSubview(planetSizeSliderRow)
+        planetStack.addArrangedSubview(planetBelowHorizonLabelRow)
+
+        planetBox.contentView?.addSubview(planetStack)
+        if let planetContent = planetBox.contentView {
+            pinToEdges(planetStack, in: planetContent, inset: 12)
+        }
+
+        planetSizeSliderRow.leadingAnchor.constraint(equalTo: planetStack.leadingAnchor)
+            .isActive = true
+        planetSizeSliderRow.trailingAnchor.constraint(equalTo: planetStack.trailingAnchor)
+            .isActive = true
+
         // Add sections
         sectionsStack.addArrangedSubview(generalBox)
         sectionsStack.addArrangedSubview(moonBox)
         sectionsStack.addArrangedSubview(shootingBox)
         sectionsStack.addArrangedSubview(satellitesBox)
+        sectionsStack.addArrangedSubview(planetBox)
 
         let commitLabel = makeSmallLabel("Build: \(buildCommit)")
         commitLabel.textColor = .tertiaryLabelColor
@@ -1522,7 +1627,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         sectionsStack.addArrangedSubview(commitLabel)
 
         // Force full-width for non-General sections
-        let boxesToExpand: [NSBox] = [moonBox, shootingBox, satellitesBox]
+        let boxesToExpand: [NSBox] = [moonBox, shootingBox, satellitesBox, planetBox]
         for box in boxesToExpand {
             box.setContentHuggingPriority(.defaultLow, for: .horizontal)
             box.setContentCompressionResistancePriority(
@@ -2541,6 +2646,56 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         updatePreviewConfig()
     }
 
+    @IBAction func planetToggled(_ sender: Any) {
+        guard let checkbox = planetEnabledCheckbox else { return }
+        let enabled = (checkbox.state == .on)
+        if enabled != lastPlanetEnabled {
+            logChange(
+                changedKey: "planetEnabled",
+                oldValue: lastPlanetEnabled ? "true" : "false",
+                newValue: enabled ? "true" : "false"
+            )
+            lastPlanetEnabled = enabled
+        }
+        updatePlanetsUIEnabled()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
+    @IBAction func planetSliderChanged(_ sender: Any) {
+        if let sizeSlider = planetSizeSlider,
+            sizeSlider.doubleValue != lastPlanetSizePercent
+        {
+            logChange(
+                changedKey: "planetSizeScreenWidthPercent",
+                oldValue: format(lastPlanetSizePercent),
+                newValue: format(sizeSlider.doubleValue)
+            )
+            lastPlanetSizePercent = sizeSlider.doubleValue
+        }
+        planetSizePreview?.stringValue = String(
+            format: "%.3f",
+            planetSizeSlider?.doubleValue ?? lastPlanetSizePercent
+        )
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
+    @IBAction func planetBelowHorizonChanged(_ sender: Any) {
+        guard let popup = planetBelowHorizonPopup else { return }
+        let newValue = popup.indexOfSelectedItem == 0 ? "hide" : "randomPosition"
+        if newValue != lastPlanetBelowHorizon {
+            logChange(
+                changedKey: "planetBelowHorizonBehavior",
+                oldValue: lastPlanetBelowHorizon,
+                newValue: newValue
+            )
+            lastPlanetBelowHorizon = newValue
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
     @IBAction func previewTogglePause(_ sender: Any) {
         if isManuallyPaused || effectivePaused() {
             isManuallyPaused = false
@@ -2733,7 +2888,12 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             buildingLightsSpawnPerSecFractionOfMax: buildingLightsDensitySlider
                 .doubleValue,
             disableFlasherOnBase: false,
-            starSpawnPerSecFractionOfMax: starDensitySlider.doubleValue
+            starSpawnPerSecFractionOfMax: starDensitySlider.doubleValue,
+            planetEnabled: planetEnabledCheckbox?.state == .on,
+            planetSizeScreenWidthPercent: planetSizeSlider?.doubleValue
+                ?? defaultsManager.planetSizeScreenWidthPercent,
+            planetBelowHorizonBehavior: (planetBelowHorizonPopup?.indexOfSelectedItem == 0
+                ? "hide" : "randomPosition")
         )
     }
 
@@ -2922,6 +3082,21 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         satellitesTrailDecayPreview?.alphaValue = alpha
     }
 
+    private func updatePlanetsUIEnabled() {
+        guard let enabledCheckbox = planetEnabledCheckbox else { return }
+        let enabled = enabledCheckbox.state == .on
+        let alpha: CGFloat = enabled ? 1.0 : 0.4
+        let controls: [NSControl?] = [
+            planetSizeSlider,
+            planetBelowHorizonPopup,
+        ]
+        for c in controls {
+            c?.isEnabled = enabled
+            c?.alphaValue = alpha
+        }
+        planetSizePreview?.alphaValue = alpha
+    }
+
     // MARK: - Save / Close / Cancel
 
     @IBAction func saveClose(_ sender: Any) {
@@ -3029,6 +3204,17 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         }
         if let hl = satellitesTrailDecaySlider {
             defaultsManager.satellitesTrailHalfLifeSeconds = hl.doubleValue
+        }
+
+        if let cb = planetEnabledCheckbox {
+            defaultsManager.planetEnabled = (cb.state == .on)
+        }
+        if let size = planetSizeSlider {
+            defaultsManager.planetSizeScreenWidthPercent = size.doubleValue
+        }
+        if let popup = planetBelowHorizonPopup {
+            defaultsManager.planetBelowHorizonBehavior =
+                popup.indexOfSelectedItem == 0 ? "hide" : "randomPosition"
         }
 
         view?.settingsChanged()

@@ -48,8 +48,12 @@
 		C100000200000001000000F1 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = F9FE28022E57A067000772F9 /* Shaders.metal */; };
 		C100000200000001000000F2 /* MetalTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9FE28062E57A661000772F9 /* MetalTypes.swift */; };
 		C100000200000001000000F3 /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D2E3F30000000100000001 /* BuildInfo.swift */; };
-/* End PBXBuildFile section */
+		AA000001000000010000000A /* Planet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000005000000010000000A /* Planet.swift */; };
+		AA000002000000010000000A /* PlanetTexture.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000006000000010000000A /* PlanetTexture.swift */; };
+		AA000003000000010000000A /* Planet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000005000000010000000A /* Planet.swift */; };
+		AA000004000000010000000A /* PlanetTexture.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000006000000010000000A /* PlanetTexture.swift */; };
 
+/* End PBXBuildFile section */
 /* Begin PBXFileReference section */
 		3E597E0E227BA8780092CA49 /* StarryConfigSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarryConfigSheetController.swift; sourceTree = "<group>"; };
 		3E597E10227BAE390092CA49 /* StarryDefaultsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarryDefaultsManager.swift; sourceTree = "<group>"; };
@@ -73,6 +77,8 @@
 		F9FE28032E57A067000772F9 /* StarryMetalRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarryMetalRenderer.swift; sourceTree = "<group>"; };
 		F9FE28062E57A661000772F9 /* MetalTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalTypes.swift; sourceTree = "<group>"; };
 		B1D2E3F30000000100000001 /* BuildInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.swift; sourceTree = "<group>"; };
+		AA000005000000010000000A /* Planet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Planet.swift; sourceTree = "<group>"; };
+		AA000006000000010000000A /* PlanetTexture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanetTexture.swift; sourceTree = "<group>"; };
 		C1000001000000010000000A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		C1000001000000010000000B /* PreviewAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewAppDelegate.swift; sourceTree = "<group>"; };
 		C1000001000000010000000C /* PreviewApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "PreviewApp-Info.plist"; sourceTree = "<group>"; };
@@ -139,6 +145,8 @@
 				F91F62AB2E7B23A0007F9283 /* DebugSprites.swift */,
 				F91F62A92E7B221E007F9283 /* DebugLayerRenderer.swift */,
 				B1D2E3F30000000100000001 /* BuildInfo.swift */,
+				AA000005000000010000000A /* Planet.swift */,
+				AA000006000000010000000A /* PlanetTexture.swift */,
 			);
 			path = StarryExcuseForAMacScreensaver;
 			sourceTree = "<group>";
@@ -275,6 +283,8 @@
 				F9295FE62E4E68BD00083F85 /* MoonLayerRenderer.swift in Sources */,
 				F91F62AA2E7B221E007F9283 /* DebugLayerRenderer.swift in Sources */,
 				B1D2E3F40000000100000001 /* BuildInfo.swift in Sources */,
+				AA000001000000010000000A /* Planet.swift in Sources */,
+				AA000002000000010000000A /* PlanetTexture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -303,6 +313,8 @@
 				C100000200000001000000F1 /* Shaders.metal in Sources */,
 				C100000200000001000000F2 /* MetalTypes.swift in Sources */,
 				C100000200000001000000F3 /* BuildInfo.swift in Sources */,
+				AA000003000000010000000A /* Planet.swift in Sources */,
+				AA000004000000010000000A /* PlanetTexture.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

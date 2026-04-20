@@ -592,6 +592,11 @@ class StarryExcuseForAView: ScreenSaverView {
                 .buildingLightsSpawnFractionOfMax,
             disableFlasherOnBase: false,
             starSpawnPerSecFractionOfMax: defaultsManager.starSpawnFractionOfMax,
+            planetEnabled: defaultsManager.planetEnabled,
+            planetSizeScreenWidthPercent: defaultsManager
+                .planetSizeScreenWidthPercent,
+            planetBelowHorizonBehavior: defaultsManager
+                .planetBelowHorizonBehavior,
             showBuildInfo: showBuildOverlay
         )
     }

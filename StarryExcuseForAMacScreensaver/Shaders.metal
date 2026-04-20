@@ -264,3 +264,70 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
 
     return float4(rgb * edgeAlpha, edgeAlpha);
 }
+
+// Planet shading uniforms:
+// params0: (radiusPx, brightness, unused, unused)
+struct PlanetUniforms {
+    float2 viewportSize;
+    float2 centerPx;
+    float4 params0;  // x=radiusPx, y=brightness, z=unused, w=unused
+};
+
+struct PlanetVarying {
+    float4 position [[position]];
+    float2 local;
+};
+
+vertex PlanetVarying PlanetVertex(uint vid [[vertex_id]],
+                                  constant PlanetUniforms &uni [[buffer(2)]]) {
+    PlanetVarying out;
+    const float2 corners[6] = {
+        float2(-1.0, -1.0),
+        float2( 1.0, -1.0),
+        float2(-1.0,  1.0),
+        float2(-1.0,  1.0),
+        float2( 1.0, -1.0),
+        float2( 1.0,  1.0)
+    };
+    float2 local = corners[vid];
+    float radiusPx = uni.params0.x;
+    float2 offsetPx = local * radiusPx;
+    float2 posPx = uni.centerPx + offsetPx;
+    float2 ndc = float2((posPx.x / uni.viewportSize.x) * 2.0 - 1.0,
+                        (posPx.y / uni.viewportSize.y) * 2.0 - 1.0);
+    out.position = float4(ndc, 0, 1);
+    out.local = local;
+    return out;
+}
+
+fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
+                               constant PlanetUniforms &uni [[buffer(2)]],
+                               texture2d<float, access::sample> albedoTex [[texture(0)]]) {
+    constexpr sampler s(address::clamp_to_edge,
+                        filter::nearest,
+                        coord::normalized);
+
+    float2 local = in.local;
+    float r2 = dot(local, local);
+    if (r2 > 1.0) {
+        discard_fragment();
+    }
+
+    float radiusPx = max(uni.params0.x, 1.0);
+    float r = sqrt(r2);
+    float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
+    float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
+
+    float brightness = uni.params0.y;
+
+    float2 uv = local * 0.5 + 0.5;
+    float4 albedo = float4(0.5, 0.4, 0.3, 1.0);  // fallback color
+    if (albedoTex.get_width() > 0) {
+        albedo = albedoTex.sample(s, uv);
+    }
+
+    // Simple brightness multiply, no terminator
+    float3 rgb = albedo.rgb * brightness;
+
+    return float4(rgb * edgeAlpha, edgeAlpha);
+}

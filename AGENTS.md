@@ -21,9 +21,11 @@ This project is supposed to serve as a fun learning test bed for agentic program
  - `DebugLayerRenderer.swift` - Generates the FPS counter and CPU usage debug overlay sprites when debug mode is enabled.
 
 ### Data Types & Helpers
- - `MetalTypes.swift` - Defines GPU-shared data types: `SpriteInstance`, `SpriteShape`, `MoonUniforms`, `StarryDrawData`, and related enums/structs.
+ - `MetalTypes.swift` - Defines GPU-shared data types: `SpriteInstance`, `SpriteShape`, `MoonUniforms`, `PlanetParams`, `StarryDrawData`, and related enums/structs.
  - `Moon.swift` - Moon phase calculation (based on real-world lunar cycle) and traversal path geometry.
  - `MoonTexture.swift` - Procedural generation of the moon's albedo texture (cratered, noisy lunar surface).
+ - `Planet.swift` - Keplerian orbital ephemeris for Jupiter (extensible to other planets), altitude/azimuth sky position from a hardcoded observer location, and screen-space mapping with configurable below-horizon behavior.
+ - `PlanetTexture.swift` - Procedural RGBA texture generation for Jupiter (horizontal bands, Great Red Spot, limb darkening, per-pixel noise) in a retro pixel-art style.
  - `Buildings.swift` - Building style definitions and tile patterns used to generate the skyline silhouette.
  - `Points.swift` - Lightweight `Point` and `Color` value types used throughout the simulation.
  - `DebugSprites.swift` - Helper to generate debug outline rectangle sprites for visual debugging.
