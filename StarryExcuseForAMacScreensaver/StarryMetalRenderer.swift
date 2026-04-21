@@ -28,7 +28,9 @@ final class StarryMetalRenderer {
     private struct PlanetUniformsSwift {
         var viewportSize: SIMD2<Float>
         var centerPx: SIMD2<Float>
-        var params0: SIMD4<Float>  // x=radiusPx, y=brightness, z=unused, w=unused
+        var params0: SIMD4<Float>  // x=radiusPx, y=phaseFraction, z=brightBrightness, w=darkBrightness
+        var params1: SIMD4<Float>  // x=unused, y=waxingSign, z=unused, w=unused
+        var params2: SIMD4<Float>  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=unused
     }
 
     private enum FragmentBufferIndex {
@@ -1135,7 +1137,7 @@ final class StarryMetalRenderer {
         let nothingToDraw =
             drawData.baseSprites.isEmpty && drawData.satellitesSprites.isEmpty
             && drawData.shootingSprites.isEmpty && drawData.moon == nil
-            && !willDecay && drawData.clearAll == false
+            && drawData.planet == nil && !willDecay && drawData.clearAll == false
             && !(debugOverlayEnabled && debugOverlayRenderer.hasOverlayTexture)
         if nothingToDraw {
             // Still advance frame index (so diagnostics cadence matches)
@@ -1640,17 +1642,19 @@ final class StarryMetalRenderer {
 
         if debugCompositeMode == .normal {
             if let planetTex = planetAlbedoTexture, let pp = drawData.planet {
-                if pp.brightness > 0, pp.radiusPx > 0 {
+                if pp.brightBrightness > 0, pp.radiusPx > 0 {
                     var uniforms = PlanetUniformsSwift(
                         viewportSize: SIMD2<Float>(Float(target.width), Float(target.height)),
                         centerPx: SIMD2<Float>(pp.centerPx.x, pp.centerPx.y),
-                        params0: SIMD4<Float>(pp.radiusPx, pp.brightness, 0, 0)
+                        params0: SIMD4<Float>(pp.radiusPx, pp.phaseFraction, pp.brightBrightness, pp.darkBrightness),
+                        params1: SIMD4<Float>(0, pp.waxingSign, 0, 0),
+                        params2: SIMD4<Float>(Float(pp.terminatorMode), pp.terminatorWidth, Float(pp.terminatorBands), 0)
                     )
                     encoder.setRenderPipelineState(planetPipeline)
                     encoder.setVertexBytes(&uniforms, length: MemoryLayout<PlanetUniformsSwift>.stride, index: 2)
                     encoder.setFragmentBytes(&uniforms, length: MemoryLayout<PlanetUniformsSwift>.stride, index: 2)
                     encoder.setFragmentTexture(planetTex, index: 0)
-                    encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
                 }
             }
         }

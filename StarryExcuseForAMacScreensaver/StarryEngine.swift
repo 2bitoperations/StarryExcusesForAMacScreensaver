@@ -59,6 +59,7 @@ struct StarryRuntimeConfig {
     var planetEnabled: Bool = true
     var planetSizeScreenWidthPercent: Double = 0.016
     var planetBelowHorizonBehavior: String = "hide"
+    var planetTerminatorMode: String = "forcedFull"
 
     // Show build commit hash overlay (preview app only).
     var showBuildInfo: Bool = false
@@ -873,7 +874,13 @@ final class StarryEngine {
             planetParams = PlanetParams(
                 centerPx: SIMD2<Float>(Float(state.center.x), Float(state.center.y)),
                 radiusPx: Float(p.radius),
-                brightness: state.brightness
+                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : 1.0,
+                brightBrightness: 1.0,
+                darkBrightness: 0.15,
+                waxingSign: 1.0,
+                terminatorMode: 0,
+                terminatorWidth: 0.1,
+                terminatorBands: 3
             )
             frameplanetAlbedoImage = planetAlbedoDirty ? planetAlbedoImage : nil
         }
@@ -1058,7 +1065,13 @@ final class StarryEngine {
             planetParams = PlanetParams(
                 centerPx: SIMD2<Float>(Float(state.center.x), Float(state.center.y)),
                 radiusPx: Float(p.radius),
-                brightness: state.brightness
+                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : 1.0,
+                brightBrightness: 1.0,
+                darkBrightness: 0.15,
+                waxingSign: 1.0,
+                terminatorMode: 0,
+                terminatorWidth: 0.1,
+                terminatorBands: 3
             )
             frameplanetAlbedoImage = planetAlbedoDirty ? planetAlbedoImage : nil
         }

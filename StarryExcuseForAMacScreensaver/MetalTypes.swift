@@ -78,20 +78,38 @@ public struct MoonParams {
 }
 
 // Planet parameters per-frame (for renderer logic)
-// brightness is a simple overall multiplier (no terminator for now).
+// Mirrors MoonParams with terminator lighting support.
 public struct PlanetParams {
-    public var centerPx: SIMD2<Float>  // pixel center
-    public var radiusPx: Float         // pixel radius
-    public var brightness: Float       // overall brightness multiplier
+    public var centerPx: SIMD2<Float>
+    public var radiusPx: Float
+    public var phaseFraction: Float      // 0=new, 1=full
+    public var brightBrightness: Float
+    public var darkBrightness: Float
+    public var waxingSign: Float         // +1 or -1
+    public var terminatorMode: Int       // 0=hard, 1=smooth, 2=banded
+    public var terminatorWidth: Float
+    public var terminatorBands: Int
 
     public init(
         centerPx: SIMD2<Float>,
         radiusPx: Float,
-        brightness: Float
+        phaseFraction: Float,
+        brightBrightness: Float,
+        darkBrightness: Float,
+        waxingSign: Float,
+        terminatorMode: Int,
+        terminatorWidth: Float,
+        terminatorBands: Int
     ) {
         self.centerPx = centerPx
         self.radiusPx = radiusPx
-        self.brightness = brightness
+        self.phaseFraction = phaseFraction
+        self.brightBrightness = brightBrightness
+        self.darkBrightness = darkBrightness
+        self.waxingSign = waxingSign
+        self.terminatorMode = terminatorMode
+        self.terminatorWidth = terminatorWidth
+        self.terminatorBands = terminatorBands
     }
 }
 

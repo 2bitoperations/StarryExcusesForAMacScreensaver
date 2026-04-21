@@ -597,6 +597,7 @@ class StarryExcuseForAView: ScreenSaverView {
                 .planetSizeScreenWidthPercent,
             planetBelowHorizonBehavior: defaultsManager
                 .planetBelowHorizonBehavior,
+            planetTerminatorMode: defaultsManager.planetTerminatorMode,
             showBuildInfo: showBuildOverlay
         )
     }

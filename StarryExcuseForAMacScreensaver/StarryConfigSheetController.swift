@@ -95,6 +95,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     var planetSizeSlider: NSSlider?
     var planetSizePreview: NSTextField?
     var planetBelowHorizonPopup: NSPopUpButton?
+    var planetTerminatorModePopup: NSPopUpButton?
 
     // Preview container
     var moonPreviewView: NSView!
@@ -159,6 +160,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private var lastPlanetEnabled: Bool = true
     private var lastPlanetSizePercent: Double = 0.016
     private var lastPlanetBelowHorizon: String = "hide"
+    private var lastPlanetTerminatorMode: String = "forcedFull"
 
     // MARK: - One-time UI init flag
     private var uiInitialized = false
@@ -426,9 +428,12 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 sizeSlider.doubleValue
             )
         }
-        if let popup = planetBelowHorizonPopup {
-            popup.selectItem(at: defaultsManager.planetBelowHorizonBehavior == "hide" ? 0 : 1)
-        }
+         if let popup = planetBelowHorizonPopup {
+             popup.selectItem(at: defaultsManager.planetBelowHorizonBehavior == "hide" ? 0 : 1)
+         }
+         if let popup = planetTerminatorModePopup {
+             popup.selectItem(at: defaultsManager.planetTerminatorMode == "forcedFull" ? 0 : 1)
+         }
 
         // Last-known capture
         lastStarSpawnFractionOfMax = starDensitySlider.doubleValue
@@ -509,6 +514,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         lastPlanetEnabled = defaultsManager.planetEnabled
         lastPlanetSizePercent = defaultsManager.planetSizeScreenWidthPercent
         lastPlanetBelowHorizon = defaultsManager.planetBelowHorizonBehavior
+        lastPlanetTerminatorMode = defaultsManager.planetTerminatorMode
         lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         lastStarSamplingMode =
             starSamplingModePopup?.indexOfSelectedItem
@@ -1585,24 +1591,40 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             equalTo: planetSizeSliderRow.trailingAnchor
         ).isActive = true
 
-        let planetBelowHorizonLabelRow = NSStackView()
-        planetBelowHorizonLabelRow.orientation = .horizontal
-        planetBelowHorizonLabelRow.alignment = .centerY
-        planetBelowHorizonLabelRow.spacing = 6
-        planetBelowHorizonLabelRow.translatesAutoresizingMaskIntoConstraints = false
-        let planetBelowHorizonLabel = makeLabel("When below horizon:")
-        let planetBelowHorizonPopupControl = NSPopUpButton()
-        planetBelowHorizonPopupControl.addItems(withTitles: ["Hide", "Random position"])
-        planetBelowHorizonPopupControl.target = self
-        planetBelowHorizonPopupControl.action = #selector(planetBelowHorizonChanged(_:))
-        self.planetBelowHorizonPopup = planetBelowHorizonPopupControl
-        planetBelowHorizonLabelRow.addArrangedSubview(planetBelowHorizonLabel)
-        planetBelowHorizonLabelRow.addArrangedSubview(planetBelowHorizonPopupControl)
+         let planetBelowHorizonLabelRow = NSStackView()
+         planetBelowHorizonLabelRow.orientation = .horizontal
+         planetBelowHorizonLabelRow.alignment = .centerY
+         planetBelowHorizonLabelRow.spacing = 6
+         planetBelowHorizonLabelRow.translatesAutoresizingMaskIntoConstraints = false
+         let planetBelowHorizonLabel = makeLabel("When below horizon:")
+         let planetBelowHorizonPopupControl = NSPopUpButton()
+         planetBelowHorizonPopupControl.addItems(withTitles: ["Hide", "Random position"])
+         planetBelowHorizonPopupControl.target = self
+         planetBelowHorizonPopupControl.action = #selector(planetBelowHorizonChanged(_:))
+         self.planetBelowHorizonPopup = planetBelowHorizonPopupControl
+         planetBelowHorizonLabelRow.addArrangedSubview(planetBelowHorizonLabel)
+         planetBelowHorizonLabelRow.addArrangedSubview(planetBelowHorizonPopupControl)
 
-        planetStack.addArrangedSubview(planetEnableRow)
-        planetStack.addArrangedSubview(planetSizeLabelRow)
-        planetStack.addArrangedSubview(planetSizeSliderRow)
-        planetStack.addArrangedSubview(planetBelowHorizonLabelRow)
+         let planetTerminatorModeRow = NSStackView()
+         planetTerminatorModeRow.orientation = .horizontal
+         planetTerminatorModeRow.alignment = .centerY
+         planetTerminatorModeRow.spacing = 6
+         planetTerminatorModeRow.translatesAutoresizingMaskIntoConstraints = false
+         let planetTerminatorModeLabel = makeLabel("Terminator")
+         let planetTerminatorModePopupControl = NSPopUpButton(frame: .zero, pullsDown: false)
+         planetTerminatorModePopupControl.translatesAutoresizingMaskIntoConstraints = false
+         planetTerminatorModePopupControl.addItems(withTitles: ["Forced Full", "Computed"])
+         planetTerminatorModePopupControl.target = self
+         planetTerminatorModePopupControl.action = #selector(planetTerminatorModeChanged(_:))
+         self.planetTerminatorModePopup = planetTerminatorModePopupControl
+         planetTerminatorModeRow.addArrangedSubview(planetTerminatorModeLabel)
+         planetTerminatorModeRow.addArrangedSubview(planetTerminatorModePopupControl)
+
+         planetStack.addArrangedSubview(planetEnableRow)
+         planetStack.addArrangedSubview(planetSizeLabelRow)
+         planetStack.addArrangedSubview(planetSizeSliderRow)
+         planetStack.addArrangedSubview(planetBelowHorizonLabelRow)
+         planetStack.addArrangedSubview(planetTerminatorModeRow)
 
         planetBox.contentView?.addSubview(planetStack)
         if let planetContent = planetBox.contentView {
@@ -1625,6 +1647,16 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         commitLabel.textColor = .tertiaryLabelColor
         commitLabel.alignment = .center
         sectionsStack.addArrangedSubview(commitLabel)
+
+        let regenerateBtn = NSButton(
+            title: "Regenerate Preview",
+            target: self,
+            action: #selector(regeneratePreview(_:))
+        )
+        regenerateBtn.setButtonType(.momentaryPushIn)
+        regenerateBtn.bezelStyle = .rounded
+        regenerateBtn.translatesAutoresizingMaskIntoConstraints = false
+        sectionsStack.addArrangedSubview(regenerateBtn)
 
         // Force full-width for non-General sections
         let boxesToExpand: [NSBox] = [moonBox, shootingBox, satellitesBox, planetBox]
@@ -2696,6 +2728,21 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         updatePreviewConfig()
     }
 
+    @IBAction func planetTerminatorModeChanged(_ sender: Any) {
+        guard let popup = planetTerminatorModePopup else { return }
+        let newValue = popup.indexOfSelectedItem == 0 ? "forcedFull" : "computed"
+        if newValue != lastPlanetTerminatorMode {
+            logChange(
+                changedKey: "planetTerminatorMode",
+                oldValue: lastPlanetTerminatorMode,
+                newValue: newValue
+            )
+            lastPlanetTerminatorMode = newValue
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
     @IBAction func previewTogglePause(_ sender: Any) {
         if isManuallyPaused || effectivePaused() {
             isManuallyPaused = false
@@ -2789,6 +2836,22 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         if auto { isAutoPaused = false }
         if !isManuallyPaused && previewTimer == nil {
             startPreviewTimer()
+        }
+    }
+
+    @objc private func regeneratePreview(_ sender: Any?) {
+        // Stop the preview timer to pause rendering
+        stopPreviewTimer()
+        
+        // Deallocate the current engine to force regeneration
+        previewEngine = nil
+        
+        // Create a fresh engine with all new content
+        setupPreviewEngine()
+        
+        // Resume the preview timer if not manually paused
+        if !isManuallyPaused {
+            resumePreview(auto: false)
         }
     }
 
@@ -2893,7 +2956,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             planetSizeScreenWidthPercent: planetSizeSlider?.doubleValue
                 ?? defaultsManager.planetSizeScreenWidthPercent,
             planetBelowHorizonBehavior: (planetBelowHorizonPopup?.indexOfSelectedItem == 0
-                ? "hide" : "randomPosition")
+                ? "hide" : "randomPosition"),
+            planetTerminatorMode: (planetTerminatorModePopup?.indexOfSelectedItem == 0
+                ? "forcedFull" : "computed")
         )
     }
 
@@ -3215,6 +3280,10 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         if let popup = planetBelowHorizonPopup {
             defaultsManager.planetBelowHorizonBehavior =
                 popup.indexOfSelectedItem == 0 ? "hide" : "randomPosition"
+        }
+        if let popup = planetTerminatorModePopup {
+            defaultsManager.planetTerminatorMode =
+                popup.indexOfSelectedItem == 0 ? "forcedFull" : "computed"
         }
 
         view?.settingsChanged()

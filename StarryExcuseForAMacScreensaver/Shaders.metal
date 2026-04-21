@@ -265,12 +265,12 @@ fragment float4 MoonFragment(MoonVarying in [[stage_in]],
     return float4(rgb * edgeAlpha, edgeAlpha);
 }
 
-// Planet shading uniforms:
-// params0: (radiusPx, brightness, unused, unused)
 struct PlanetUniforms {
     float2 viewportSize;
     float2 centerPx;
-    float4 params0;  // x=radiusPx, y=brightness, z=unused, w=unused
+    float4 params0;  // x=radiusPx, y=phaseFraction, z=brightBrightness, w=darkBrightness
+    float4 params1;  // x=unused, y=waxingSign, z=unused, w=unused
+    float4 params2;  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=unused
 };
 
 struct PlanetVarying {
@@ -318,16 +318,44 @@ fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
     float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
     float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
 
-    float brightness = uni.params0.y;
-
     float2 uv = local * 0.5 + 0.5;
-    float4 albedo = float4(0.5, 0.4, 0.3, 1.0);  // fallback color
+    float4 albedo = float4(0.5, 0.4, 0.3, 1.0);
     if (albedoTex.get_width() > 0) {
         albedo = albedoTex.sample(s, uv);
     }
 
-    // Simple brightness multiply, no terminator
-    float3 rgb = albedo.rgb * brightness;
+    float z = sqrt(max(0.0, 1.0 - r2));
+    float3 n = normalize(float3(local.x, local.y, z));
 
+    float fIllum = clamp(uni.params0.y, 0.0, 1.0);
+    float cosDelta = 1.0 - 2.0 * fIllum;
+    float delta = acos(clamp(cosDelta, -1.0, 1.0));
+    float waxingSign = uni.params1.y;
+    float phi = (waxingSign > 0.0) ? (PI - delta) : (delta - PI);
+    float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
+    float ndotl = dot(n, l);
+
+    int termMode = int(uni.params2.x);
+    float termWidth = uni.params2.y;
+    float termBands = uni.params2.z;
+
+    float litMask;
+    if (termMode == 1) {
+        litMask = smoothstep(-termWidth, termWidth, ndotl);
+    } else if (termMode == 2) {
+        float smooth = smoothstep(-termWidth, termWidth, ndotl);
+        float raw = smooth * termBands;
+        float f = fract(raw);
+        float edge = clamp(termWidth * termBands, 0.01, 0.5);
+        float softEdge = smoothstep(0.0, edge, f);
+        litMask = clamp((floor(raw) + softEdge) / (termBands - 1.0), 0.0, 1.0);
+    } else {
+        litMask = ndotl >= 0.0 ? 1.0 : 0.0;
+    }
+
+    float brightB = uni.params0.z;
+    float darkB = uni.params0.w;
+    float brightness = mix(darkB, brightB, litMask);
+    float3 rgb = albedo.rgb * brightness;
     return float4(rgb * edgeAlpha, edgeAlpha);
 }

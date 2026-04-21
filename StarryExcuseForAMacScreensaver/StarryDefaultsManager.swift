@@ -127,6 +127,7 @@ class StarryDefaultsManager {
     private let defaultPlanetEnabled = true
     private let defaultPlanetSizeScreenWidthPercent = 0.016
     private let defaultPlanetBelowHorizonBehavior = "hide"
+    private let defaultPlanetTerminatorMode = "forcedFull"
 
     init(moduleIdentifier: String? = nil) {
         let identifier = moduleIdentifier
@@ -793,10 +794,25 @@ class StarryDefaultsManager {
         }
         get {
             if let s = defaults.string(forKey: "PlanetBelowHorizonBehavior"),
-               s == "hide" || s == "randomPosition" {
-                return s
+                s == "hide" || s == "randomPosition" {
+                 return s
             }
             return defaultPlanetBelowHorizonBehavior
+        }
+    }
+
+    var planetTerminatorMode: String {
+        set {
+            let valid = (newValue == "forcedFull" || newValue == "computed") ? newValue : "forcedFull"
+            defaults.set(valid, forKey: "PlanetTerminatorMode")
+            defaults.synchronize()
+        }
+        get {
+            if let s = defaults.string(forKey: "PlanetTerminatorMode"),
+                s == "forcedFull" || s == "computed" {
+                 return s
+            }
+            return defaultPlanetTerminatorMode
         }
     }
 }
