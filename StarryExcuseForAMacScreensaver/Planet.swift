@@ -118,24 +118,32 @@ struct Planet {
     ///                       horizon for Austin TX at the given time.
     ///   - `ringTiltDeg`:    Saturn ring opening angle B in degrees (−27° to +27°);
     ///                       0.0 for all other planets.
-    func frameState(now: Date) -> (center: CGPoint, brightness: Float, isAboveHorizon: Bool, ringTiltDeg: Double) {
+    func frameState(now: Date) -> (center: CGPoint, brightness: Float, isAboveHorizon: Bool, ringTiltDeg: Double, ringRotationDeg: Double) {
         let (altDeg, azDeg) = Planet.horizontalCoordinates(for: identity, now: now)
         let aboveHorizon    = altDeg > 0.0
 
         let ringTilt: Double
+        let ringRotation: Double
         if identity == .saturn {
             let (geoLon, geoLat) = Planet.geocentricEcliptic(for: .saturn, now: now)
             let d = Planet.julianDay(from: now) - 2451545.0
             ringTilt = Planet.saturnRingTilt(geocentricLonDeg: geoLon, geocentricLatDeg: geoLat, daysSinceJ2000: d)
+
+            let (saturnRA, saturnDec) = Planet.geocentricEquatorialFromEcliptic(
+                lonDeg: geoLon,
+                latDeg: geoLat
+            )
+            ringRotation = Planet.saturnRingPositionAngle(saturnRARad: saturnRA, saturnDecRad: saturnDec)
         } else {
             ringTilt = 0.0
+            ringRotation = 0.0
         }
 
         // If behavior is "random", ALWAYS use deterministicOffHorizonPoint (skip orbital check)
         switch belowHorizonBehavior {
         case "random":
             let center = deterministicOffHorizonPoint(now: now)
-            return (center, 1.0, false, ringTilt)
+            return (center, 1.0, false, ringTilt, ringRotation)
         default:
             break
         }
@@ -143,16 +151,16 @@ struct Planet {
         if aboveHorizon {
             let center = screenPoint(altitudeDeg: altDeg, azimuthDeg: azDeg)
             // TODO: Compute brightness falloff from phase angle / solar elongation.
-            return (center, 1.0, true, ringTilt)
+            return (center, 1.0, true, ringTilt, ringRotation)
         }
 
         switch belowHorizonBehavior {
         case "randomWhenBelow":
             let center = deterministicOffHorizonPoint(now: now)
-            return (center, 1.0, false, ringTilt)
+            return (center, 1.0, false, ringTilt, ringRotation)
         default: // "hide" and anything unrecognised
             let offScreen = CGPoint(x: -Double(radius) * 2, y: -Double(radius) * 2)
-            return (offScreen, 0.0, false, ringTilt)
+            return (offScreen, 0.0, false, ringTilt, ringRotation)
         }
     }
 
@@ -443,6 +451,37 @@ struct Planet {
         return toDeg(asin(max(-1.0, min(1.0, sinB))))
     }
 
+    private static func saturnRingPositionAngle(saturnRARad: Double, saturnDecRad: Double) -> Double {
+        let alphaPole = toRad(40.589)
+        let deltaPole = toRad(83.537)
+        let deltaAlpha = alphaPole - saturnRARad
+
+        let numerator = cos(deltaPole) * sin(deltaAlpha)
+        let denominator = sin(deltaPole) * cos(saturnDecRad)
+            - cos(deltaPole) * sin(saturnDecRad) * cos(deltaAlpha)
+
+        let p = atan2(numerator, denominator)
+        return normaliseSigned(toDeg(p))
+    }
+
+    private static func geocentricEquatorialFromEcliptic(lonDeg: Double, latDeg: Double) -> (raRad: Double, decRad: Double) {
+        let lambda = toRad(lonDeg)
+        let beta = toRad(latDeg)
+        let eps = toRad(23.4392911)
+
+        let xEcl = cos(beta) * cos(lambda)
+        let yEcl = cos(beta) * sin(lambda)
+        let zEcl = sin(beta)
+
+        let xEq = xEcl
+        let yEq = cos(eps) * yEcl - sin(eps) * zEcl
+        let zEq = sin(eps) * yEcl + cos(eps) * zEcl
+
+        let ra = atan2(yEq, xEq)
+        let dec = asin(max(-1.0, min(1.0, zEq)))
+        return (ra, dec)
+    }
+
     /// Returns (longitude°, latitude°, radius AU) in heliocentric ecliptic
     /// coordinates using simplified two-body Keplerian elements.
     private static func heliocentricEcliptic(
@@ -511,6 +550,13 @@ struct Planet {
     private static func normalise(_ deg: Double) -> Double {
         var d = deg.truncatingRemainder(dividingBy: 360.0)
         if d < 0 { d += 360.0 }
+        return d
+    }
+
+    private static func normaliseSigned(_ deg: Double) -> Double {
+        var d = deg.truncatingRemainder(dividingBy: 360.0)
+        if d >= 180.0 { d -= 360.0 }
+        if d < -180.0 { d += 360.0 }
         return d
     }
 }

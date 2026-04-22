@@ -965,7 +965,7 @@ final class StarryEngine {
                 terminatorBands: 3,
                 textureAspect: key == PlanetIdentity.saturn.rawValue ? 2.0 : 1.0,
                 ringTiltDeg: ringTilt,
-                ringRotationDeg: 0.0
+                ringRotationDeg: Float(state.ringRotationDeg)
             )
             planetEntries.append((id: key, params: params))
             if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {
@@ -1174,7 +1174,7 @@ final class StarryEngine {
                 terminatorBands: 3,
                 textureAspect: key == PlanetIdentity.saturn.rawValue ? 2.0 : 1.0,
                 ringTiltDeg: ringTilt,
-                ringRotationDeg: 0.0
+                ringRotationDeg: Float(state.ringRotationDeg)
             )
             planetEntries.append((id: key, params: params))
             if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {

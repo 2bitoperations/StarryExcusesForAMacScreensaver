@@ -406,19 +406,42 @@ fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
 
         if (ringR >= ringInner && ringR <= ringOuter) {
             float ringSpan = ringOuter - ringInner;
-            float cassiniCenter = ringInner + ringSpan * 0.60f;
-            float cassiniHalfWidth = ringSpan * 0.03f;
-            float cassiniStart = cassiniCenter - cassiniHalfWidth;
-            float cassiniEnd = cassiniCenter + cassiniHalfWidth;
+            float t = (ringR - ringInner) / ringSpan;
 
-            // B ring (inner), Cassini division (transparent), A ring (outer).
-            if (ringR < cassiniStart) {
-                ringColor = float3(0.88f, 0.80f, 0.62f);
-                onRing = true;
-            } else if (ringR > cassiniEnd) {
-                ringColor = float3(0.74f, 0.67f, 0.52f);
-                onRing = true;
+            // Six ring bands from inner to outer, retro pixel-art style:
+            //   C ring (dim),  B ring inner (bright), B ring outer (bright),
+            //   Cassini division (transparent gap),
+            //   A ring inner (medium), Encke gap (thin), A ring outer (medium-dim).
+            float ringAlpha = 0.0f;
+            if (t < 0.10f) {
+                // C ring — dim, semi-transparent
+                ringColor = float3(0.68f, 0.62f, 0.50f);
+                ringAlpha = 0.40f;
+            } else if (t < 0.35f) {
+                // B ring inner — brightest band
+                ringColor = float3(0.92f, 0.84f, 0.65f);
+                ringAlpha = 0.92f;
+            } else if (t < 0.56f) {
+                // B ring outer — slightly darker
+                ringColor = float3(0.86f, 0.78f, 0.60f);
+                ringAlpha = 0.88f;
+            } else if (t < 0.64f) {
+                // Cassini division — transparent gap
+                ringAlpha = 0.0f;
+            } else if (t < 0.82f) {
+                // A ring inner — medium bright
+                ringColor = float3(0.80f, 0.73f, 0.56f);
+                ringAlpha = 0.78f;
+            } else if (t < 0.85f) {
+                // Encke gap — thin transparent slit
+                ringAlpha = 0.0f;
+            } else {
+                // A ring outer — dimmer fringe
+                ringColor = float3(0.72f, 0.65f, 0.50f);
+                ringAlpha = 0.60f;
             }
+
+            onRing = ringAlpha > 0.0f;
 
             // Sign rule from design: front if rp.y * sin(tilt) < 0.
             ringInFront = (rp.y * sinTilt) < 0.0f;
@@ -438,7 +461,7 @@ fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
         float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
         float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, bodyR);
 
-        float2 uv = local * 0.5 + 0.5;
+        float2 uv = sphereLocal * 0.5 + 0.5;
         float4 albedo = float4(0.5, 0.4, 0.3, 1.0);
         if (albedoTex.get_width() > 0) {
             albedo = albedoTex.sample(s, uv);
@@ -483,15 +506,18 @@ fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
     // Rings are intentionally flat-shaded (simple retro look).
     float ringBrightness = 0.92f;
     float3 ringRGB = ringColor * ringBrightness;
+    float ringAlphaFinal = onRing ? 1.0f : 0.0f;
 
     if (onPlanetBody && onRing) {
         if (ringInFront) {
-            return float4(ringRGB, 1.0);
+            float3 comp = ringRGB * ringAlphaFinal + planetRGB * planetAlpha * (1.0 - ringAlphaFinal);
+            float compA = ringAlphaFinal + planetAlpha * (1.0 - ringAlphaFinal);
+            return float4(comp, compA);
         }
         return float4(planetRGB * planetAlpha, planetAlpha);
     }
     if (onPlanetBody) {
         return float4(planetRGB * planetAlpha, planetAlpha);
     }
-    return float4(ringRGB, 1.0);
+    return float4(ringRGB * ringAlphaFinal, ringAlphaFinal);
 }
