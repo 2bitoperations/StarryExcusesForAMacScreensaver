@@ -312,95 +312,186 @@ fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
     float aspect = max(uni.params2.w, 1.0);
     bool isSaturn = aspect > 1.0;
 
-    // UVs must use the full local range for Saturn ([-1,+1] -> [0,1]),
-    // otherwise sampling is squeezed into the center and clips ring edges.
-    float2 baseUV = local * 0.5 + 0.5;
+    // Keep the non-Saturn path unchanged.
+    if (!isSaturn) {
+        float2 sphereLocal = local;
+        float r2 = dot(sphereLocal, sphereLocal);
 
-    // Sphere-space coords for phase lighting/disc math.
-    // For Saturn, scale into a body-local space where the planet disc is circular
-    // on screen (quad is stretched in X by "aspect").
-    float2 sphereLocal = local;
-    if (isSaturn) {
-        constexpr float saturnBodyRadiusUV = 0.423f;
-        constexpr float saturnBodyRadiusLocal = saturnBodyRadiusUV * 2.0f; // ~0.846 in [-1,+1] local space
-        sphereLocal = float2((local.x * aspect) / saturnBodyRadiusLocal,
-                             local.y / saturnBodyRadiusLocal);
-    }
+        float radiusPx = max(uni.params0.x, 1.0);
+        float r = sqrt(r2);
+        float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
 
-    float r2 = dot(sphereLocal, sphereLocal);
-    
-    float radiusPx = max(uni.params0.x, 1.0);
-    float r = sqrt(r2);
-    float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
-
-    float2 uv = baseUV;
-    if (isSaturn) {
-        // Texture is authored with a baked ring opening around 22°.
-        // Apply slider value as a delta so params1.x visibly rotates ring orientation.
-        float ringTiltDeg = uni.params1.x;
-        constexpr float saturnBakedTiltDeg = 22.0f;
-        float ringDeltaRad = (ringTiltDeg - saturnBakedTiltDeg) * (PI / 180.0f);
-        float sTilt = sin(ringDeltaRad);
-        float cTilt = cos(ringDeltaRad);
-        float2 ringLocal = float2(local.x * cTilt - local.y * sTilt,
-                                  local.x * sTilt + local.y * cTilt);
-        float2 ringUV = ringLocal * 0.5 + 0.5;
-
-        // Keep the sphere body sampling stable; rotate only ring sampling.
-        bool onDiscBody = r2 <= 1.0f;
-        uv = onDiscBody ? baseUV : ringUV;
-    }
-
-    float4 albedo = float4(0.5, 0.4, 0.3, 1.0);
-    if (albedoTex.get_width() > 0) {
-        albedo = albedoTex.sample(s, uv);
-    }
-
-    float edgeAlpha;
-    if (isSaturn) {
-        if (albedo.a < 0.01) {
-            discard_fragment();
+        float2 uv = local * 0.5 + 0.5;
+        float4 albedo = float4(0.5, 0.4, 0.3, 1.0);
+        if (albedoTex.get_width() > 0) {
+            albedo = albedoTex.sample(s, uv);
         }
-        edgeAlpha = albedo.a;
-    } else {
+
         if (r2 > 1.0) {
             discard_fragment();
         }
-        edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
+        float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
+
+        float z = sqrt(max(0.0, 1.0 - r2));
+        float3 n = normalize(float3(sphereLocal.x, sphereLocal.y, z));
+
+        float fIllum = clamp(uni.params0.y, 0.0, 1.0);
+        float cosDelta = 1.0 - 2.0 * fIllum;
+        float delta = acos(clamp(cosDelta, -1.0, 1.0));
+        float waxingSign = uni.params1.y;
+        float phi = (waxingSign > 0.0) ? (PI - delta) : (delta - PI);
+        float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
+        float ndotl = dot(n, l);
+
+        int termMode = int(uni.params2.x);
+        float termWidth = uni.params2.y;
+        float termBands = uni.params2.z;
+
+        float litMask;
+        if (termMode == 1) {
+            litMask = smoothstep(-termWidth, termWidth, ndotl);
+        } else if (termMode == 2) {
+            float smooth = smoothstep(-termWidth, termWidth, ndotl);
+            float raw = smooth * termBands;
+            float f = fract(raw);
+            float edge = clamp(termWidth * termBands, 0.01, 0.5);
+            float softEdge = smoothstep(0.0, edge, f);
+            litMask = clamp((floor(raw) + softEdge) / (termBands - 1.0), 0.0, 1.0);
+        } else {
+            litMask = ndotl >= 0.0 ? 1.0 : 0.0;
+        }
+
+        float brightB = uni.params0.z;
+        float darkB = uni.params0.w;
+        float brightness = mix(darkB, brightB, litMask);
+        float3 rgb = albedo.rgb * brightness;
+        return float4(rgb * edgeAlpha, edgeAlpha);
     }
 
-    float z = sqrt(max(0.0, 1.0 - r2));
-    float3 n = normalize(float3(sphereLocal.x, sphereLocal.y, z));
+    // Saturn path: geometric rings + textured planet body.
+    // in.local is [-1,+1], but PlanetVertex stretches X by `aspect` in screen pixels,
+    // so convert to a screen-isotropic space before circular/elliptical tests.
+    float2 screenP = float2(local.x * aspect, local.y);
 
-    float fIllum = clamp(uni.params0.y, 0.0, 1.0);
-    float cosDelta = 1.0 - 2.0 * fIllum;
-    float delta = acos(clamp(cosDelta, -1.0, 1.0));
-    float waxingSign = uni.params1.y;
-    float phi = (waxingSign > 0.0) ? (PI - delta) : (delta - PI);
-    float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
-    float ndotl = dot(n, l);
+    // Body radius from Saturn texture authoring: rBody=0.423 in UV-space,
+    // therefore 0.846 in local [-1,+1] Y units.
+    constexpr float saturnBodyRadius = 0.846f;
+    float2 sphereLocal = screenP / saturnBodyRadius;
+    float bodyDistSq = dot(screenP, screenP);
+    bool onPlanetBody = bodyDistSq <= saturnBodyRadius * saturnBodyRadius;
 
-    int termMode = int(uni.params2.x);
-    float termWidth = uni.params2.y;
-    float termBands = uni.params2.z;
+    // Ring annulus in ring-plane units.
+    constexpr float ringInner = 1.1f * saturnBodyRadius;
+    constexpr float ringOuter = 2.3f * saturnBodyRadius;
 
-    float litMask;
-    if (termMode == 1) {
-        litMask = smoothstep(-termWidth, termWidth, ndotl);
-    } else if (termMode == 2) {
-        float smooth = smoothstep(-termWidth, termWidth, ndotl);
-        float raw = smooth * termBands;
-        float f = fract(raw);
-        float edge = clamp(termWidth * termBands, 0.01, 0.5);
-        float softEdge = smoothstep(0.0, edge, f);
-        litMask = clamp((floor(raw) + softEdge) / (termBands - 1.0), 0.0, 1.0);
-    } else {
-        litMask = ndotl >= 0.0 ? 1.0 : 0.0;
+    float axialTiltRad = uni.params1.x * (PI / 180.0f);
+    float ringRotationRad = uni.params1.z * (PI / 180.0f);
+    float sinTilt = sin(axialTiltRad);
+
+    bool onRing = false;
+    bool ringInFront = false;
+    float3 ringColor = float3(0.0);
+
+    // Edge-on guard: projected ring thickness is sub-pixel near zero opening.
+    if (abs(sinTilt) >= 0.01f) {
+        // Rotate by -ringRotation so ring major axis aligns with X in this frame.
+        float cRot = cos(ringRotationRad);
+        float sRot = sin(ringRotationRad);
+        float2 rp = float2(screenP.x * cRot + screenP.y * sRot,
+                           -screenP.x * sRot + screenP.y * cRot);
+
+        // Undo foreshortening: divide minor axis by sin(tilt) to recover ring-plane radius.
+        float2 ringPlane = float2(rp.x, rp.y / sinTilt);
+        float ringR = length(ringPlane);
+
+        if (ringR >= ringInner && ringR <= ringOuter) {
+            float ringSpan = ringOuter - ringInner;
+            float cassiniCenter = ringInner + ringSpan * 0.60f;
+            float cassiniHalfWidth = ringSpan * 0.03f;
+            float cassiniStart = cassiniCenter - cassiniHalfWidth;
+            float cassiniEnd = cassiniCenter + cassiniHalfWidth;
+
+            // B ring (inner), Cassini division (transparent), A ring (outer).
+            if (ringR < cassiniStart) {
+                ringColor = float3(0.88f, 0.80f, 0.62f);
+                onRing = true;
+            } else if (ringR > cassiniEnd) {
+                ringColor = float3(0.74f, 0.67f, 0.52f);
+                onRing = true;
+            }
+
+            // Sign rule from design: front if rp.y * sin(tilt) < 0.
+            ringInFront = (rp.y * sinTilt) < 0.0f;
+        }
     }
 
-    float brightB = uni.params0.z;
-    float darkB = uni.params0.w;
-    float brightness = mix(darkB, brightB, litMask);
-    float3 rgb = albedo.rgb * brightness;
-    return float4(rgb * edgeAlpha, edgeAlpha);
+    if (!onPlanetBody && !onRing) {
+        discard_fragment();
+    }
+
+    // Planet body keeps existing texture sampling + existing phase/terminator logic.
+    float3 planetRGB = float3(0.0);
+    float planetAlpha = 0.0;
+    if (onPlanetBody) {
+        float radiusPx = max(uni.params0.x, 1.0);
+        float bodyR = length(sphereLocal);
+        float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
+        float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, bodyR);
+
+        float2 uv = local * 0.5 + 0.5;
+        float4 albedo = float4(0.5, 0.4, 0.3, 1.0);
+        if (albedoTex.get_width() > 0) {
+            albedo = albedoTex.sample(s, uv);
+        }
+
+        float z = sqrt(max(0.0, 1.0 - dot(sphereLocal, sphereLocal)));
+        float3 n = normalize(float3(sphereLocal.x, sphereLocal.y, z));
+
+        float fIllum = clamp(uni.params0.y, 0.0, 1.0);
+        float cosDelta = 1.0 - 2.0 * fIllum;
+        float delta = acos(clamp(cosDelta, -1.0, 1.0));
+        float waxingSign = uni.params1.y;
+        float phi = (waxingSign > 0.0) ? (PI - delta) : (delta - PI);
+        float3 l = normalize(float3(sin(phi), 0.0, cos(phi)));
+        float ndotl = dot(n, l);
+
+        int termMode = int(uni.params2.x);
+        float termWidth = uni.params2.y;
+        float termBands = uni.params2.z;
+
+        float litMask;
+        if (termMode == 1) {
+            litMask = smoothstep(-termWidth, termWidth, ndotl);
+        } else if (termMode == 2) {
+            float smooth = smoothstep(-termWidth, termWidth, ndotl);
+            float raw = smooth * termBands;
+            float f = fract(raw);
+            float edge = clamp(termWidth * termBands, 0.01, 0.5);
+            float softEdge = smoothstep(0.0, edge, f);
+            litMask = clamp((floor(raw) + softEdge) / (termBands - 1.0), 0.0, 1.0);
+        } else {
+            litMask = ndotl >= 0.0 ? 1.0 : 0.0;
+        }
+
+        float brightB = uni.params0.z;
+        float darkB = uni.params0.w;
+        float brightness = mix(darkB, brightB, litMask);
+        planetRGB = albedo.rgb * brightness;
+        planetAlpha = edgeAlpha;
+    }
+
+    // Rings are intentionally flat-shaded (simple retro look).
+    float ringBrightness = 0.92f;
+    float3 ringRGB = ringColor * ringBrightness;
+
+    if (onPlanetBody && onRing) {
+        if (ringInFront) {
+            return float4(ringRGB, 1.0);
+        }
+        return float4(planetRGB * planetAlpha, planetAlpha);
+    }
+    if (onPlanetBody) {
+        return float4(planetRGB * planetAlpha, planetAlpha);
+    }
+    return float4(ringRGB, 1.0);
 }
