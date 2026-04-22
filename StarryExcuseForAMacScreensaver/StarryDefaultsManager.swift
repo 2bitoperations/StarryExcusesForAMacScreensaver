@@ -77,8 +77,12 @@ class StarryDefaultsManager {
     static let starSamplingModeMax: Int = 2
 
     // Planet
-    static let planetSizePercentMin: Double = 0.001
-    static let planetSizePercentMax: Double = 0.25
+    static let planetSizePercentMin: Double = 0.0
+    static let planetSizePercentMax: Double = 0.2
+
+    // Saturn ring tilt override
+    static let saturnRingTiltAngleMin: Double = -27.0
+    static let saturnRingTiltAngleMax: Double = 27.0
 
     // Default fallback constants (single source of truth for values)
     // Star density: 0.5 ≈ previous default 800 stars/sec at reference screen (half of 1600).
@@ -124,10 +128,20 @@ class StarryDefaultsManager {
     private let defaultStarSamplingMode = 0
 
     // Planet defaults
-    private let defaultPlanetEnabled = true
-    private let defaultPlanetSizeScreenWidthPercent = 0.016
-    private let defaultPlanetBelowHorizonBehavior = "hide"
+    private let defaultMercurySize: Double = 0.00056
+    private let defaultVenusSize: Double = 0.00139
+    private let defaultMarsSize: Double = 0.000784
+    private let defaultJupiterSize: Double = 0.016
+    private let defaultSaturnSize: Double = 0.01349
+    private let defaultUranusSize: Double = 0.00584
+    private let defaultNeptuneSize: Double = 0.00566
+    private let defaultPlutoSize: Double = 0.000272
+    private let defaultPlanetBelowHorizonBehavior = "randomWhenBelow"
     private let defaultPlanetTerminatorMode = "forcedFull"
+
+    // Saturn ring tilt override defaults
+    private let defaultSaturnRingTiltMode = "automatic"
+    private let defaultSaturnRingTiltAngle = 0.0
 
     init(moduleIdentifier: String? = nil) {
         let identifier = moduleIdentifier
@@ -759,42 +773,55 @@ class StarryDefaultsManager {
 
     // MARK: - Planets
 
-    var planetEnabled: Bool {
-        set {
-            defaults.set(newValue, forKey: "PlanetEnabled")
-            defaults.synchronize()
-        }
-        get { safeBool("PlanetEnabled") ?? defaultPlanetEnabled }
+    var mercurySize: Double {
+        set { setClampedDouble(newValue, key: "MercurySize", min: 0.0, max: Self.planetSizePercentMax) }
+        get { validatedDouble(safeDouble("MercurySize"), min: 0.0, max: Self.planetSizePercentMax, defaultValue: defaultMercurySize) }
     }
 
-    var planetSizeScreenWidthPercent: Double {
-        set {
-            setClampedDouble(
-                newValue,
-                key: "PlanetSizeScreenWidthPercent",
-                min: Self.planetSizePercentMin,
-                max: Self.planetSizePercentMax
-            )
-        }
-        get {
-            validatedDouble(
-                safeDouble("PlanetSizeScreenWidthPercent"),
-                min: Self.planetSizePercentMin,
-                max: Self.planetSizePercentMax,
-                defaultValue: defaultPlanetSizeScreenWidthPercent
-            )
-        }
+    var venusSize: Double {
+        set { setClampedDouble(newValue, key: "VenusSize", min: 0.0, max: Self.planetSizePercentMax) }
+        get { validatedDouble(safeDouble("VenusSize"), min: 0.0, max: Self.planetSizePercentMax, defaultValue: defaultVenusSize) }
+    }
+
+    var marsSize: Double {
+        set { setClampedDouble(newValue, key: "MarsSize", min: 0.0, max: Self.planetSizePercentMax) }
+        get { validatedDouble(safeDouble("MarsSize"), min: 0.0, max: Self.planetSizePercentMax, defaultValue: defaultMarsSize) }
+    }
+
+    var jupiterSize: Double {
+        set { setClampedDouble(newValue, key: "JupiterSize", min: 0.0, max: Self.planetSizePercentMax) }
+        get { validatedDouble(safeDouble("JupiterSize"), min: 0.0, max: Self.planetSizePercentMax, defaultValue: defaultJupiterSize) }
+    }
+
+    var saturnSize: Double {
+        set { setClampedDouble(newValue, key: "SaturnSize", min: 0.0, max: Self.planetSizePercentMax) }
+        get { validatedDouble(safeDouble("SaturnSize"), min: 0.0, max: Self.planetSizePercentMax, defaultValue: defaultSaturnSize) }
+    }
+
+    var uranusSize: Double {
+        set { setClampedDouble(newValue, key: "UranusSize", min: 0.0, max: Self.planetSizePercentMax) }
+        get { validatedDouble(safeDouble("UranusSize"), min: 0.0, max: Self.planetSizePercentMax, defaultValue: defaultUranusSize) }
+    }
+
+    var neptuneSize: Double {
+        set { setClampedDouble(newValue, key: "NeptuneSize", min: 0.0, max: Self.planetSizePercentMax) }
+        get { validatedDouble(safeDouble("NeptuneSize"), min: 0.0, max: Self.planetSizePercentMax, defaultValue: defaultNeptuneSize) }
+    }
+
+    var plutoSize: Double {
+        set { setClampedDouble(newValue, key: "PlutoSize", min: 0.0, max: Self.planetSizePercentMax) }
+        get { validatedDouble(safeDouble("PlutoSize"), min: 0.0, max: Self.planetSizePercentMax, defaultValue: defaultPlutoSize) }
     }
 
     var planetBelowHorizonBehavior: String {
         set {
-            let valid = (newValue == "hide" || newValue == "randomPosition") ? newValue : "hide"
+            let valid = (newValue == "hide" || newValue == "random" || newValue == "randomWhenBelow") ? newValue : defaultPlanetBelowHorizonBehavior
             defaults.set(valid, forKey: "PlanetBelowHorizonBehavior")
             defaults.synchronize()
         }
         get {
             if let s = defaults.string(forKey: "PlanetBelowHorizonBehavior"),
-                s == "hide" || s == "randomPosition" {
+                s == "hide" || s == "random" || s == "randomWhenBelow" {
                  return s
             }
             return defaultPlanetBelowHorizonBehavior
@@ -803,16 +830,50 @@ class StarryDefaultsManager {
 
     var planetTerminatorMode: String {
         set {
-            let valid = (newValue == "forcedFull" || newValue == "computed") ? newValue : "forcedFull"
+            let valid = (newValue == "forcedFull" || newValue == "forcedHalf" || newValue == "computed") ? newValue : "forcedFull"
             defaults.set(valid, forKey: "PlanetTerminatorMode")
             defaults.synchronize()
         }
         get {
             if let s = defaults.string(forKey: "PlanetTerminatorMode"),
-                s == "forcedFull" || s == "computed" {
+                s == "forcedFull" || s == "forcedHalf" || s == "computed" {
                  return s
             }
             return defaultPlanetTerminatorMode
+        }
+    }
+
+    var saturnRingTiltMode: String {
+        set {
+            let valid = (newValue == "automatic" || newValue == "manual") ? newValue : "automatic"
+            defaults.set(valid, forKey: "SaturnRingTiltMode")
+            defaults.synchronize()
+        }
+        get {
+            if let s = defaults.string(forKey: "SaturnRingTiltMode"),
+                s == "automatic" || s == "manual" {
+                return s
+            }
+            return defaultSaturnRingTiltMode
+        }
+    }
+
+    var saturnRingTiltAngle: Double {
+        set {
+            setClampedDouble(
+                newValue,
+                key: "SaturnRingTiltAngle",
+                min: Self.saturnRingTiltAngleMin,
+                max: Self.saturnRingTiltAngleMax
+            )
+        }
+        get {
+            validatedDouble(
+                safeDouble("SaturnRingTiltAngle"),
+                min: Self.saturnRingTiltAngleMin,
+                max: Self.saturnRingTiltAngleMax,
+                defaultValue: defaultSaturnRingTiltAngle
+            )
         }
     }
 }

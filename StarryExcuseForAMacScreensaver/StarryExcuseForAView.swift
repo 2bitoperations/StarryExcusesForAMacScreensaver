@@ -592,12 +592,19 @@ class StarryExcuseForAView: ScreenSaverView {
                 .buildingLightsSpawnFractionOfMax,
             disableFlasherOnBase: false,
             starSpawnPerSecFractionOfMax: defaultsManager.starSpawnFractionOfMax,
-            planetEnabled: defaultsManager.planetEnabled,
-            planetSizeScreenWidthPercent: defaultsManager
-                .planetSizeScreenWidthPercent,
+            mercurySize: defaultsManager.mercurySize,
+            venusSize: defaultsManager.venusSize,
+            marsSize: defaultsManager.marsSize,
+            jupiterSize: defaultsManager.jupiterSize,
+            saturnSize: defaultsManager.saturnSize,
+            uranusSize: defaultsManager.uranusSize,
+            neptuneSize: defaultsManager.neptuneSize,
+            plutoSize: defaultsManager.plutoSize,
             planetBelowHorizonBehavior: defaultsManager
                 .planetBelowHorizonBehavior,
             planetTerminatorMode: defaultsManager.planetTerminatorMode,
+            saturnRingTiltMode: defaultsManager.saturnRingTiltMode,
+            saturnRingTiltManualAngle: Float(defaultsManager.saturnRingTiltAngle),
             showBuildInfo: showBuildOverlay
         )
     }

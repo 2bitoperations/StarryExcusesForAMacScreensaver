@@ -89,6 +89,8 @@ public struct PlanetParams {
     public var terminatorMode: Int       // 0=hard, 1=smooth, 2=banded
     public var terminatorWidth: Float
     public var terminatorBands: Int
+    public var textureAspect: Float
+    public var ringTiltDeg: Float  // Saturn ring tilt angle in degrees (-27 to +27)
 
     public init(
         centerPx: SIMD2<Float>,
@@ -99,7 +101,9 @@ public struct PlanetParams {
         waxingSign: Float,
         terminatorMode: Int,
         terminatorWidth: Float,
-        terminatorBands: Int
+        terminatorBands: Int,
+        textureAspect: Float = 1.0,
+        ringTiltDeg: Float = 0.0
     ) {
         self.centerPx = centerPx
         self.radiusPx = radiusPx
@@ -110,6 +114,8 @@ public struct PlanetParams {
         self.terminatorMode = terminatorMode
         self.terminatorWidth = terminatorWidth
         self.terminatorBands = terminatorBands
+        self.textureAspect = textureAspect
+        self.ringTiltDeg = ringTiltDeg
     }
 }
 
@@ -153,8 +159,8 @@ public struct StarryDrawData {
     public var moon: MoonParams?  // draw on top (directly to final drawable)
     public var moonAlbedoImage: CGImage?  // provide when available/changed (optional)
 
-    public var planet: PlanetParams?         // draw planet on top (before moon)
-    public var planetAlbedoImage: CGImage?   // provide when available/changed (RGBA)
+    public var planets: [(id: String, params: PlanetParams)] = []
+    public var planetAlbedoImages: [String: CGImage] = [:]
 
     // Debug: show the illuminated region mask (in red) instead of bright texture
     public var showLightAreaTextureFillMask: Bool
@@ -177,8 +183,8 @@ public struct StarryDrawData {
         shootingSprites: [SpriteInstance],
         moon: MoonParams?,
         moonAlbedoImage: CGImage?,
-        planet: PlanetParams? = nil,
-        planetAlbedoImage: CGImage? = nil,
+        planets: [(id: String, params: PlanetParams)] = [],
+        planetAlbedoImages: [String: CGImage] = [:],
         showLightAreaTextureFillMask: Bool,
         debugOverlayEnabled: Bool,
         debugFPS: Float,
@@ -193,8 +199,8 @@ public struct StarryDrawData {
         self.shootingSprites = shootingSprites
         self.moon = moon
         self.moonAlbedoImage = moonAlbedoImage
-        self.planet = planet
-        self.planetAlbedoImage = planetAlbedoImage
+        self.planets = planets
+        self.planetAlbedoImages = planetAlbedoImages
         self.showLightAreaTextureFillMask = showLightAreaTextureFillMask
         self.debugOverlayEnabled = debugOverlayEnabled
         self.debugFPS = debugFPS
@@ -222,8 +228,8 @@ public struct StarryDrawData {
             shootingSprites: shootingSprites,
             moon: moon,
             moonAlbedoImage: moonAlbedoImage,
-            planet: nil,
-            planetAlbedoImage: nil,
+            planets: [],
+            planetAlbedoImages: [:],
             showLightAreaTextureFillMask: showLightAreaTextureFillMask,
             debugOverlayEnabled: false,
             debugFPS: 0,

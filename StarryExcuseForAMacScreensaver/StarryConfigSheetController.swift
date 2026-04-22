@@ -91,11 +91,28 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     var satellitesTrailDecayPreview: NSTextField?
 
     // Planet controls
-    var planetEnabledCheckbox: NSSwitch?
-    var planetSizeSlider: NSSlider?
-    var planetSizePreview: NSTextField?
+    var mercurySizeSlider: NSSlider?
+    var venusSizeSlider: NSSlider?
+    var marsSizeSlider: NSSlider?
+    var jupiterSizeSlider: NSSlider?
+    var saturnSizeSlider: NSSlider?
+    var uranusSizeSlider: NSSlider?
+    var neptuneSizeSlider: NSSlider?
+    var plutoSizeSlider: NSSlider?
+    var mercurySizePreview: NSTextField?
+    var venusSizePreview: NSTextField?
+    var marsSizePreview: NSTextField?
+    var jupiterSizePreview: NSTextField?
+    var saturnSizePreview: NSTextField?
+    var uranusSizePreview: NSTextField?
+    var neptuneSizePreview: NSTextField?
+    var plutoSizePreview: NSTextField?
     var planetBelowHorizonPopup: NSPopUpButton?
     var planetTerminatorModePopup: NSPopUpButton?
+    var saturnRingTiltModePopup: NSPopUpButton?
+    var saturnRingTiltAngleSlider: NSSlider?
+    var saturnRingTiltAnglePreview: NSTextField?
+    var saturnRingTiltAngleRow: NSStackView?
 
     // Preview container
     var moonPreviewView: NSView!
@@ -157,10 +174,18 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private var lastSatellitesTrailHalfLifeSeconds: Double = 0
 
     // Planets last-known
-    private var lastPlanetEnabled: Bool = true
-    private var lastPlanetSizePercent: Double = 0.016
-    private var lastPlanetBelowHorizon: String = "hide"
+    private var lastMercurySize: Double = 0.00056
+    private var lastVenusSize: Double = 0.00139
+    private var lastMarsSize: Double = 0.000784
+    private var lastJupiterSize: Double = 0.016
+    private var lastSaturnSize: Double = 0.01349
+    private var lastUranusSize: Double = 0.00584
+    private var lastNeptuneSize: Double = 0.00566
+    private var lastPlutoSize: Double = 0.000272
+    private var lastPlanetBelowHorizon: String = "randomWhenBelow"
     private var lastPlanetTerminatorMode: String = "forcedFull"
+    private var lastSaturnRingTiltMode: String = "automatic"
+    private var lastSaturnRingTiltAngle: Double = 0.0
 
     // MARK: - One-time UI init flag
     private var uiInitialized = false
@@ -420,20 +445,30 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             )
         }
 
-        planetEnabledCheckbox?.state = defaultsManager.planetEnabled ? .on : .off
-        if let sizeSlider = planetSizeSlider {
-            sizeSlider.doubleValue = defaultsManager.planetSizeScreenWidthPercent
-            planetSizePreview?.stringValue = String(
-                format: "%.3f",
-                sizeSlider.doubleValue
-            )
+        mercurySizeSlider?.doubleValue = defaultsManager.mercurySize
+        venusSizeSlider?.doubleValue = defaultsManager.venusSize
+        marsSizeSlider?.doubleValue = defaultsManager.marsSize
+        jupiterSizeSlider?.doubleValue = defaultsManager.jupiterSize
+        saturnSizeSlider?.doubleValue = defaultsManager.saturnSize
+        uranusSizeSlider?.doubleValue = defaultsManager.uranusSize
+        neptuneSizeSlider?.doubleValue = defaultsManager.neptuneSize
+        plutoSizeSlider?.doubleValue = defaultsManager.plutoSize
+        updatePlanetSizePreviews()
+        if let popup = planetBelowHorizonPopup {
+            switch defaultsManager.planetBelowHorizonBehavior {
+            case "random":        popup.selectItem(at: 0)
+            case "hide":          popup.selectItem(at: 1)
+            default:              popup.selectItem(at: 2) // "randomWhenBelow"
+            }
         }
-         if let popup = planetBelowHorizonPopup {
-             popup.selectItem(at: defaultsManager.planetBelowHorizonBehavior == "hide" ? 0 : 1)
-         }
          if let popup = planetTerminatorModePopup {
-             popup.selectItem(at: defaultsManager.planetTerminatorMode == "forcedFull" ? 0 : 1)
+             popup.selectItem(at: defaultsManager.planetTerminatorMode == "forcedFull" ? 0 : defaultsManager.planetTerminatorMode == "forcedHalf" ? 1 : 2)
          }
+         if let popup = saturnRingTiltModePopup {
+             popup.selectItem(at: defaultsManager.saturnRingTiltMode == "automatic" ? 0 : 1)
+         }
+         saturnRingTiltAngleSlider?.doubleValue = defaultsManager.saturnRingTiltAngle
+         saturnRingTiltAnglePreview?.stringValue = String(format: "%.1f°", defaultsManager.saturnRingTiltAngle)
 
         // Last-known capture
         lastStarSpawnFractionOfMax = starDensitySlider.doubleValue
@@ -511,10 +546,18 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         lastSatellitesTrailHalfLifeSeconds =
             satellitesTrailDecaySlider?.doubleValue
             ?? defaultsManager.satellitesTrailHalfLifeSeconds
-        lastPlanetEnabled = defaultsManager.planetEnabled
-        lastPlanetSizePercent = defaultsManager.planetSizeScreenWidthPercent
+        lastMercurySize = defaultsManager.mercurySize
+        lastVenusSize = defaultsManager.venusSize
+        lastMarsSize = defaultsManager.marsSize
+        lastJupiterSize = defaultsManager.jupiterSize
+        lastSaturnSize = defaultsManager.saturnSize
+        lastUranusSize = defaultsManager.uranusSize
+        lastNeptuneSize = defaultsManager.neptuneSize
+        lastPlutoSize = defaultsManager.plutoSize
         lastPlanetBelowHorizon = defaultsManager.planetBelowHorizonBehavior
         lastPlanetTerminatorMode = defaultsManager.planetTerminatorMode
+        lastSaturnRingTiltMode = defaultsManager.saturnRingTiltMode
+        lastSaturnRingTiltAngle = defaultsManager.saturnRingTiltAngle
         lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         lastStarSamplingMode =
             starSamplingModePopup?.indexOfSelectedItem
@@ -526,6 +569,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         updateShootingStarsUIEnabled()
         updateSatellitesUIEnabled()
         updatePlanetsUIEnabled()
+        updateSaturnRingTiltUIEnabled()
 
         setupPreviewEngine()
         updatePauseToggleTitle()
@@ -1546,59 +1590,71 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         let planetBox = makeBox(title: "Planets")
         let planetStack = makeVStack(spacing: 8)
 
-        let planetEnableRow = NSStackView()
-        planetEnableRow.orientation = .horizontal
-        planetEnableRow.alignment = .centerY
-        planetEnableRow.spacing = 6
-        planetEnableRow.translatesAutoresizingMaskIntoConstraints = false
-        let planetSwitch = NSSwitch()
-        planetSwitch.target = self
-        planetSwitch.action = #selector(planetToggled(_:))
-        self.planetEnabledCheckbox = planetSwitch
-        let planetEnableLabel = makeLabel("Enable planets")
-        planetEnableRow.addArrangedSubview(planetSwitch)
-        planetEnableRow.addArrangedSubview(planetEnableLabel)
+        let planetNames = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"]
+        let planetNotchValues: [Double] = [0.00056, 0.00139, 0.000784, -1, 0.01349, 0.00584, 0.00566, 0.000272]
+        let planetDefaultValues: [Double] = [0.00056, 0.00139, 0.000784, 0.016, 0.01349, 0.00584, 0.00566, 0.000272]
+        let planetSliderKeyPaths: [ReferenceWritableKeyPath<StarryConfigSheetController, NSSlider?>] = [
+            \.mercurySizeSlider, \.venusSizeSlider, \.marsSizeSlider, \.jupiterSizeSlider,
+            \.saturnSizeSlider, \.uranusSizeSlider, \.neptuneSizeSlider, \.plutoSizeSlider
+        ]
+        let planetPreviewKeyPaths: [ReferenceWritableKeyPath<StarryConfigSheetController, NSTextField?>] = [
+            \.mercurySizePreview, \.venusSizePreview, \.marsSizePreview, \.jupiterSizePreview,
+            \.saturnSizePreview, \.uranusSizePreview, \.neptuneSizePreview, \.plutoSizePreview
+        ]
 
-        let planetSizeLabelRow = NSStackView()
-        planetSizeLabelRow.orientation = .horizontal
-        planetSizeLabelRow.alignment = .firstBaseline
-        planetSizeLabelRow.spacing = 4
-        planetSizeLabelRow.translatesAutoresizingMaskIntoConstraints = false
-        let planetSizeLabel = makeLabel("Size (% screen width)")
-        let planetSizePreviewLabel = makeSmallLabel("0.016")
-        self.planetSizePreview = planetSizePreviewLabel
-        planetSizeLabelRow.addArrangedSubview(planetSizeLabel)
-        planetSizeLabelRow.addArrangedSubview(planetSizePreviewLabel)
-        let planetSizeSliderControl = NSSlider(
-            value: defaultsManager.planetSizeScreenWidthPercent,
-            minValue: StarryDefaultsManager.planetSizePercentMin,
-            maxValue: StarryDefaultsManager.planetSizePercentMax,
-            target: self,
-            action: #selector(planetSliderChanged(_:))
-        )
-        planetSizeSliderControl.translatesAutoresizingMaskIntoConstraints = false
-        planetSizeSliderControl.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        self.planetSizeSlider = planetSizeSliderControl
-        let planetSizeSliderRow = NSStackView(views: [planetSizeSliderControl])
-        planetSizeSliderRow.orientation = .horizontal
-        planetSizeSliderRow.alignment = .centerY
-        planetSizeSliderRow.spacing = 4
-        planetSizeSliderRow.translatesAutoresizingMaskIntoConstraints = false
-        planetSizeSliderControl.leadingAnchor.constraint(
-            equalTo: planetSizeSliderRow.leadingAnchor
-        ).isActive = true
-        planetSizeSliderControl.trailingAnchor.constraint(
-            equalTo: planetSizeSliderRow.trailingAnchor
-        ).isActive = true
+        for (index, planetName) in planetNames.enumerated() {
+            let labelRow = NSStackView()
+            labelRow.orientation = .horizontal
+            labelRow.alignment = .firstBaseline
+            labelRow.spacing = 4
+            labelRow.translatesAutoresizingMaskIntoConstraints = false
+            let nameLabel = makeLabel(planetName)
+            let previewLabel = makeSmallLabel(
+                planetDefaultValues[index] < 0.0001 ? "OFF" : String(format: "%.5f", planetDefaultValues[index])
+            )
+            self[keyPath: planetPreviewKeyPaths[index]] = previewLabel
+            labelRow.addArrangedSubview(nameLabel)
+            labelRow.addArrangedSubview(previewLabel)
+
+            let slider = NSSlider(
+                value: planetDefaultValues[index],
+                minValue: StarryDefaultsManager.planetSizePercentMin,
+                maxValue: StarryDefaultsManager.planetSizePercentMax,
+                target: self,
+                action: #selector(planetSizeSliderChanged(_:))
+            )
+            slider.tag = index
+            slider.translatesAutoresizingMaskIntoConstraints = false
+            slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            self[keyPath: planetSliderKeyPaths[index]] = slider
+
+            if planetNotchValues[index] >= 0 {
+                let notchCell = slider.cell as? NSSliderCell
+                notchCell?.numberOfTickMarks = 0
+            }
+
+            let sliderRow = NSStackView(views: [slider])
+            sliderRow.orientation = .horizontal
+            sliderRow.alignment = .centerY
+            sliderRow.spacing = 4
+            sliderRow.translatesAutoresizingMaskIntoConstraints = false
+            slider.leadingAnchor.constraint(equalTo: sliderRow.leadingAnchor).isActive = true
+            slider.trailingAnchor.constraint(equalTo: sliderRow.trailingAnchor).isActive = true
+
+            planetStack.addArrangedSubview(labelRow)
+            planetStack.addArrangedSubview(sliderRow)
+            sliderRow.leadingAnchor.constraint(equalTo: planetStack.leadingAnchor).isActive = true
+            sliderRow.trailingAnchor.constraint(equalTo: planetStack.trailingAnchor).isActive = true
+        }
 
          let planetBelowHorizonLabelRow = NSStackView()
          planetBelowHorizonLabelRow.orientation = .horizontal
          planetBelowHorizonLabelRow.alignment = .centerY
          planetBelowHorizonLabelRow.spacing = 6
          planetBelowHorizonLabelRow.translatesAutoresizingMaskIntoConstraints = false
-         let planetBelowHorizonLabel = makeLabel("When below horizon:")
+         let planetBelowHorizonLabel = makeLabel("Planetary position:")
          let planetBelowHorizonPopupControl = NSPopUpButton()
-         planetBelowHorizonPopupControl.addItems(withTitles: ["Hide", "Random position"])
+         planetBelowHorizonPopupControl.addItems(withTitles: ["Random", "Hidden when below horizon", "Random when below horizon"])
          planetBelowHorizonPopupControl.target = self
          planetBelowHorizonPopupControl.action = #selector(planetBelowHorizonChanged(_:))
          self.planetBelowHorizonPopup = planetBelowHorizonPopupControl
@@ -1613,28 +1669,58 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
          let planetTerminatorModeLabel = makeLabel("Terminator")
          let planetTerminatorModePopupControl = NSPopUpButton(frame: .zero, pullsDown: false)
          planetTerminatorModePopupControl.translatesAutoresizingMaskIntoConstraints = false
-         planetTerminatorModePopupControl.addItems(withTitles: ["Forced Full", "Computed"])
+         planetTerminatorModePopupControl.addItems(withTitles: ["Forced Full", "Forced Half", "Computed"])
          planetTerminatorModePopupControl.target = self
          planetTerminatorModePopupControl.action = #selector(planetTerminatorModeChanged(_:))
          self.planetTerminatorModePopup = planetTerminatorModePopupControl
          planetTerminatorModeRow.addArrangedSubview(planetTerminatorModeLabel)
          planetTerminatorModeRow.addArrangedSubview(planetTerminatorModePopupControl)
 
-         planetStack.addArrangedSubview(planetEnableRow)
-         planetStack.addArrangedSubview(planetSizeLabelRow)
-         planetStack.addArrangedSubview(planetSizeSliderRow)
          planetStack.addArrangedSubview(planetBelowHorizonLabelRow)
          planetStack.addArrangedSubview(planetTerminatorModeRow)
+
+        let saturnRingTiltModeRow = NSStackView()
+        saturnRingTiltModeRow.orientation = .horizontal
+        saturnRingTiltModeRow.alignment = .centerY
+        saturnRingTiltModeRow.spacing = 6
+        saturnRingTiltModeRow.translatesAutoresizingMaskIntoConstraints = false
+        let saturnRingTiltModeLabel = makeLabel("Saturn ring tilt:")
+        let saturnRingTiltModePopupControl = NSPopUpButton(frame: .zero, pullsDown: false)
+        saturnRingTiltModePopupControl.translatesAutoresizingMaskIntoConstraints = false
+        saturnRingTiltModePopupControl.addItems(withTitles: ["Automatic (Calculated)", "Manual"])
+        saturnRingTiltModePopupControl.target = self
+        saturnRingTiltModePopupControl.action = #selector(saturnRingTiltModeChanged(_:))
+        self.saturnRingTiltModePopup = saturnRingTiltModePopupControl
+        saturnRingTiltModeRow.addArrangedSubview(saturnRingTiltModeLabel)
+        saturnRingTiltModeRow.addArrangedSubview(saturnRingTiltModePopupControl)
+
+        let saturnRingTiltAngleRowControl = NSStackView()
+        saturnRingTiltAngleRowControl.orientation = .horizontal
+        saturnRingTiltAngleRowControl.alignment = .centerY
+        saturnRingTiltAngleRowControl.spacing = 6
+        saturnRingTiltAngleRowControl.translatesAutoresizingMaskIntoConstraints = false
+        let saturnRingTiltAngleLabel = makeLabel("Ring tilt angle:")
+        let saturnRingTiltAngleSliderControl = NSSlider(value: 0.0, minValue: StarryDefaultsManager.saturnRingTiltAngleMin,
+                                                        maxValue: StarryDefaultsManager.saturnRingTiltAngleMax, target: self,
+                                                        action: #selector(saturnRingTiltAngleChanged(_:)))
+        saturnRingTiltAngleSliderControl.translatesAutoresizingMaskIntoConstraints = false
+        saturnRingTiltAngleSliderControl.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        self.saturnRingTiltAngleSlider = saturnRingTiltAngleSliderControl
+        let saturnRingTiltAnglePreviewLabel = makeLabel("0.0°")
+        saturnRingTiltAnglePreviewLabel.translatesAutoresizingMaskIntoConstraints = false
+        self.saturnRingTiltAnglePreview = saturnRingTiltAnglePreviewLabel
+        saturnRingTiltAngleRowControl.addArrangedSubview(saturnRingTiltAngleLabel)
+        saturnRingTiltAngleRowControl.addArrangedSubview(saturnRingTiltAngleSliderControl)
+        saturnRingTiltAngleRowControl.addArrangedSubview(saturnRingTiltAnglePreviewLabel)
+        self.saturnRingTiltAngleRow = saturnRingTiltAngleRowControl
+
+        planetStack.addArrangedSubview(saturnRingTiltModeRow)
+        planetStack.addArrangedSubview(saturnRingTiltAngleRowControl)
 
         planetBox.contentView?.addSubview(planetStack)
         if let planetContent = planetBox.contentView {
             pinToEdges(planetStack, in: planetContent, inset: 12)
         }
-
-        planetSizeSliderRow.leadingAnchor.constraint(equalTo: planetStack.leadingAnchor)
-            .isActive = true
-        planetSizeSliderRow.trailingAnchor.constraint(equalTo: planetStack.trailingAnchor)
-            .isActive = true
 
         // Add sections
         sectionsStack.addArrangedSubview(generalBox)
@@ -2678,44 +2764,60 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         updatePreviewConfig()
     }
 
-    @IBAction func planetToggled(_ sender: Any) {
-        guard let checkbox = planetEnabledCheckbox else { return }
-        let enabled = (checkbox.state == .on)
-        if enabled != lastPlanetEnabled {
-            logChange(
-                changedKey: "planetEnabled",
-                oldValue: lastPlanetEnabled ? "true" : "false",
-                newValue: enabled ? "true" : "false"
-            )
-            lastPlanetEnabled = enabled
-        }
-        updatePlanetsUIEnabled()
-        rebuildPreviewEngineIfNeeded()
-        updatePreviewConfig()
-    }
+    @IBAction func planetSizeSliderChanged(_ sender: Any) {
+        guard let slider = sender as? NSSlider else { return }
+        let index = slider.tag
+        let planetNames = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"]
+        let notchValues: [Double] = [0.00056, 0.00139, 0.000784, -1, 0.01349, 0.00584, 0.00566, 0.000272]
+        let previewKeyPaths: [ReferenceWritableKeyPath<StarryConfigSheetController, NSTextField?>] = [
+            \.mercurySizePreview, \.venusSizePreview, \.marsSizePreview, \.jupiterSizePreview,
+            \.saturnSizePreview, \.uranusSizePreview, \.neptuneSizePreview, \.plutoSizePreview
+        ]
+        let lastValues = [lastMercurySize, lastVenusSize, lastMarsSize, lastJupiterSize,
+                          lastSaturnSize, lastUranusSize, lastNeptuneSize, lastPlutoSize]
+        guard index >= 0 && index < planetNames.count else { return }
 
-    @IBAction func planetSliderChanged(_ sender: Any) {
-        if let sizeSlider = planetSizeSlider,
-            sizeSlider.doubleValue != lastPlanetSizePercent
-        {
-            logChange(
-                changedKey: "planetSizeScreenWidthPercent",
-                oldValue: format(lastPlanetSizePercent),
-                newValue: format(sizeSlider.doubleValue)
-            )
-            lastPlanetSizePercent = sizeSlider.doubleValue
+        var value = slider.doubleValue
+        let notch = notchValues[index]
+        if notch >= 0 && abs(value - notch) < 0.002 {
+            value = notch
+            slider.doubleValue = notch
         }
-        planetSizePreview?.stringValue = String(
-            format: "%.3f",
-            planetSizeSlider?.doubleValue ?? lastPlanetSizePercent
-        )
+
+        let previewText = value < 0.0001 ? "OFF" : String(format: "%.5f", value)
+        self[keyPath: previewKeyPaths[index]]?.stringValue = previewText
+
+        if value != lastValues[index] {
+            logChange(
+                changedKey: "\(planetNames[index].lowercased())Size",
+                oldValue: String(format: "%.5f", lastValues[index]),
+                newValue: String(format: "%.5f", value)
+            )
+            switch index {
+            case 0: lastMercurySize = value
+            case 1: lastVenusSize = value
+            case 2: lastMarsSize = value
+            case 3: lastJupiterSize = value
+            case 4: lastSaturnSize = value
+            case 5: lastUranusSize = value
+            case 6: lastNeptuneSize = value
+            case 7: lastPlutoSize = value
+            default: break
+            }
+        }
+
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
     }
 
     @IBAction func planetBelowHorizonChanged(_ sender: Any) {
         guard let popup = planetBelowHorizonPopup else { return }
-        let newValue = popup.indexOfSelectedItem == 0 ? "hide" : "randomPosition"
+        let newValue: String
+        switch popup.indexOfSelectedItem {
+        case 0:  newValue = "random"
+        case 1:  newValue = "hide"
+        default: newValue = "randomWhenBelow"
+        }
         if newValue != lastPlanetBelowHorizon {
             logChange(
                 changedKey: "planetBelowHorizonBehavior",
@@ -2730,7 +2832,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
 
     @IBAction func planetTerminatorModeChanged(_ sender: Any) {
         guard let popup = planetTerminatorModePopup else { return }
-        let newValue = popup.indexOfSelectedItem == 0 ? "forcedFull" : "computed"
+        let newValue = popup.indexOfSelectedItem == 0 ? "forcedFull" : popup.indexOfSelectedItem == 1 ? "forcedHalf" : "computed"
         if newValue != lastPlanetTerminatorMode {
             logChange(
                 changedKey: "planetTerminatorMode",
@@ -2738,6 +2840,38 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 newValue: newValue
             )
             lastPlanetTerminatorMode = newValue
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
+    @IBAction func saturnRingTiltModeChanged(_ sender: Any) {
+        guard let popup = saturnRingTiltModePopup else { return }
+        let newValue = popup.indexOfSelectedItem == 0 ? "automatic" : "manual"
+        if newValue != lastSaturnRingTiltMode {
+            logChange(
+                changedKey: "saturnRingTiltMode",
+                oldValue: lastSaturnRingTiltMode,
+                newValue: newValue
+            )
+            lastSaturnRingTiltMode = newValue
+        }
+        updateSaturnRingTiltUIEnabled()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
+    @IBAction func saturnRingTiltAngleChanged(_ sender: Any) {
+        guard let slider = saturnRingTiltAngleSlider else { return }
+        let val = slider.doubleValue
+        saturnRingTiltAnglePreview?.stringValue = String(format: "%.1f°", val)
+        if val != lastSaturnRingTiltAngle {
+            logChange(
+                changedKey: "saturnRingTiltAngle",
+                oldValue: String(format: "%.1f", lastSaturnRingTiltAngle),
+                newValue: String(format: "%.1f", val)
+            )
+            lastSaturnRingTiltAngle = val
         }
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
@@ -2952,13 +3086,25 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 .doubleValue,
             disableFlasherOnBase: false,
             starSpawnPerSecFractionOfMax: starDensitySlider.doubleValue,
-            planetEnabled: planetEnabledCheckbox?.state == .on,
-            planetSizeScreenWidthPercent: planetSizeSlider?.doubleValue
-                ?? defaultsManager.planetSizeScreenWidthPercent,
-            planetBelowHorizonBehavior: (planetBelowHorizonPopup?.indexOfSelectedItem == 0
-                ? "hide" : "randomPosition"),
+            mercurySize: mercurySizeSlider?.doubleValue ?? lastMercurySize,
+            venusSize: venusSizeSlider?.doubleValue ?? lastVenusSize,
+            marsSize: marsSizeSlider?.doubleValue ?? lastMarsSize,
+            jupiterSize: jupiterSizeSlider?.doubleValue ?? lastJupiterSize,
+            saturnSize: saturnSizeSlider?.doubleValue ?? lastSaturnSize,
+            uranusSize: uranusSizeSlider?.doubleValue ?? lastUranusSize,
+            neptuneSize: neptuneSizeSlider?.doubleValue ?? lastNeptuneSize,
+            plutoSize: plutoSizeSlider?.doubleValue ?? lastPlutoSize,
+            planetBelowHorizonBehavior: {
+                switch planetBelowHorizonPopup?.indexOfSelectedItem {
+                case 0:  return "random"
+                case 1:  return "hide"
+                default: return "randomWhenBelow"
+                }
+            }(),
             planetTerminatorMode: (planetTerminatorModePopup?.indexOfSelectedItem == 0
-                ? "forcedFull" : "computed")
+                ? "forcedFull" : planetTerminatorModePopup?.indexOfSelectedItem == 1 ? "forcedHalf" : "computed"),
+            saturnRingTiltMode: (saturnRingTiltModePopup?.indexOfSelectedItem == 0 ? "automatic" : "manual"),
+            saturnRingTiltManualAngle: Float(saturnRingTiltAngleSlider?.doubleValue ?? lastSaturnRingTiltAngle)
         )
     }
 
@@ -3147,19 +3293,26 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         satellitesTrailDecayPreview?.alphaValue = alpha
     }
 
-    private func updatePlanetsUIEnabled() {
-        guard let enabledCheckbox = planetEnabledCheckbox else { return }
-        let enabled = enabledCheckbox.state == .on
-        let alpha: CGFloat = enabled ? 1.0 : 0.4
-        let controls: [NSControl?] = [
-            planetSizeSlider,
-            planetBelowHorizonPopup,
-        ]
-        for c in controls {
-            c?.isEnabled = enabled
-            c?.alphaValue = alpha
+    private func updatePlanetsUIEnabled() {}
+
+    private func updateSaturnRingTiltUIEnabled() {
+        let isManual = saturnRingTiltModePopup?.indexOfSelectedItem == 1
+        let alpha: CGFloat = isManual ? 1.0 : 0.4
+        saturnRingTiltAngleSlider?.isEnabled = isManual
+        saturnRingTiltAngleSlider?.alphaValue = alpha
+        saturnRingTiltAnglePreview?.alphaValue = alpha
+        saturnRingTiltAngleRow?.alphaValue = alpha
+    }
+
+    private func updatePlanetSizePreviews() {
+        let sliders: [NSSlider?] = [mercurySizeSlider, venusSizeSlider, marsSizeSlider, jupiterSizeSlider,
+                                     saturnSizeSlider, uranusSizeSlider, neptuneSizeSlider, plutoSizeSlider]
+        let previews: [NSTextField?] = [mercurySizePreview, venusSizePreview, marsSizePreview, jupiterSizePreview,
+                                         saturnSizePreview, uranusSizePreview, neptuneSizePreview, plutoSizePreview]
+        for (slider, preview) in zip(sliders, previews) {
+            guard let s = slider, let p = preview else { continue }
+            p.stringValue = s.doubleValue < 0.0001 ? "OFF" : String(format: "%.5f", s.doubleValue)
         }
-        planetSizePreview?.alphaValue = alpha
     }
 
     // MARK: - Save / Close / Cancel
@@ -3271,19 +3424,31 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             defaultsManager.satellitesTrailHalfLifeSeconds = hl.doubleValue
         }
 
-        if let cb = planetEnabledCheckbox {
-            defaultsManager.planetEnabled = (cb.state == .on)
-        }
-        if let size = planetSizeSlider {
-            defaultsManager.planetSizeScreenWidthPercent = size.doubleValue
-        }
+        if let s = mercurySizeSlider { defaultsManager.mercurySize = s.doubleValue }
+        if let s = venusSizeSlider { defaultsManager.venusSize = s.doubleValue }
+        if let s = marsSizeSlider { defaultsManager.marsSize = s.doubleValue }
+        if let s = jupiterSizeSlider { defaultsManager.jupiterSize = s.doubleValue }
+        if let s = saturnSizeSlider { defaultsManager.saturnSize = s.doubleValue }
+        if let s = uranusSizeSlider { defaultsManager.uranusSize = s.doubleValue }
+        if let s = neptuneSizeSlider { defaultsManager.neptuneSize = s.doubleValue }
+        if let s = plutoSizeSlider { defaultsManager.plutoSize = s.doubleValue }
         if let popup = planetBelowHorizonPopup {
-            defaultsManager.planetBelowHorizonBehavior =
-                popup.indexOfSelectedItem == 0 ? "hide" : "randomPosition"
+            switch popup.indexOfSelectedItem {
+            case 0:  defaultsManager.planetBelowHorizonBehavior = "random"
+            case 1:  defaultsManager.planetBelowHorizonBehavior = "hide"
+            default: defaultsManager.planetBelowHorizonBehavior = "randomWhenBelow"
+            }
         }
         if let popup = planetTerminatorModePopup {
             defaultsManager.planetTerminatorMode =
-                popup.indexOfSelectedItem == 0 ? "forcedFull" : "computed"
+                popup.indexOfSelectedItem == 0 ? "forcedFull" : popup.indexOfSelectedItem == 1 ? "forcedHalf" : "computed"
+        }
+        if let popup = saturnRingTiltModePopup {
+            defaultsManager.saturnRingTiltMode =
+                popup.indexOfSelectedItem == 0 ? "automatic" : "manual"
+        }
+        if let slider = saturnRingTiltAngleSlider {
+            defaultsManager.saturnRingTiltAngle = slider.doubleValue
         }
 
         view?.settingsChanged()

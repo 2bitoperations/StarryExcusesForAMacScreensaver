@@ -269,8 +269,8 @@ struct PlanetUniforms {
     float2 viewportSize;
     float2 centerPx;
     float4 params0;  // x=radiusPx, y=phaseFraction, z=brightBrightness, w=darkBrightness
-    float4 params1;  // x=unused, y=waxingSign, z=unused, w=unused
-    float4 params2;  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=unused
+    float4 params1;  // x=ringTiltDeg, y=waxingSign, z=unused, w=unused
+    float4 params2;  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=textureAspect
 };
 
 struct PlanetVarying {
@@ -291,7 +291,8 @@ vertex PlanetVarying PlanetVertex(uint vid [[vertex_id]],
     };
     float2 local = corners[vid];
     float radiusPx = uni.params0.x;
-    float2 offsetPx = local * radiusPx;
+    float aspect = max(uni.params2.w, 1.0);
+    float2 offsetPx = float2(local.x * radiusPx * aspect, local.y * radiusPx);
     float2 posPx = uni.centerPx + offsetPx;
     float2 ndc = float2((posPx.x / uni.viewportSize.x) * 2.0 - 1.0,
                         (posPx.y / uni.viewportSize.y) * 2.0 - 1.0);
@@ -308,24 +309,68 @@ fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
                         coord::normalized);
 
     float2 local = in.local;
-    float r2 = dot(local, local);
-    if (r2 > 1.0) {
-        discard_fragment();
+    float aspect = max(uni.params2.w, 1.0);
+    bool isSaturn = aspect > 1.0;
+
+    // UVs must use the full local range for Saturn ([-1,+1] -> [0,1]),
+    // otherwise sampling is squeezed into the center and clips ring edges.
+    float2 baseUV = local * 0.5 + 0.5;
+
+    // Sphere-space coords for phase lighting/disc math.
+    // For Saturn, scale into a body-local space where the planet disc is circular
+    // on screen (quad is stretched in X by "aspect").
+    float2 sphereLocal = local;
+    if (isSaturn) {
+        constexpr float saturnBodyRadiusUV = 0.423f;
+        constexpr float saturnBodyRadiusLocal = saturnBodyRadiusUV * 2.0f; // ~0.846 in [-1,+1] local space
+        sphereLocal = float2((local.x * aspect) / saturnBodyRadiusLocal,
+                             local.y / saturnBodyRadiusLocal);
     }
 
+    float r2 = dot(sphereLocal, sphereLocal);
+    
     float radiusPx = max(uni.params0.x, 1.0);
     float r = sqrt(r2);
     float featherLocal = clamp(2.0f / radiusPx, 0.0015f, 0.12f);
-    float edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
 
-    float2 uv = local * 0.5 + 0.5;
+    float2 uv = baseUV;
+    if (isSaturn) {
+        // Texture is authored with a baked ring opening around 22°.
+        // Apply slider value as a delta so params1.x visibly rotates ring orientation.
+        float ringTiltDeg = uni.params1.x;
+        constexpr float saturnBakedTiltDeg = 22.0f;
+        float ringDeltaRad = (ringTiltDeg - saturnBakedTiltDeg) * (PI / 180.0f);
+        float sTilt = sin(ringDeltaRad);
+        float cTilt = cos(ringDeltaRad);
+        float2 ringLocal = float2(local.x * cTilt - local.y * sTilt,
+                                  local.x * sTilt + local.y * cTilt);
+        float2 ringUV = ringLocal * 0.5 + 0.5;
+
+        // Keep the sphere body sampling stable; rotate only ring sampling.
+        bool onDiscBody = r2 <= 1.0f;
+        uv = onDiscBody ? baseUV : ringUV;
+    }
+
     float4 albedo = float4(0.5, 0.4, 0.3, 1.0);
     if (albedoTex.get_width() > 0) {
         albedo = albedoTex.sample(s, uv);
     }
 
+    float edgeAlpha;
+    if (isSaturn) {
+        if (albedo.a < 0.01) {
+            discard_fragment();
+        }
+        edgeAlpha = albedo.a;
+    } else {
+        if (r2 > 1.0) {
+            discard_fragment();
+        }
+        edgeAlpha = 1.0 - smoothstep(1.0 - featherLocal, 1.0, r);
+    }
+
     float z = sqrt(max(0.0, 1.0 - r2));
-    float3 n = normalize(float3(local.x, local.y, z));
+    float3 n = normalize(float3(sphereLocal.x, sphereLocal.y, z));
 
     float fIllum = clamp(uni.params0.y, 0.0, 1.0);
     float cosDelta = 1.0 - 2.0 * fIllum;

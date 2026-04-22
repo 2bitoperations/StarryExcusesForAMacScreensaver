@@ -24,8 +24,8 @@ This project is supposed to serve as a fun learning test bed for agentic program
  - `MetalTypes.swift` - Defines GPU-shared data types: `SpriteInstance`, `SpriteShape`, `MoonUniforms`, `PlanetParams`, `StarryDrawData`, and related enums/structs.
  - `Moon.swift` - Moon phase calculation (based on real-world lunar cycle) and traversal path geometry.
  - `MoonTexture.swift` - Procedural generation of the moon's albedo texture (cratered, noisy lunar surface).
- - `Planet.swift` - Keplerian orbital ephemeris for Jupiter (extensible to other planets), altitude/azimuth sky position from a hardcoded observer location, and screen-space mapping with configurable below-horizon behavior.
- - `PlanetTexture.swift` - Procedural RGBA texture generation for Jupiter (horizontal bands, Great Red Spot, limb darkening, per-pixel noise) in a retro pixel-art style.
+ - `Planet.swift` - Keplerian orbital ephemeris for all 8 planets (Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto), altitude/azimuth sky position from a hardcoded observer location, and screen-space mapping with three positioning modes: "random" (always randomised), "hide" (hidden when below horizon), or "randomWhenBelow" (orbital when visible, random otherwise). Positions use a per-engine nonce so "Regenerate Preview" shuffles them. Includes Saturn ring tilt calculation (Schlyter formula).
+ - `PlanetTexture.swift` - Procedural RGBA texture generation for all 8 planets in a retro pixel-art style: Jupiter (horizontal bands, Great Red Spot, limb darkening, per-pixel noise), Saturn (non-square 128x64 texture with ring system), Venus/Mars/Mercury (solid surfaces with atmospheric or weathered effects), and outer planets (gas giants and ice giants with varying detail and color schemes).
  - `Buildings.swift` - Building style definitions and tile patterns used to generate the skyline silhouette.
  - `Points.swift` - Lightweight `Point` and `Color` value types used throughout the simulation.
  - `DebugSprites.swift` - Helper to generate debug outline rectangle sprites for visual debugging.
@@ -34,7 +34,7 @@ This project is supposed to serve as a fun learning test bed for agentic program
  - `StarryMetalRenderer.swift` - The Metal rendering pipeline: manages GPU resources, pipelines, offscreen textures, sprite upload, per-frame scene encoding, compositing, and moon rendering. See [METAL_RENDERER_MAP.md](METAL_RENDERER_MAP.md) for an architectural overview.
 
 ### Configuration
- - `StarryConfigSheetController.swift` - Handles drawing the screensaver options panel and associated controls.
+ - `StarryConfigSheetController.swift` - Handles drawing the screensaver options panel and associated controls, including per-planet size sliders, planetary position mode dropdown, Saturn ring tilt override (Automatic/Manual with angle slider), and planet terminator mode.
  - `StarryDefaultsManager.swift` - Handles storing and fetching screensaver options values. Reasonable default fallback values for each option live here. Accepts an optional `moduleIdentifier` parameter to override the defaults domain.
  - `BuildInfo.swift` - Auto-generated at build time by a Run Script phase. Contains the git commit hash constant `buildCommit`.
 

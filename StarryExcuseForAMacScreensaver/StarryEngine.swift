@@ -56,12 +56,34 @@ struct StarryRuntimeConfig {
     // Existing (already refactored) star density fraction.
     var starSpawnPerSecFractionOfMax: Double = 0
 
-    var planetEnabled: Bool = true
-    var planetSizeScreenWidthPercent: Double = 0.016
-    var planetBelowHorizonBehavior: String = "hide"
+    var mercurySize: Double = 0.00056
+    var venusSize: Double = 0.00139
+    var marsSize: Double = 0.000784
+    var jupiterSize: Double = 0.016
+    var saturnSize: Double = 0.01349
+    var uranusSize: Double = 0.00584
+    var neptuneSize: Double = 0.00566
+    var plutoSize: Double = 0.000272
+    var planetBelowHorizonBehavior: String = "randomWhenBelow"
     var planetTerminatorMode: String = "forcedFull"
+    var saturnRingTiltMode: String = "automatic"
+    var saturnRingTiltManualAngle: Float = 0.0
 
-    // Show build commit hash overlay (preview app only).
+    func planetEnabled(_ id: PlanetIdentity) -> Bool { planetSize(id) > 0.0001 }
+
+    func planetSize(_ id: PlanetIdentity) -> Double {
+        switch id {
+        case .mercury: return mercurySize
+        case .venus:   return venusSize
+        case .mars:    return marsSize
+        case .jupiter: return jupiterSize
+        case .saturn:  return saturnSize
+        case .uranus:  return uranusSize
+        case .neptune: return neptuneSize
+        case .pluto:   return plutoSize
+        }
+    }
+
     var showBuildInfo: Bool = false
 }
 
@@ -102,9 +124,16 @@ extension StarryRuntimeConfig: CustomStringConvertible {
               disableFlasherOnBase: \(disableFlasherOnBase),
               starSpawnPerSecFractionOfMax: \(starSpawnPerSecFractionOfMax),
               starSamplingMode: \(starSamplingMode),
-              planetEnabled: \(planetEnabled),
-              planetSizeScreenWidthPercent: \(planetSizeScreenWidthPercent),
-              planetBelowHorizonBehavior: \(planetBelowHorizonBehavior)
+              mercurySize: \(mercurySize),
+              venusSize: \(venusSize),
+              marsSize: \(marsSize),
+              jupiterSize: \(jupiterSize),
+              saturnSize: \(saturnSize),
+              uranusSize: \(uranusSize),
+              neptuneSize: \(neptuneSize),
+              plutoSize: \(plutoSize),
+              planetBelowHorizonBehavior: \(planetBelowHorizonBehavior),
+              planetTerminatorMode: \(planetTerminatorMode)
             )
             """
     }
@@ -118,7 +147,7 @@ final class StarryEngine {
     private var skylineRenderer: SkylineCoreRenderer?
     private var shootingStarsRenderer: ShootingStarsLayerRenderer?
     private var satellitesRenderer: SatellitesLayerRenderer?
-    private var planet: Planet?
+    private var planets: [String: Planet] = [:]
 
     private var size: CGSize
     private var lastInitSize: CGSize
@@ -136,8 +165,8 @@ final class StarryEngine {
     private var moonAlbedoImage: CGImage?
     private var moonAlbedoDirty: Bool = false
 
-    private var planetAlbedoImage: CGImage?
-    private var planetAlbedoDirty: Bool = false
+    private var planetAlbedoImages: [String: CGImage] = [:]
+    private var planetAlbedoDirty: Set<String> = []
 
     private var previewMetalRenderer: StarryMetalRenderer?
 
@@ -367,12 +396,12 @@ final class StarryEngine {
         skylineRenderer = nil
         shootingStarsRenderer = nil
         satellitesRenderer = nil
-        planet = nil
+        planets.removeAll()
 
         moonAlbedoImage = nil
         moonAlbedoDirty = false
-        planetAlbedoImage = nil
-        planetAlbedoDirty = false
+        planetAlbedoImages.removeAll()
+        planetAlbedoDirty.removeAll()
         forceClearOnNextFrame = true
     }
 
@@ -451,6 +480,29 @@ final class StarryEngine {
                 type: .info
             )
             satellitesRenderer = nil
+        }
+
+        let planetAffecting =
+            config.mercurySize != newConfig.mercurySize
+            || config.venusSize != newConfig.venusSize
+            || config.marsSize != newConfig.marsSize
+            || config.jupiterSize != newConfig.jupiterSize
+            || config.saturnSize != newConfig.saturnSize
+            || config.uranusSize != newConfig.uranusSize
+            || config.neptuneSize != newConfig.neptuneSize
+            || config.plutoSize != newConfig.plutoSize
+            || config.planetBelowHorizonBehavior != newConfig.planetBelowHorizonBehavior
+            || config.planetTerminatorMode != newConfig.planetTerminatorMode
+
+        if planetAffecting {
+            os_log(
+                "Config changed (planet affecting) — resetting planet",
+                log: log,
+                type: .info
+            )
+            planets.removeAll()
+            planetAlbedoImages.removeAll()
+            planetAlbedoDirty.removeAll()
         }
 
         let diagnosticsChanged =
@@ -542,6 +594,7 @@ final class StarryEngine {
         guard skyline == nil || skylineRenderer == nil else {
             ensureSatellitesRenderer()
             ensureShootingStarsRenderer()
+            ensurePlanets()
             return
         }
         os_log(
@@ -631,30 +684,7 @@ final class StarryEngine {
                     )
                 }
 
-                if config.planetEnabled {
-                    let screenW = Int(size.width)
-                    let screenH = Int(size.height)
-                    let planetRadius = max(1, Int(Double(screenW) * config.planetSizeScreenWidthPercent / 2.0))
-                    planet = Planet(
-                        screenWidth: screenW,
-                        screenHeight: screenH,
-                        buildingMaxHeight: skyline.buildingMaxHeight,
-                        log: log,
-                        radius: planetRadius,
-                        belowHorizonBehavior: config.planetBelowHorizonBehavior
-                    )
-                    if let tex = planet?.textureImage {
-                        planetAlbedoImage = tex
-                        planetAlbedoDirty = true
-                    } else {
-                        planetAlbedoImage = nil
-                        planetAlbedoDirty = false
-                    }
-                } else {
-                    planet = nil
-                    planetAlbedoImage = nil
-                    planetAlbedoDirty = false
-                }
+                ensurePlanets()
             }
         } catch {
             os_log(
@@ -730,6 +760,46 @@ final class StarryEngine {
             config.shootingStarsDebugShowSpawnBounds ? "true" : "false",
             (flasherCenterY != nil && flasherRadius != nil) ? "yes" : "no"
         )
+    }
+
+    private func ensurePlanets() {
+        guard let skyline = skyline else { return }
+        let allPlanets: [PlanetIdentity] = [
+            .mercury, .venus, .mars, .jupiter, .saturn, .uranus, .neptune, .pluto
+        ]
+        let screenW = Int(size.width)
+        let screenH = Int(size.height)
+        let nonce = UInt64(arc4random()) << 32 | UInt64(arc4random())
+        for identity in allPlanets {
+            let key = identity.rawValue
+            let enabled = config.planetEnabled(identity)
+            let newRadius = max(1, Int(Double(screenW) * config.planetSize(identity) / 2.0))
+            if enabled {
+                if let existing = planets[key], existing.radius == newRadius {
+                    continue
+                } else {
+                    let p = Planet(
+                        identity: identity,
+                        screenWidth: screenW,
+                        screenHeight: screenH,
+                        buildingMaxHeight: skyline.buildingMaxHeight,
+                        log: log,
+                        radius: newRadius,
+                        belowHorizonBehavior: config.planetBelowHorizonBehavior,
+                        nonce: nonce
+                    )
+                    planets[key] = p
+                    if let tex = p.textureImage {
+                        planetAlbedoImages[key] = tex
+                        planetAlbedoDirty.insert(key)
+                    }
+                }
+            } else {
+                planets.removeValue(forKey: key)
+                planetAlbedoImages.removeValue(forKey: key)
+                planetAlbedoDirty.remove(key)
+            }
+        }
     }
 
     // Decision helper: frame-level logs (per-frame or periodic) are only emitted when overlay is enabled.
@@ -867,22 +937,39 @@ final class StarryEngine {
             )
         }
 
-        var planetParams: PlanetParams? = nil
-        var frameplanetAlbedoImage: CGImage? = nil
-        if let p = planet {
+        var planetEntries: [(id: String, params: PlanetParams)] = []
+        var framePlanetAlbedoImages: [String: CGImage] = [:]
+        for (key, p) in planets {
             let state = p.frameState(now: Date())
-            planetParams = PlanetParams(
+            
+            let ringTilt: Float
+            if key == PlanetIdentity.saturn.rawValue {
+                if config.saturnRingTiltMode == "manual" {
+                    ringTilt = config.saturnRingTiltManualAngle
+                } else {
+                    ringTilt = Float(state.ringTiltDeg)
+                }
+            } else {
+                ringTilt = 0.0
+            }
+            
+            let params = PlanetParams(
                 centerPx: SIMD2<Float>(Float(state.center.x), Float(state.center.y)),
                 radiusPx: Float(p.radius),
-                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : 1.0,
+                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : config.planetTerminatorMode == "forcedHalf" ? 0.5 : 1.0,
                 brightBrightness: 1.0,
                 darkBrightness: 0.15,
                 waxingSign: 1.0,
                 terminatorMode: 0,
                 terminatorWidth: 0.1,
-                terminatorBands: 3
+                terminatorBands: 3,
+                textureAspect: key == PlanetIdentity.saturn.rawValue ? 2.0 : 1.0,
+                ringTiltDeg: ringTilt
             )
-            frameplanetAlbedoImage = planetAlbedoDirty ? planetAlbedoImage : nil
+            planetEntries.append((id: key, params: params))
+            if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {
+                framePlanetAlbedoImages[key] = img
+            }
         }
 
         if logThisFrame {
@@ -911,8 +998,8 @@ final class StarryEngine {
             shootingSprites: shootingSprites,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
-            planet: planetParams,
-            planetAlbedoImage: frameplanetAlbedoImage,
+            planets: planetEntries,
+            planetAlbedoImages: framePlanetAlbedoImages,
             showLightAreaTextureFillMask: config.showLightAreaTextureFillMask,
             debugOverlayEnabled: config.debugOverlayEnabled,
             debugFPS: Float(currentFPS),
@@ -928,7 +1015,7 @@ final class StarryEngine {
             )
         }
         moonAlbedoDirty = false
-        planetAlbedoDirty = false
+        planetAlbedoDirty.removeAll()
         return drawData
     }
 
@@ -1058,22 +1145,26 @@ final class StarryEngine {
             )
         }
 
-        var planetParams: PlanetParams? = nil
-        var frameplanetAlbedoImage: CGImage? = nil
-        if let p = planet {
+        var planetEntries: [(id: String, params: PlanetParams)] = []
+        var framePlanetAlbedoImages: [String: CGImage] = [:]
+        for (key, p) in planets {
             let state = p.frameState(now: Date())
-            planetParams = PlanetParams(
+            let params = PlanetParams(
                 centerPx: SIMD2<Float>(Float(state.center.x), Float(state.center.y)),
                 radiusPx: Float(p.radius),
-                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : 1.0,
+                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : config.planetTerminatorMode == "forcedHalf" ? 0.5 : 1.0,
                 brightBrightness: 1.0,
                 darkBrightness: 0.15,
                 waxingSign: 1.0,
                 terminatorMode: 0,
                 terminatorWidth: 0.1,
-                terminatorBands: 3
+                terminatorBands: 3,
+                textureAspect: key == PlanetIdentity.saturn.rawValue ? 2.0 : 1.0
             )
-            frameplanetAlbedoImage = planetAlbedoDirty ? planetAlbedoImage : nil
+            planetEntries.append((id: key, params: params))
+            if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {
+                framePlanetAlbedoImages[key] = img
+            }
         }
 
         if logThisFrame {
@@ -1102,8 +1193,8 @@ final class StarryEngine {
             shootingSprites: shootingSprites,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
-            planet: planetParams,
-            planetAlbedoImage: frameplanetAlbedoImage,
+            planets: planetEntries,
+            planetAlbedoImages: framePlanetAlbedoImages,
             showLightAreaTextureFillMask: config.showLightAreaTextureFillMask,
             debugOverlayEnabled: config.debugOverlayEnabled,
             debugFPS: Float(currentFPS),
@@ -1119,7 +1210,7 @@ final class StarryEngine {
             )
         }
         moonAlbedoDirty = false
-        planetAlbedoDirty = false
+        planetAlbedoDirty.removeAll()
 
         if previewMetalRenderer == nil {
             os_log(

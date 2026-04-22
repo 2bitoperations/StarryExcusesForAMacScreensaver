@@ -29,8 +29,8 @@ final class StarryMetalRenderer {
         var viewportSize: SIMD2<Float>
         var centerPx: SIMD2<Float>
         var params0: SIMD4<Float>  // x=radiusPx, y=phaseFraction, z=brightBrightness, w=darkBrightness
-        var params1: SIMD4<Float>  // x=unused, y=waxingSign, z=unused, w=unused
-        var params2: SIMD4<Float>  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=unused
+        var params1: SIMD4<Float>  // x=ringTiltDeg, y=waxingSign, z=unused, w=unused
+        var params2: SIMD4<Float>  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=textureAspect
     }
 
     private enum FragmentBufferIndex {
@@ -113,14 +113,11 @@ final class StarryMetalRenderer {
     private var cachedMoonAlbedoWidth: Int = 0
     private var cachedMoonAlbedoHeight: Int = 0
 
-    private var planetAlbedoTexture: MTLTexture?
-    private var planetAlbedoStagingTexture: MTLTexture?
-    private var planetAlbedoNeedsBlit: Bool = false
-    private var planetAlbedoHasMipmaps: Bool = false
-
-    private var cachedPlanetAlbedoBytes: [UInt8]? = nil
-    private var cachedPlanetAlbedoWidth: Int = 0
-    private var cachedPlanetAlbedoHeight: Int = 0
+    private var planetAlbedoTextures: [String: MTLTexture] = [:]
+    private var planetAlbedoStagingTextures: [String: MTLTexture] = [:]
+    private var planetAlbedoNeedsBlit: Set<String> = []
+    private var planetAlbedoHasMipmaps: Set<String> = []
+    private var cachedPlanetAlbedoData: [String: (bytes: [UInt8], width: Int, height: Int)] = [:]
 
     private var offscreenComposite: MTLTexture?
     private var offscreenSize: CGSize = .zero
@@ -740,124 +737,124 @@ final class StarryMetalRenderer {
 
     func setMoonAlbedo(image: CGImage) {
         let width = image.width
-        theight: do {
-            let height = image.height
-            guard width > 0, height > 0 else { return }
-            os_log(
-                "setMoonAlbedo: preparing upload (%dx%d) mipmapped",
-                log: log,
-                type: .info,
-                width,
-                height
-            )
-
-            if moonAlbedoTexture == nil || moonAlbedoTexture!.width != width
-                || moonAlbedoTexture!.height != height || !moonAlbedoHasMipmaps
-            {
-                let dstDesc = MTLTextureDescriptor.texture2DDescriptor(
-                    pixelFormat: .r8Unorm,
-                    width: width,
-                    height: height,
-                    mipmapped: true
-                )
-                dstDesc.usage = [.shaderRead]
-                dstDesc.storageMode = .private
-                moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
-                moonAlbedoTexture?.label = "MoonAlbedo (private,mips)"
-                moonAlbedoHasMipmaps = true
-                if moonAlbedoTexture == nil {
-                    os_log(
-                        "setMoonAlbedo: failed to create destination texture",
-                        log: log,
-                        type: .error
-                    )
-                    return
-                }
-            }
-
-            let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: .r8Unorm,
-                width: width,
-                height: height,
-                mipmapped: false
-            )
-            stagingDesc.storageMode = .shared
-            stagingDesc.usage = []
-            guard let staging = device.makeTexture(descriptor: stagingDesc)
-            else {
-                os_log(
-                    "setMoonAlbedo: failed to create staging texture",
-                    log: log,
-                    type: .error
-                )
-                return
-            }
-            staging.label = "MoonAlbedo (staging)"
-
-            let bytesPerRow = width
-            var uploadBytes: [UInt8]
-            if let provider = image.dataProvider, let data = provider.data,
-                image.bitsPerPixel == 8,
-                image.colorSpace?.model == .monochrome,
-                image.bytesPerRow == width
-            {
-                uploadBytes = [UInt8]((data as Data))
-            } else {
-                uploadBytes = [UInt8](repeating: 0, count: width * height)
-                let cs = CGColorSpaceCreateDeviceGray()
-                if let ctx = CGContext(
-                    data: &uploadBytes,
-                    width: width,
-                    height: height,
-                    bitsPerComponent: 8,
-                    bytesPerRow: width,
-                    space: cs,
-                    bitmapInfo: CGImageAlphaInfo.none.rawValue
-                ) {
-                    ctx.interpolationQuality = .none
-                    ctx.draw(
-                        image,
-                        in: CGRect(x: 0, y: 0, width: width, height: height)
-                    )
-                } else {
-                    os_log(
-                        "setMoonAlbedo: failed to create grayscale CGContext for conversion",
-                        log: log,
-                        type: .error
-                    )
-                }
-            }
-            staging.replace(
-                region: MTLRegionMake2D(0, 0, width, height),
-                mipmapLevel: 0,
-                withBytes: uploadBytes,
-                bytesPerRow: bytesPerRow
-            )
-
-            // Persist CPU-side copy so we can recreate after deep GPU clears.
-            cachedMoonAlbedoBytes = uploadBytes
-            cachedMoonAlbedoWidth = width
-            cachedMoonAlbedoHeight = height
-
-            moonAlbedoStagingTexture = staging
-            moonAlbedoNeedsBlit = true
-        }
-    }
-
-    func setPlanetAlbedo(image: CGImage) {
-        let width = image.width
         let height = image.height
         guard width > 0, height > 0 else { return }
         os_log(
-            "setPlanetAlbedo: preparing upload (%dx%d) mipmapped",
+            "setMoonAlbedo: preparing upload (%dx%d) mipmapped",
             log: log,
             type: .info,
             width,
             height
         )
 
-        if planetAlbedoTexture == nil || planetAlbedoTexture!.width != width
-            || planetAlbedoTexture!.height != height || !planetAlbedoHasMipmaps
+        if moonAlbedoTexture == nil || moonAlbedoTexture!.width != width
+            || moonAlbedoTexture!.height != height || !moonAlbedoHasMipmaps
+        {
+            let dstDesc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .r8Unorm,
+                width: width,
+                height: height,
+                mipmapped: true
+            )
+            dstDesc.usage = [.shaderRead]
+            dstDesc.storageMode = .private
+            moonAlbedoTexture = device.makeTexture(descriptor: dstDesc)
+            moonAlbedoTexture?.label = "MoonAlbedo (private,mips)"
+            moonAlbedoHasMipmaps = true
+            if moonAlbedoTexture == nil {
+                os_log(
+                    "setMoonAlbedo: failed to create destination texture",
+                    log: log,
+                    type: .error
+                )
+                return
+            }
+        }
+
+        let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .r8Unorm,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        stagingDesc.storageMode = .shared
+        stagingDesc.usage = []
+        guard let staging = device.makeTexture(descriptor: stagingDesc)
+        else {
+            os_log(
+                "setMoonAlbedo: failed to create staging texture",
+                log: log,
+                type: .error
+            )
+            return
+        }
+        staging.label = "MoonAlbedo (staging)"
+
+        let bytesPerRow = width
+        var uploadBytes: [UInt8]
+        if let provider = image.dataProvider, let data = provider.data,
+            image.bitsPerPixel == 8,
+            image.colorSpace?.model == .monochrome,
+            image.bytesPerRow == width
+        {
+            uploadBytes = [UInt8]((data as Data))
+        } else {
+            uploadBytes = [UInt8](repeating: 0, count: width * height)
+            let cs = CGColorSpaceCreateDeviceGray()
+            if let ctx = CGContext(
+                data: &uploadBytes,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width,
+                space: cs,
+                bitmapInfo: CGImageAlphaInfo.none.rawValue
+            ) {
+                ctx.interpolationQuality = .none
+                ctx.draw(
+                    image,
+                    in: CGRect(x: 0, y: 0, width: width, height: height)
+                )
+            } else {
+                os_log(
+                    "setMoonAlbedo: failed to create grayscale CGContext for conversion",
+                    log: log,
+                    type: .error
+                )
+            }
+        }
+        staging.replace(
+            region: MTLRegionMake2D(0, 0, width, height),
+            mipmapLevel: 0,
+            withBytes: uploadBytes,
+            bytesPerRow: bytesPerRow
+        )
+
+        // Persist CPU-side copy so we can recreate after deep GPU clears.
+        cachedMoonAlbedoBytes = uploadBytes
+        cachedMoonAlbedoWidth = width
+        cachedMoonAlbedoHeight = height
+
+        moonAlbedoStagingTexture = staging
+        moonAlbedoNeedsBlit = true
+    }
+
+    func setPlanetAlbedo(id: String, image: CGImage) {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return }
+        os_log(
+            "setPlanetAlbedo(%@): preparing upload (%dx%d) mipmapped",
+            log: log,
+            type: .info,
+            id,
+            width,
+            height
+        )
+
+        let existing = planetAlbedoTextures[id]
+        if existing == nil || existing!.width != width
+            || existing!.height != height || !planetAlbedoHasMipmaps.contains(id)
         {
             let dstDesc = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: .rgba8Unorm,
@@ -867,14 +864,16 @@ final class StarryMetalRenderer {
             )
             dstDesc.usage = [.shaderRead]
             dstDesc.storageMode = .private
-            planetAlbedoTexture = device.makeTexture(descriptor: dstDesc)
-            planetAlbedoTexture?.label = "PlanetAlbedo (private,mips)"
-            planetAlbedoHasMipmaps = true
-            if planetAlbedoTexture == nil {
+            let dst = device.makeTexture(descriptor: dstDesc)
+            dst?.label = "PlanetAlbedo[\(id)] (private,mips)"
+            planetAlbedoTextures[id] = dst
+            planetAlbedoHasMipmaps.insert(id)
+            if dst == nil {
                 os_log(
-                    "setPlanetAlbedo: failed to create destination texture",
+                    "setPlanetAlbedo(%@): failed to create destination texture",
                     log: log,
-                    type: .error
+                    type: .error,
+                    id
                 )
                 return
             }
@@ -890,13 +889,14 @@ final class StarryMetalRenderer {
         stagingDesc.usage = []
         guard let staging = device.makeTexture(descriptor: stagingDesc) else {
             os_log(
-                "setPlanetAlbedo: failed to create staging texture",
+                "setPlanetAlbedo(%@): failed to create staging texture",
                 log: log,
-                type: .error
+                type: .error,
+                id
             )
             return
         }
-        staging.label = "PlanetAlbedo (staging)"
+        staging.label = "PlanetAlbedo[\(id)] (staging)"
 
         let bytesPerRow = width * 4
         var uploadBytes = [UInt8](repeating: 0, count: width * height * 4)
@@ -926,12 +926,10 @@ final class StarryMetalRenderer {
             bytesPerRow: bytesPerRow
         )
 
-        cachedPlanetAlbedoBytes = uploadBytes
-        cachedPlanetAlbedoWidth = width
-        cachedPlanetAlbedoHeight = height
+        cachedPlanetAlbedoData[id] = (bytes: uploadBytes, width: width, height: height)
 
-        planetAlbedoStagingTexture = staging
-        planetAlbedoNeedsBlit = true
+        planetAlbedoStagingTextures[id] = staging
+        planetAlbedoNeedsBlit.insert(id)
     }
 
     // Recreate GPU moon albedo texture from cached CPU copy if needed (after deep clear)
@@ -1004,72 +1002,77 @@ final class StarryMetalRenderer {
     }
 
     private func ensurePlanetAlbedoTextureFromCacheIfNeeded() {
-        guard planetAlbedoTexture == nil,
-            planetAlbedoStagingTexture == nil,
-            planetAlbedoNeedsBlit == false,
-            let bytes = cachedPlanetAlbedoBytes,
-            cachedPlanetAlbedoWidth > 0,
-            cachedPlanetAlbedoHeight > 0
-        else { return }
+        for (id, cached) in cachedPlanetAlbedoData {
+            guard planetAlbedoTextures[id] == nil,
+                planetAlbedoStagingTextures[id] == nil,
+                !planetAlbedoNeedsBlit.contains(id),
+                cached.width > 0,
+                cached.height > 0
+            else { continue }
 
-        let width = cachedPlanetAlbedoWidth
-        let height = cachedPlanetAlbedoHeight
+            let width = cached.width
+            let height = cached.height
 
-        let dstDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm,
-            width: width,
-            height: height,
-            mipmapped: true
-        )
-        dstDesc.usage = [.shaderRead]
-        dstDesc.storageMode = .private
-        planetAlbedoTexture = device.makeTexture(descriptor: dstDesc)
-        planetAlbedoTexture?.label = "PlanetAlbedo (recreated,mips)"
-        planetAlbedoHasMipmaps = true
-
-        if planetAlbedoTexture == nil {
-            os_log(
-                "ensurePlanetAlbedoTextureFromCacheIfNeeded: failed to recreate destination texture",
-                log: log,
-                type: .error
+            let dstDesc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba8Unorm,
+                width: width,
+                height: height,
+                mipmapped: true
             )
-            return
-        }
+            dstDesc.usage = [.shaderRead]
+            dstDesc.storageMode = .private
+            let dst = device.makeTexture(descriptor: dstDesc)
+            dst?.label = "PlanetAlbedo[\(id)] (recreated,mips)"
+            planetAlbedoTextures[id] = dst
+            planetAlbedoHasMipmaps.insert(id)
 
-        let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm,
-            width: width,
-            height: height,
-            mipmapped: false
-        )
-        stagingDesc.storageMode = .shared
-        stagingDesc.usage = []
-        guard let staging = device.makeTexture(descriptor: stagingDesc) else {
-            os_log(
-                "ensurePlanetAlbedoTextureFromCacheIfNeeded: failed to create staging texture",
-                log: log,
-                type: .error
+            if dst == nil {
+                os_log(
+                    "ensurePlanetAlbedoTextureFromCacheIfNeeded(%@): failed to recreate destination texture",
+                    log: log,
+                    type: .error,
+                    id
+                )
+                continue
+            }
+
+            let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba8Unorm,
+                width: width,
+                height: height,
+                mipmapped: false
             )
-            planetAlbedoTexture = nil
-            return
-        }
-        staging.label = "PlanetAlbedo (staging,recreate)"
-        staging.replace(
-            region: MTLRegionMake2D(0, 0, width, height),
-            mipmapLevel: 0,
-            withBytes: bytes,
-            bytesPerRow: width * 4
-        )
+            stagingDesc.storageMode = .shared
+            stagingDesc.usage = []
+            guard let staging = device.makeTexture(descriptor: stagingDesc) else {
+                os_log(
+                    "ensurePlanetAlbedoTextureFromCacheIfNeeded(%@): failed to create staging texture",
+                    log: log,
+                    type: .error,
+                    id
+                )
+                planetAlbedoTextures.removeValue(forKey: id)
+                continue
+            }
+            staging.label = "PlanetAlbedo[\(id)] (staging,recreate)"
+            staging.replace(
+                region: MTLRegionMake2D(0, 0, width, height),
+                mipmapLevel: 0,
+                withBytes: cached.bytes,
+                bytesPerRow: width * 4
+            )
 
-        planetAlbedoStagingTexture = staging
-        planetAlbedoNeedsBlit = true
-        os_log(
-            "Recreated planet albedo texture from cached CPU copy (%dx%d)",
-            log: log,
-            type: .info,
-            width,
-            height
-        )
+            planetAlbedoStagingTextures[id] = staging
+            planetAlbedoNeedsBlit.insert(id)
+            os_log(
+                "Recreated planet albedo texture[%@] from cached CPU copy (%dx%d)",
+                log: log,
+                type: .info,
+                id,
+                width,
+                height
+            )
+        }
     }
 
     func render(drawData: StarryDrawData) {
@@ -1079,8 +1082,8 @@ final class StarryMetalRenderer {
         if drawData.moon != nil {
             ensureMoonAlbedoTextureFromCacheIfNeeded()
         }
-        if let img = drawData.planetAlbedoImage {
-            setPlanetAlbedo(image: img)
+        for (id, img) in drawData.planetAlbedoImages {
+            setPlanetAlbedo(id: id, image: img)
         }
         ensurePlanetAlbedoTextureFromCacheIfNeeded()
 
@@ -1137,7 +1140,7 @@ final class StarryMetalRenderer {
         let nothingToDraw =
             drawData.baseSprites.isEmpty && drawData.satellitesSprites.isEmpty
             && drawData.shootingSprites.isEmpty && drawData.moon == nil
-            && drawData.planet == nil && !willDecay && drawData.clearAll == false
+            && drawData.planets.isEmpty && !willDecay && drawData.clearAll == false
             && !(debugOverlayEnabled && debugOverlayRenderer.hasOverlayTexture)
         if nothingToDraw {
             // Still advance frame index (so diagnostics cadence matches)
@@ -1190,10 +1193,10 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
 
-        if planetAlbedoNeedsBlit,
-            let staging = planetAlbedoStagingTexture,
-            let dst = planetAlbedoTexture
-        {
+        for id in planetAlbedoNeedsBlit {
+            guard let staging = planetAlbedoStagingTextures[id],
+                let dst = planetAlbedoTextures[id]
+            else { continue }
             if let blit = commandBuffer.makeBlitCommandEncoder() {
                 blit.label = "Blit+Mips PlanetAlbedo staging->private"
                 let size = MTLSize(
@@ -1222,9 +1225,9 @@ final class StarryMetalRenderer {
                     dst.height
                 )
             }
-            planetAlbedoNeedsBlit = false
-            planetAlbedoStagingTexture = nil
+            planetAlbedoStagingTextures.removeValue(forKey: id)
         }
+        planetAlbedoNeedsBlit.removeAll()
 
         encodeScenePasses(
             commandBuffer: commandBuffer,
@@ -1279,8 +1282,8 @@ final class StarryMetalRenderer {
         if drawData.moon != nil {
             ensureMoonAlbedoTextureFromCacheIfNeeded()
         }
-        if let img = drawData.planetAlbedoImage {
-            setPlanetAlbedo(image: img)
+        for (id, img) in drawData.planetAlbedoImages {
+            setPlanetAlbedo(id: id, image: img)
         }
         ensurePlanetAlbedoTextureFromCacheIfNeeded()
         if drawData.size.width >= 1, drawData.size.height >= 1,
@@ -1370,10 +1373,10 @@ final class StarryMetalRenderer {
             moonAlbedoStagingTexture = nil
         }
 
-        if planetAlbedoNeedsBlit,
-            let staging = planetAlbedoStagingTexture,
-            let dst = planetAlbedoTexture
-        {
+        for id in planetAlbedoNeedsBlit {
+            guard let staging = planetAlbedoStagingTextures[id],
+                let dst = planetAlbedoTextures[id]
+            else { continue }
             if let blit = commandBuffer.makeBlitCommandEncoder() {
                 blit.label = "Blit+Mips PlanetAlbedo staging->private (headless)"
                 let size = MTLSize(
@@ -1402,9 +1405,9 @@ final class StarryMetalRenderer {
                     dst.height
                 )
             }
-            planetAlbedoNeedsBlit = false
-            planetAlbedoStagingTexture = nil
+            planetAlbedoStagingTextures.removeValue(forKey: id)
         }
+        planetAlbedoNeedsBlit.removeAll()
 
         let now = CACurrentMediaTime()
         let dt: CFTimeInterval? = lastHeadlessRenderTime.map { now - $0 }
@@ -1641,14 +1644,15 @@ final class StarryMetalRenderer {
         }
 
         if debugCompositeMode == .normal {
-            if let planetTex = planetAlbedoTexture, let pp = drawData.planet {
+            for (id, pp) in drawData.planets {
+                guard let planetTex = planetAlbedoTextures[id] else { continue }
                 if pp.brightBrightness > 0, pp.radiusPx > 0 {
                     var uniforms = PlanetUniformsSwift(
-                        viewportSize: SIMD2<Float>(Float(target.width), Float(target.height)),
+                        viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
                         centerPx: SIMD2<Float>(pp.centerPx.x, pp.centerPx.y),
                         params0: SIMD4<Float>(pp.radiusPx, pp.phaseFraction, pp.brightBrightness, pp.darkBrightness),
-                        params1: SIMD4<Float>(0, pp.waxingSign, 0, 0),
-                        params2: SIMD4<Float>(Float(pp.terminatorMode), pp.terminatorWidth, Float(pp.terminatorBands), 0)
+                        params1: SIMD4<Float>(pp.ringTiltDeg, pp.waxingSign, 0, 0),
+                        params2: SIMD4<Float>(Float(pp.terminatorMode), pp.terminatorWidth, Float(pp.terminatorBands), pp.textureAspect)
                     )
                     encoder.setRenderPipelineState(planetPipeline)
                     encoder.setVertexBytes(&uniforms, length: MemoryLayout<PlanetUniformsSwift>.stride, index: 2)
@@ -1909,10 +1913,10 @@ final class StarryMetalRenderer {
         moonAlbedoNeedsBlit = false
         moonAlbedoHasMipmaps = false
 
-        planetAlbedoTexture = nil
-        planetAlbedoStagingTexture = nil
-        planetAlbedoNeedsBlit = false
-        planetAlbedoHasMipmaps = false
+        planetAlbedoTextures.removeAll()
+        planetAlbedoStagingTextures.removeAll()
+        planetAlbedoNeedsBlit.removeAll()
+        planetAlbedoHasMipmaps.removeAll()
 
         freeSpriteBuffers()
 
