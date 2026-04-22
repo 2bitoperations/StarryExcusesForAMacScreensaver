@@ -83,6 +83,10 @@ class StarryDefaultsManager {
     // Saturn ring tilt override
     static let saturnRingTiltAngleMin: Double = -27.0
     static let saturnRingTiltAngleMax: Double = 27.0
+    
+    // Saturn ring rotation override
+    static let saturnRingRotationAngleMin: Double = 0.0
+    static let saturnRingRotationAngleMax: Double = 360.0
 
     // Default fallback constants (single source of truth for values)
     // Star density: 0.5 ≈ previous default 800 stars/sec at reference screen (half of 1600).
@@ -142,6 +146,13 @@ class StarryDefaultsManager {
     // Saturn ring tilt override defaults
     private let defaultSaturnRingTiltMode = "automatic"
     private let defaultSaturnRingTiltAngle = 0.0
+    
+    // Saturn ring rotation override defaults
+    private let defaultSaturnRingRotationMode = "automatic"
+    private let defaultSaturnRingRotationAngle = 0.0
+
+    // Saturn ring style default (0=Smooth, 1=Flat Retro, 2=Chunky Pixel)
+    private let defaultSaturnRingStyle = 1
 
     init(moduleIdentifier: String? = nil) {
         let identifier = moduleIdentifier
@@ -874,6 +885,49 @@ class StarryDefaultsManager {
                 max: Self.saturnRingTiltAngleMax,
                 defaultValue: defaultSaturnRingTiltAngle
             )
+        }
+    }
+    
+    var saturnRingRotationMode: String {
+        set {
+            let valid = (newValue == "automatic" || newValue == "manual") ? newValue : "automatic"
+            defaults.set(valid, forKey: "SaturnRingRotationMode")
+            defaults.synchronize()
+        }
+        get {
+            if let s = defaults.string(forKey: "SaturnRingRotationMode"),
+                s == "automatic" || s == "manual" {
+                return s
+            }
+            return defaultSaturnRingRotationMode
+        }
+    }
+
+    var saturnRingRotationAngle: Double {
+        set {
+            setClampedDouble(
+                newValue,
+                key: "SaturnRingRotationAngle",
+                min: Self.saturnRingRotationAngleMin,
+                max: Self.saturnRingRotationAngleMax
+            )
+        }
+        get {
+            validatedDouble(
+                safeDouble("SaturnRingRotationAngle"),
+                min: Self.saturnRingRotationAngleMin,
+                max: Self.saturnRingRotationAngleMax,
+                defaultValue: defaultSaturnRingRotationAngle
+            )
+        }
+    }
+
+    var saturnRingStyle: Int {
+        set {
+            setClampedInt(newValue, key: "SaturnRingStyle", min: 0, max: 2)
+        }
+        get {
+            validatedInt(safeInt("SaturnRingStyle"), min: 0, max: 2, defaultValue: defaultSaturnRingStyle)
         }
     }
 }

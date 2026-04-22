@@ -605,6 +605,9 @@ class StarryExcuseForAView: ScreenSaverView {
             planetTerminatorMode: defaultsManager.planetTerminatorMode,
             saturnRingTiltMode: defaultsManager.saturnRingTiltMode,
             saturnRingTiltManualAngle: Float(defaultsManager.saturnRingTiltAngle),
+            saturnRingRotationMode: defaultsManager.saturnRingRotationMode,
+            saturnRingRotationManualAngle: Float(defaultsManager.saturnRingRotationAngle),
+            saturnRingStyle: defaultsManager.saturnRingStyle,
             showBuildInfo: showBuildOverlay
         )
     }

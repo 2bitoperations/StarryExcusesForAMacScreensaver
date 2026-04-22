@@ -32,7 +32,6 @@ enum PlanetIdentity: String, CaseIterable {
 //   Altitude 90° → spawnMaxY - radius (top of spawn box, inset by planet radius)
 //   Azimuth 180° (S) → screen centre; 0°/360° (N) → spawn box left/right edges.
 //
-// TODO: Add brightness falloff based on solar elongation / phase angle.
 struct Planet {
 
     // MARK: - Observer (Austin, TX)
@@ -113,14 +112,19 @@ struct Planet {
     /// - Parameter now: The date/time to evaluate (defaults to wall-clock now).
     /// - Returns:
     ///   - `center`:         Screen position in points (origin bottom-left).
-    ///   - `brightness`:     Render opacity (1.0 for now; phase TODO).
+    ///   - `brightness`:     Render opacity.
     ///   - `isAboveHorizon`: True when the planet is geometrically above the
     ///                       horizon for Austin TX at the given time.
     ///   - `ringTiltDeg`:    Saturn ring opening angle B in degrees (−27° to +27°);
     ///                       0.0 for all other planets.
-    func frameState(now: Date) -> (center: CGPoint, brightness: Float, isAboveHorizon: Bool, ringTiltDeg: Double, ringRotationDeg: Double) {
+    ///   - `phaseFraction`:  Illuminated fraction (0.0=new, 1.0=full) from
+    ///                       Sun–Earth–planet geometry.
+    ///   - `waxingSign`:     +1.0 for waxing / -1.0 for waning, matching moon
+    ///                       shader sign convention.
+    func frameState(now: Date) -> (center: CGPoint, brightness: Float, isAboveHorizon: Bool, ringTiltDeg: Double, ringRotationDeg: Double, phaseFraction: Double, waxingSign: Double) {
         let (altDeg, azDeg) = Planet.horizontalCoordinates(for: identity, now: now)
         let aboveHorizon    = altDeg > 0.0
+        let phase = Planet.phaseState(for: identity, now: now)
 
         let ringTilt: Double
         let ringRotation: Double
@@ -143,24 +147,23 @@ struct Planet {
         switch belowHorizonBehavior {
         case "random":
             let center = deterministicOffHorizonPoint(now: now)
-            return (center, 1.0, false, ringTilt, ringRotation)
+            return (center, 1.0, false, ringTilt, ringRotation, phase.fraction, phase.waxingSign)
         default:
             break
         }
 
         if aboveHorizon {
             let center = screenPoint(altitudeDeg: altDeg, azimuthDeg: azDeg)
-            // TODO: Compute brightness falloff from phase angle / solar elongation.
-            return (center, 1.0, true, ringTilt, ringRotation)
+            return (center, 1.0, true, ringTilt, ringRotation, phase.fraction, phase.waxingSign)
         }
 
         switch belowHorizonBehavior {
         case "randomWhenBelow":
             let center = deterministicOffHorizonPoint(now: now)
-            return (center, 1.0, false, ringTilt, ringRotation)
+            return (center, 1.0, false, ringTilt, ringRotation, phase.fraction, phase.waxingSign)
         default: // "hide" and anything unrecognised
             let offScreen = CGPoint(x: -Double(radius) * 2, y: -Double(radius) * 2)
-            return (offScreen, 0.0, false, ringTilt, ringRotation)
+            return (offScreen, 0.0, false, ringTilt, ringRotation, phase.fraction, phase.waxingSign)
         }
     }
 
@@ -305,6 +308,20 @@ struct Planet {
         }
     }
 
+    private static func earthOrbitalElements() -> OrbitalElements {
+        return OrbitalElements(
+            L0: 100.46435,
+            L1: 35999.3729,
+            e0: 0.01671,
+            e1: 0.0,
+            a: 1.00000,
+            om0: 102.93768,
+            om1: 0.0,
+            i0: 0.00005,
+            i1: 0.0
+        )
+    }
+
     /// Computes altitude and azimuth (degrees) for any planet at the Austin TX
     /// observer location for the supplied date.
     ///
@@ -313,47 +330,15 @@ struct Planet {
         -> (altitudeDeg: Double, azimuthDeg: Double)
     {
         let T = julianCentury(from: now)
-        let elements = orbitalElements(for: identity)
+        let (planetLon, planetLat, planetR) = heliocentricEcliptic(for: identity, T: T)
+        let (earthLon, earthLat, earthR) = earthHeliocentricEcliptic(T: T)
 
-        let (planetLon, planetLat, planetR) = heliocentricEcliptic(
-            L0:  elements.L0,  L1:  elements.L1,
-            e0:  elements.e0,  e1:  elements.e1,
-            a:   elements.a,
-            om0: elements.om0, om1: elements.om1,
-            i0:  elements.i0,  i1:  elements.i1,
-            T: T
-        )
+        let planetHelio = heliocentricCartesian(lonDeg: planetLon, latDeg: planetLat, radiusAU: planetR)
+        let earthHelio = heliocentricCartesian(lonDeg: earthLon, latDeg: earthLat, radiusAU: earthR)
 
-        // Earth heliocentric ecliptic longitude (for geocentric conversion).
-        let (earthLon, _, earthR) = heliocentricEcliptic(
-            L0:  100.464572,
-            L1: 36000.7698278,
-            e0:   0.016708634,
-            e1:  -0.000042037,
-            a:    1.000001018,
-            om0: 102.937348,
-            om1:   0.3225654,
-            i0:   0.0,
-            i1:   0.0,
-            T: T
-        )
-
-        // Heliocentric Cartesian (ecliptic).
-        let pLonR  = toRad(planetLon)
-        let pLatR  = toRad(planetLat)
-        let xPlanet =  planetR * cos(pLatR) * cos(pLonR)
-        let yPlanet =  planetR * cos(pLatR) * sin(pLonR)
-        let zPlanet =  planetR * sin(pLatR)
-
-        let earthLonR = toRad(earthLon)
-        let xEarth    =  earthR * cos(earthLonR)
-        let yEarth    =  earthR * sin(earthLonR)
-        // Earth stays in the ecliptic plane (z ≈ 0).
-
-        // Geocentric ecliptic Cartesian.
-        let dx = xPlanet - xEarth
-        let dy = yPlanet - yEarth
-        let dz = zPlanet
+        let dx = planetHelio.x - earthHelio.x
+        let dy = planetHelio.y - earthHelio.y
+        let dz = planetHelio.z - earthHelio.z
 
         // Rotate ecliptic → equatorial (J2000 obliquity).
         let eps    = toRad(23.4392911)
@@ -394,49 +379,92 @@ struct Planet {
 
     private static func geocentricEcliptic(for identity: PlanetIdentity, now: Date) -> (lonDeg: Double, latDeg: Double) {
         let T = julianCentury(from: now)
-        let elements = orbitalElements(for: identity)
+        let (planetLon, planetLat, planetR) = heliocentricEcliptic(for: identity, T: T)
+        let (earthLon, earthLat, earthR) = earthHeliocentricEcliptic(T: T)
 
-        let (planetLon, planetLat, planetR) = heliocentricEcliptic(
-            L0:  elements.L0,  L1:  elements.L1,
-            e0:  elements.e0,  e1:  elements.e1,
-            a:   elements.a,
-            om0: elements.om0, om1: elements.om1,
-            i0:  elements.i0,  i1:  elements.i1,
-            T: T
-        )
+        let planetHelio = heliocentricCartesian(lonDeg: planetLon, latDeg: planetLat, radiusAU: planetR)
+        let earthHelio = heliocentricCartesian(lonDeg: earthLon, latDeg: earthLat, radiusAU: earthR)
 
-        let (earthLon, _, earthR) = heliocentricEcliptic(
-            L0:  100.464572,
-            L1: 36000.7698278,
-            e0:   0.016708634,
-            e1:  -0.000042037,
-            a:    1.000001018,
-            om0: 102.937348,
-            om1:   0.3225654,
-            i0:   0.0,
-            i1:   0.0,
-            T: T
-        )
-
-        let pLonR   = toRad(planetLon)
-        let pLatR   = toRad(planetLat)
-        let xPlanet =  planetR * cos(pLatR) * cos(pLonR)
-        let yPlanet =  planetR * cos(pLatR) * sin(pLonR)
-        let zPlanet =  planetR * sin(pLatR)
-
-        let earthLonR = toRad(earthLon)
-        let xEarth    =  earthR * cos(earthLonR)
-        let yEarth    =  earthR * sin(earthLonR)
-
-        let dx = xPlanet - xEarth
-        let dy = yPlanet - yEarth
-        let dz = zPlanet
+        let dx = planetHelio.x - earthHelio.x
+        let dy = planetHelio.y - earthHelio.y
+        let dz = planetHelio.z - earthHelio.z
 
         let geoLon = normalise(toDeg(atan2(dy, dx)))
         let dist   = sqrt(dx*dx + dy*dy + dz*dz)
         let geoLat = toDeg(asin(dz / dist))
 
         return (geoLon, geoLat)
+    }
+
+    private static func phaseState(for identity: PlanetIdentity, now: Date) -> (fraction: Double, waxingSign: Double) {
+        let T = julianCentury(from: now)
+        let (planetLon, planetLat, planetR) = heliocentricEcliptic(for: identity, T: T)
+        let (earthLon, earthLat, earthR) = earthHeliocentricEcliptic(T: T)
+
+        let planetHelio = heliocentricCartesian(lonDeg: planetLon, latDeg: planetLat, radiusAU: planetR)
+        let earthHelio = heliocentricCartesian(lonDeg: earthLon, latDeg: earthLat, radiusAU: earthR)
+
+        let earthToPlanetX = planetHelio.x - earthHelio.x
+        let earthToPlanetY = planetHelio.y - earthHelio.y
+        let earthToPlanetZ = planetHelio.z - earthHelio.z
+
+        let d = sqrt(earthToPlanetX * earthToPlanetX + earthToPlanetY * earthToPlanetY + earthToPlanetZ * earthToPlanetZ)
+        let r = planetR
+        let R = earthR
+        if d < 1e-9 || r < 1e-9 || R < 1e-9 {
+            return (1.0, 1.0)
+        }
+
+        let cosAlphaRaw = (r * r + d * d - R * R) / (2.0 * r * d)
+        let cosAlpha = min(max(cosAlphaRaw, -1.0), 1.0)
+        let fraction = 0.5 * (1.0 + cosAlpha)
+
+        let crossZ = planetHelio.x * earthToPlanetY - planetHelio.y * earthToPlanetX
+        let waxingSign = crossZ >= 0.0 ? 1.0 : -1.0
+
+        return (min(max(fraction, 0.0), 1.0), waxingSign)
+    }
+
+    private static func heliocentricEcliptic(for identity: PlanetIdentity, T: Double) -> (lonDeg: Double, latDeg: Double, radiusAU: Double) {
+        let elements = orbitalElements(for: identity)
+        return heliocentricEcliptic(
+            L0: elements.L0,
+            L1: elements.L1,
+            e0: elements.e0,
+            e1: elements.e1,
+            a: elements.a,
+            om0: elements.om0,
+            om1: elements.om1,
+            i0: elements.i0,
+            i1: elements.i1,
+            T: T
+        )
+    }
+
+    private static func earthHeliocentricEcliptic(T: Double) -> (lonDeg: Double, latDeg: Double, radiusAU: Double) {
+        let elements = earthOrbitalElements()
+        return heliocentricEcliptic(
+            L0: elements.L0,
+            L1: elements.L1,
+            e0: elements.e0,
+            e1: elements.e1,
+            a: elements.a,
+            om0: elements.om0,
+            om1: elements.om1,
+            i0: elements.i0,
+            i1: elements.i1,
+            T: T
+        )
+    }
+
+    private static func heliocentricCartesian(lonDeg: Double, latDeg: Double, radiusAU: Double) -> (x: Double, y: Double, z: Double) {
+        let lonR = toRad(lonDeg)
+        let latR = toRad(latDeg)
+        return (
+            radiusAU * cos(latR) * cos(lonR),
+            radiusAU * cos(latR) * sin(lonR),
+            radiusAU * sin(latR)
+        )
     }
 
     /// Saturn ring opening angle B (degrees) via simplified Schlyter formula.

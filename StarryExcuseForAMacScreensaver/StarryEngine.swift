@@ -68,6 +68,9 @@ struct StarryRuntimeConfig {
     var planetTerminatorMode: String = "forcedFull"
     var saturnRingTiltMode: String = "automatic"
     var saturnRingTiltManualAngle: Float = 0.0
+    var saturnRingRotationMode: String = "automatic"
+    var saturnRingRotationManualAngle: Float = 0.0
+    var saturnRingStyle: Int = 1
 
     func planetEnabled(_ id: PlanetIdentity) -> Bool { planetSize(id) > 0.0001 }
 
@@ -953,19 +956,31 @@ final class StarryEngine {
                 ringTilt = 0.0
             }
             
+            let ringRotation: Float
+            if key == PlanetIdentity.saturn.rawValue {
+                if config.saturnRingRotationMode == "manual" {
+                    ringRotation = config.saturnRingRotationManualAngle
+                } else {
+                    ringRotation = Float(state.ringRotationDeg)
+                }
+            } else {
+                ringRotation = 0.0
+            }
+            
             let params = PlanetParams(
                 centerPx: SIMD2<Float>(Float(state.center.x), Float(state.center.y)),
                 radiusPx: Float(p.radius),
-                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : config.planetTerminatorMode == "forcedHalf" ? 0.5 : 1.0,
+                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : config.planetTerminatorMode == "forcedHalf" ? 0.5 : Float(state.phaseFraction),
                 brightBrightness: 1.0,
                 darkBrightness: 0.15,
-                waxingSign: 1.0,
+                waxingSign: Float(state.waxingSign),
                 terminatorMode: 0,
                 terminatorWidth: 0.1,
                 terminatorBands: 3,
                 textureAspect: key == PlanetIdentity.saturn.rawValue ? 2.0 : 1.0,
                 ringTiltDeg: ringTilt,
-                ringRotationDeg: Float(state.ringRotationDeg)
+                ringRotationDeg: ringRotation,
+                ringStyle: key == PlanetIdentity.saturn.rawValue ? config.saturnRingStyle : 0
             )
             planetEntries.append((id: key, params: params))
             if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {
@@ -1162,19 +1177,31 @@ final class StarryEngine {
                 ringTilt = 0.0
             }
 
+            let ringRotation: Float
+            if key == PlanetIdentity.saturn.rawValue {
+                if config.saturnRingRotationMode == "manual" {
+                    ringRotation = config.saturnRingRotationManualAngle
+                } else {
+                    ringRotation = Float(state.ringRotationDeg)
+                }
+            } else {
+                ringRotation = 0.0
+            }
+
             let params = PlanetParams(
                 centerPx: SIMD2<Float>(Float(state.center.x), Float(state.center.y)),
                 radiusPx: Float(p.radius),
-                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : config.planetTerminatorMode == "forcedHalf" ? 0.5 : 1.0,
+                phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0 : config.planetTerminatorMode == "forcedHalf" ? 0.5 : Float(state.phaseFraction),
                 brightBrightness: 1.0,
                 darkBrightness: 0.15,
-                waxingSign: 1.0,
+                waxingSign: Float(state.waxingSign),
                 terminatorMode: 0,
                 terminatorWidth: 0.1,
                 terminatorBands: 3,
                 textureAspect: key == PlanetIdentity.saturn.rawValue ? 2.0 : 1.0,
                 ringTiltDeg: ringTilt,
-                ringRotationDeg: Float(state.ringRotationDeg)
+                ringRotationDeg: ringRotation,
+                ringStyle: key == PlanetIdentity.saturn.rawValue ? config.saturnRingStyle : 0
             )
             planetEntries.append((id: key, params: params))
             if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {

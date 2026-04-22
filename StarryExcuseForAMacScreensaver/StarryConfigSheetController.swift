@@ -1,8 +1,29 @@
 import Cocoa
+import CoreVideo
 import Foundation
 import Metal
 import QuartzCore
 import os
+
+private let previewMaxFPS: CFTimeInterval = 60.0
+private let previewMinFrameInterval: CFTimeInterval = 1.0 / previewMaxFPS
+private let previewBurstGuardThreshold: CFTimeInterval = 0.5
+
+private func previewDisplayLinkCallback(
+    _ displayLink: CVDisplayLink,
+    _ inNow: UnsafePointer<CVTimeStamp>,
+    _ inOutputTime: UnsafePointer<CVTimeStamp>,
+    _ flagsIn: CVOptionFlags,
+    _ flagsOut: UnsafeMutablePointer<CVOptionFlags>,
+    _ displayLinkContext: UnsafeMutableRawPointer?
+) -> CVReturn {
+    guard let displayLinkContext else { return kCVReturnError }
+    let controller = Unmanaged<StarryConfigSheetController>.fromOpaque(
+        displayLinkContext
+    ).takeUnretainedValue()
+    controller.handleDisplayLinkTick()
+    return kCVReturnSuccess
+}
 
 class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     NSTextFieldDelegate
@@ -113,6 +134,12 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     var saturnRingTiltAngleSlider: NSSlider?
     var saturnRingTiltAnglePreview: NSTextField?
     var saturnRingTiltAngleRow: NSStackView?
+    
+    var saturnRingRotationModePopup: NSPopUpButton?
+    var saturnRingRotationAngleSlider: NSSlider?
+    var saturnRingRotationAnglePreview: NSTextField?
+    var saturnRingRotationAngleRow: NSStackView?
+    var saturnRingStylePopup: NSPopUpButton?
 
     // Preview container
     var moonPreviewView: NSView!
@@ -124,7 +151,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
 
     // Preview engine
     private var previewEngine: StarryEngine?
-    private var previewTimer: Timer?
+    private var previewDisplayLink: CVDisplayLink?
+    private var lastDisplayLinkFrameTimestamp: CFTimeInterval = 0
+    private var lastPreviewFrameTimestamp: CFTimeInterval = 0
 
     // Metal preview
     private var previewMetalLayer: CAMetalLayer?
@@ -186,6 +215,9 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private var lastPlanetTerminatorMode: String = "forcedFull"
     private var lastSaturnRingTiltMode: String = "automatic"
     private var lastSaturnRingTiltAngle: Double = 0.0
+    private var lastSaturnRingRotationMode: String = "automatic"
+    private var lastSaturnRingRotationAngle: Double = 0.0
+    private var lastSaturnRingStyle: Int = 1
 
     // MARK: - One-time UI init flag
     private var uiInitialized = false
@@ -469,6 +501,15 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
          }
          saturnRingTiltAngleSlider?.doubleValue = defaultsManager.saturnRingTiltAngle
          saturnRingTiltAnglePreview?.stringValue = String(format: "%.1f°", defaultsManager.saturnRingTiltAngle)
+         
+         if let popup = saturnRingRotationModePopup {
+             popup.selectItem(at: defaultsManager.saturnRingRotationMode == "automatic" ? 0 : 1)
+         }
+         saturnRingRotationAngleSlider?.doubleValue = defaultsManager.saturnRingRotationAngle
+         saturnRingRotationAnglePreview?.stringValue = String(format: "%.1f°", defaultsManager.saturnRingRotationAngle)
+         if let popup = saturnRingStylePopup {
+             popup.selectItem(at: max(0, min(2, defaultsManager.saturnRingStyle)))
+         }
 
         // Last-known capture
         lastStarSpawnFractionOfMax = starDensitySlider.doubleValue
@@ -554,11 +595,14 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         lastUranusSize = defaultsManager.uranusSize
         lastNeptuneSize = defaultsManager.neptuneSize
         lastPlutoSize = defaultsManager.plutoSize
-        lastPlanetBelowHorizon = defaultsManager.planetBelowHorizonBehavior
-        lastPlanetTerminatorMode = defaultsManager.planetTerminatorMode
-        lastSaturnRingTiltMode = defaultsManager.saturnRingTiltMode
-        lastSaturnRingTiltAngle = defaultsManager.saturnRingTiltAngle
-        lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
+         lastPlanetBelowHorizon = defaultsManager.planetBelowHorizonBehavior
+         lastPlanetTerminatorMode = defaultsManager.planetTerminatorMode
+         lastSaturnRingTiltMode = defaultsManager.saturnRingTiltMode
+         lastSaturnRingTiltAngle = defaultsManager.saturnRingTiltAngle
+         lastSaturnRingRotationMode = defaultsManager.saturnRingRotationMode
+         lastSaturnRingRotationAngle = defaultsManager.saturnRingRotationAngle
+         lastSaturnRingStyle = defaultsManager.saturnRingStyle
+         lastDebugOverlayEnabled = debugOverlayEnabledCheckbox?.state == .on
         lastStarSamplingMode =
             starSamplingModePopup?.indexOfSelectedItem
             ?? defaultsManager.starSamplingMode
@@ -566,10 +610,11 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         updatePreviewLabels()
         updatePhaseOverrideUIEnabled()
         updateTerminatorUIEnabled()
-        updateShootingStarsUIEnabled()
-        updateSatellitesUIEnabled()
-        updatePlanetsUIEnabled()
-        updateSaturnRingTiltUIEnabled()
+         updateShootingStarsUIEnabled()
+         updateSatellitesUIEnabled()
+         updatePlanetsUIEnabled()
+         updateSaturnRingTiltUIEnabled()
+         updateSaturnRingRotationUIEnabled()
 
         setupPreviewEngine()
         updatePauseToggleTitle()
@@ -1713,9 +1758,64 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         saturnRingTiltAngleRowControl.addArrangedSubview(saturnRingTiltAngleSliderControl)
         saturnRingTiltAngleRowControl.addArrangedSubview(saturnRingTiltAnglePreviewLabel)
         self.saturnRingTiltAngleRow = saturnRingTiltAngleRowControl
+        
+        // Saturn ring rotation controls
+        let saturnRingRotationModeRow = NSStackView()
+        saturnRingRotationModeRow.orientation = .horizontal
+        saturnRingRotationModeRow.alignment = .centerY
+        saturnRingRotationModeRow.spacing = 6
+        saturnRingRotationModeRow.translatesAutoresizingMaskIntoConstraints = false
+        let saturnRingRotationModeLabel = makeLabel("Saturn ring rotation:")
+        let saturnRingRotationModePopupControl = NSPopUpButton(frame: .zero, pullsDown: false)
+        saturnRingRotationModePopupControl.translatesAutoresizingMaskIntoConstraints = false
+        saturnRingRotationModePopupControl.addItems(withTitles: ["Automatic (Calculated)", "Manual"])
+        saturnRingRotationModePopupControl.target = self
+        saturnRingRotationModePopupControl.action = #selector(saturnRingRotationModeChanged(_:))
+        self.saturnRingRotationModePopup = saturnRingRotationModePopupControl
+        saturnRingRotationModeRow.addArrangedSubview(saturnRingRotationModeLabel)
+        saturnRingRotationModeRow.addArrangedSubview(saturnRingRotationModePopupControl)
+        
+        let saturnRingRotationAngleRowControl = NSStackView()
+        saturnRingRotationAngleRowControl.orientation = .horizontal
+        saturnRingRotationAngleRowControl.alignment = .centerY
+        saturnRingRotationAngleRowControl.spacing = 6
+        saturnRingRotationAngleRowControl.translatesAutoresizingMaskIntoConstraints = false
+        let saturnRingRotationAngleLabel = makeLabel("Ring rotation angle:")
+        let saturnRingRotationAngleSliderControl = NSSlider(value: 0.0, minValue: StarryDefaultsManager.saturnRingRotationAngleMin,
+                                                            maxValue: StarryDefaultsManager.saturnRingRotationAngleMax, target: self,
+                                                            action: #selector(saturnRingRotationAngleChanged(_:)))
+        saturnRingRotationAngleSliderControl.translatesAutoresizingMaskIntoConstraints = false
+        saturnRingRotationAngleSliderControl.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        self.saturnRingRotationAngleSlider = saturnRingRotationAngleSliderControl
+        let saturnRingRotationAnglePreviewLabel = makeLabel("0.0°")
+        saturnRingRotationAnglePreviewLabel.translatesAutoresizingMaskIntoConstraints = false
+        self.saturnRingRotationAnglePreview = saturnRingRotationAnglePreviewLabel
+        saturnRingRotationAngleRowControl.addArrangedSubview(saturnRingRotationAngleLabel)
+        saturnRingRotationAngleRowControl.addArrangedSubview(saturnRingRotationAngleSliderControl)
+        saturnRingRotationAngleRowControl.addArrangedSubview(saturnRingRotationAnglePreviewLabel)
+        self.saturnRingRotationAngleRow = saturnRingRotationAngleRowControl
 
         planetStack.addArrangedSubview(saturnRingTiltModeRow)
         planetStack.addArrangedSubview(saturnRingTiltAngleRowControl)
+        planetStack.addArrangedSubview(saturnRingRotationModeRow)
+        planetStack.addArrangedSubview(saturnRingRotationAngleRowControl)
+
+        // Saturn ring style popup
+        let saturnRingStyleRow = NSStackView()
+        saturnRingStyleRow.orientation = .horizontal
+        saturnRingStyleRow.alignment = .centerY
+        saturnRingStyleRow.spacing = 6
+        saturnRingStyleRow.translatesAutoresizingMaskIntoConstraints = false
+        let saturnRingStyleLabel = makeLabel("Saturn ring style:")
+        let saturnRingStylePopupControl = NSPopUpButton(frame: .zero, pullsDown: false)
+        saturnRingStylePopupControl.translatesAutoresizingMaskIntoConstraints = false
+        saturnRingStylePopupControl.addItems(withTitles: ["Smooth", "Flat Retro", "Chunky Pixel"])
+        saturnRingStylePopupControl.target = self
+        saturnRingStylePopupControl.action = #selector(saturnRingStyleChanged(_:))
+        self.saturnRingStylePopup = saturnRingStylePopupControl
+        saturnRingStyleRow.addArrangedSubview(saturnRingStyleLabel)
+        saturnRingStyleRow.addArrangedSubview(saturnRingStylePopupControl)
+        planetStack.addArrangedSubview(saturnRingStyleRow)
 
         planetBox.contentView?.addSubview(planetStack)
         if let planetContent = planetBox.contentView {
@@ -2876,6 +2976,52 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         rebuildPreviewEngineIfNeeded()
         updatePreviewConfig()
     }
+    
+    @IBAction func saturnRingRotationModeChanged(_ sender: Any) {
+        guard let popup = saturnRingRotationModePopup else { return }
+        let newValue = popup.indexOfSelectedItem == 0 ? "automatic" : "manual"
+        if newValue != lastSaturnRingRotationMode {
+            logChange(
+                changedKey: "saturnRingRotationMode",
+                oldValue: lastSaturnRingRotationMode,
+                newValue: newValue
+            )
+            lastSaturnRingRotationMode = newValue
+        }
+        updateSaturnRingRotationUIEnabled()
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+    
+    @IBAction func saturnRingRotationAngleChanged(_ sender: Any) {
+        guard let slider = saturnRingRotationAngleSlider else { return }
+        let val = slider.doubleValue
+        saturnRingRotationAnglePreview?.stringValue = String(format: "%.1f°", val)
+        if val != lastSaturnRingRotationAngle {
+            logChange(
+                changedKey: "saturnRingRotationAngle",
+                oldValue: String(format: "%.1f", lastSaturnRingRotationAngle),
+                newValue: String(format: "%.1f", val)
+            )
+            lastSaturnRingRotationAngle = val
+        }
+        rebuildPreviewEngineIfNeeded()
+        updatePreviewConfig()
+    }
+
+    @IBAction func saturnRingStyleChanged(_ sender: Any) {
+        guard let popup = saturnRingStylePopup else { return }
+        let newValue = popup.indexOfSelectedItem
+        if newValue != lastSaturnRingStyle {
+            logChange(
+                changedKey: "saturnRingStyle",
+                oldValue: String(lastSaturnRingStyle),
+                newValue: String(newValue)
+            )
+            lastSaturnRingStyle = newValue
+        }
+        updatePreviewConfig()
+    }
 
     @IBAction func previewTogglePause(_ sender: Any) {
         if isManuallyPaused || effectivePaused() {
@@ -2947,18 +3093,46 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     }
 
     private func startPreviewTimer() {
-        previewTimer?.invalidate()
-        previewTimer = Timer.scheduledTimer(
-            withTimeInterval: 1.0 / 60.0,
-            repeats: true
-        ) { [weak self] _ in
-            self?.advancePreviewFrame()
+        stopPreviewTimer()
+
+        var displayLink: CVDisplayLink?
+        let createResult = CVDisplayLinkCreateWithActiveCGDisplays(&displayLink)
+        guard createResult == kCVReturnSuccess, let displayLink else { return }
+
+        let callbackResult = CVDisplayLinkSetOutputCallback(
+            displayLink,
+            previewDisplayLinkCallback,
+            Unmanaged.passUnretained(self).toOpaque()
+        )
+        guard callbackResult == kCVReturnSuccess else {
+            return
         }
+
+        previewDisplayLink = displayLink
+        lastDisplayLinkFrameTimestamp = 0
+        lastPreviewFrameTimestamp = CACurrentMediaTime()
+        CVDisplayLinkStart(displayLink)
     }
 
     private func stopPreviewTimer() {
-        previewTimer?.invalidate()
-        previewTimer = nil
+        guard let displayLink = previewDisplayLink else { return }
+        CVDisplayLinkStop(displayLink)
+        previewDisplayLink = nil
+        lastDisplayLinkFrameTimestamp = 0
+    }
+
+    func handleDisplayLinkTick() {
+        let now = CACurrentMediaTime()
+        if lastDisplayLinkFrameTimestamp > 0,
+            now - lastDisplayLinkFrameTimestamp < previewMinFrameInterval
+        {
+            return
+        }
+        lastDisplayLinkFrameTimestamp = now
+
+        DispatchQueue.main.async { [weak self] in
+            self?.advancePreviewFrame()
+        }
     }
 
     private func pausePreview(auto: Bool) {
@@ -2968,7 +3142,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
 
     private func resumePreview(auto: Bool) {
         if auto { isAutoPaused = false }
-        if !isManuallyPaused && previewTimer == nil {
+        if !isManuallyPaused && previewDisplayLink == nil {
             startPreviewTimer()
         }
     }
@@ -2990,6 +3164,15 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     }
 
     private func advancePreviewFrame() {
+        let now = CACurrentMediaTime()
+        if lastPreviewFrameTimestamp > 0,
+            now - lastPreviewFrameTimestamp > previewBurstGuardThreshold
+        {
+            lastPreviewFrameTimestamp = now
+            return
+        }
+        lastPreviewFrameTimestamp = now
+
         guard let engine = previewEngine,
             let renderer = previewRenderer,
             let mLayer = previewMetalLayer
@@ -3101,11 +3284,14 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 default: return "randomWhenBelow"
                 }
             }(),
-            planetTerminatorMode: (planetTerminatorModePopup?.indexOfSelectedItem == 0
-                ? "forcedFull" : planetTerminatorModePopup?.indexOfSelectedItem == 1 ? "forcedHalf" : "computed"),
-            saturnRingTiltMode: (saturnRingTiltModePopup?.indexOfSelectedItem == 0 ? "automatic" : "manual"),
-            saturnRingTiltManualAngle: Float(saturnRingTiltAngleSlider?.doubleValue ?? lastSaturnRingTiltAngle)
-        )
+             planetTerminatorMode: (planetTerminatorModePopup?.indexOfSelectedItem == 0
+                 ? "forcedFull" : planetTerminatorModePopup?.indexOfSelectedItem == 1 ? "forcedHalf" : "computed"),
+             saturnRingTiltMode: (saturnRingTiltModePopup?.indexOfSelectedItem == 0 ? "automatic" : "manual"),
+             saturnRingTiltManualAngle: Float(saturnRingTiltAngleSlider?.doubleValue ?? lastSaturnRingTiltAngle),
+             saturnRingRotationMode: (saturnRingRotationModePopup?.indexOfSelectedItem == 0 ? "automatic" : "manual"),
+             saturnRingRotationManualAngle: Float(saturnRingRotationAngleSlider?.doubleValue ?? lastSaturnRingRotationAngle),
+             saturnRingStyle: saturnRingStylePopup?.indexOfSelectedItem ?? lastSaturnRingStyle
+         )
     }
 
     private func updatePreviewConfig() {
@@ -3219,7 +3405,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
         }
     }
 
-    private func effectivePaused() -> Bool { previewTimer == nil }
+    private func effectivePaused() -> Bool { previewDisplayLink == nil }
 
     private func updatePauseToggleTitle() {
         pauseToggleButton?.title = effectivePaused() ? "Resume" : "Pause"
@@ -3295,14 +3481,23 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
 
     private func updatePlanetsUIEnabled() {}
 
-    private func updateSaturnRingTiltUIEnabled() {
-        let isManual = saturnRingTiltModePopup?.indexOfSelectedItem == 1
-        let alpha: CGFloat = isManual ? 1.0 : 0.4
-        saturnRingTiltAngleSlider?.isEnabled = isManual
-        saturnRingTiltAngleSlider?.alphaValue = alpha
-        saturnRingTiltAnglePreview?.alphaValue = alpha
-        saturnRingTiltAngleRow?.alphaValue = alpha
-    }
+     private func updateSaturnRingTiltUIEnabled() {
+         let isManual = saturnRingTiltModePopup?.indexOfSelectedItem == 1
+         let alpha: CGFloat = isManual ? 1.0 : 0.4
+         saturnRingTiltAngleSlider?.isEnabled = isManual
+         saturnRingTiltAngleSlider?.alphaValue = alpha
+         saturnRingTiltAnglePreview?.alphaValue = alpha
+         saturnRingTiltAngleRow?.alphaValue = alpha
+     }
+     
+     private func updateSaturnRingRotationUIEnabled() {
+         let isManual = saturnRingRotationModePopup?.indexOfSelectedItem == 1
+         let alpha: CGFloat = isManual ? 1.0 : 0.4
+         saturnRingRotationAngleSlider?.isEnabled = isManual
+         saturnRingRotationAngleSlider?.alphaValue = alpha
+         saturnRingRotationAnglePreview?.alphaValue = alpha
+         saturnRingRotationAngleRow?.alphaValue = alpha
+     }
 
     private func updatePlanetSizePreviews() {
         let sliders: [NSSlider?] = [mercurySizeSlider, venusSizeSlider, marsSizeSlider, jupiterSizeSlider,
@@ -3443,13 +3638,23 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             defaultsManager.planetTerminatorMode =
                 popup.indexOfSelectedItem == 0 ? "forcedFull" : popup.indexOfSelectedItem == 1 ? "forcedHalf" : "computed"
         }
-        if let popup = saturnRingTiltModePopup {
-            defaultsManager.saturnRingTiltMode =
-                popup.indexOfSelectedItem == 0 ? "automatic" : "manual"
-        }
-        if let slider = saturnRingTiltAngleSlider {
-            defaultsManager.saturnRingTiltAngle = slider.doubleValue
-        }
+         if let popup = saturnRingTiltModePopup {
+             defaultsManager.saturnRingTiltMode =
+                 popup.indexOfSelectedItem == 0 ? "automatic" : "manual"
+         }
+         if let slider = saturnRingTiltAngleSlider {
+             defaultsManager.saturnRingTiltAngle = slider.doubleValue
+         }
+         if let popup = saturnRingRotationModePopup {
+             defaultsManager.saturnRingRotationMode =
+                 popup.indexOfSelectedItem == 0 ? "automatic" : "manual"
+         }
+         if let slider = saturnRingRotationAngleSlider {
+             defaultsManager.saturnRingRotationAngle = slider.doubleValue
+         }
+         if let popup = saturnRingStylePopup {
+             defaultsManager.saturnRingStyle = popup.indexOfSelectedItem
+         }
 
         view?.settingsChanged()
 

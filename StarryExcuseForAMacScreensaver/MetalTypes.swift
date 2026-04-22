@@ -92,6 +92,7 @@ public struct PlanetParams {
     public var textureAspect: Float
     public var ringTiltDeg: Float  // Saturn ring tilt angle in degrees (-27 to +27)
     public var ringRotationDeg: Float
+    public var ringStyle: Int  // 0=Smooth, 1=Flat Retro, 2=Chunky Pixel
 
     public init(
         centerPx: SIMD2<Float>,
@@ -105,7 +106,8 @@ public struct PlanetParams {
         terminatorBands: Int,
         textureAspect: Float = 1.0,
         ringTiltDeg: Float = 0.0,
-        ringRotationDeg: Float = 0.0
+        ringRotationDeg: Float = 0.0,
+        ringStyle: Int = 1
     ) {
         self.centerPx = centerPx
         self.radiusPx = radiusPx
@@ -119,6 +121,7 @@ public struct PlanetParams {
         self.textureAspect = textureAspect
         self.ringTiltDeg = ringTiltDeg
         self.ringRotationDeg = ringRotationDeg
+        self.ringStyle = ringStyle
     }
 }
 

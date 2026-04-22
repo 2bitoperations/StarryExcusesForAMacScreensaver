@@ -269,7 +269,7 @@ struct PlanetUniforms {
     float2 viewportSize;
     float2 centerPx;
     float4 params0;  // x=radiusPx, y=phaseFraction, z=brightBrightness, w=darkBrightness
-    float4 params1;  // x=ringTiltDeg, y=waxingSign, z=unused, w=unused
+    float4 params1;  // x=ringTiltDeg, y=waxingSign, z=ringRotationDeg, w=ringStyle
     float4 params2;  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=textureAspect
 };
 
@@ -442,6 +442,49 @@ fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
             }
 
             onRing = ringAlpha > 0.0f;
+
+            // Apply ring texture style (0=Smooth, 1=Flat Retro, 2=Chunky Pixel)
+            if (onRing) {
+                int ringStyle = int(uni.params1.w);
+                if (ringStyle == 1) {
+                    // Flat Retro: quantize to 4-color earthy palette, 2x2 Bayer dither on alpha
+                    float lum = dot(ringColor, float3(0.299f, 0.587f, 0.114f));
+                    if (lum > 0.75f) {
+                        ringColor = float3(0.92f, 0.84f, 0.65f);
+                    } else if (lum > 0.55f) {
+                        ringColor = float3(0.78f, 0.70f, 0.52f);
+                    } else if (lum > 0.35f) {
+                        ringColor = float3(0.62f, 0.55f, 0.40f);
+                    } else {
+                        ringColor = float3(0.48f, 0.42f, 0.32f);
+                    }
+                    int2 px = int2(in.position.xy);
+                    float bayer[4] = { 0.0f/4.0f, 2.0f/4.0f, 3.0f/4.0f, 1.0f/4.0f };
+                    float threshold = bayer[(px.x % 2) + (px.y % 2) * 2];
+                    ringAlpha = ringAlpha > (threshold + 0.1f) ? ringAlpha : 0.0f;
+                } else if (ringStyle == 2) {
+                    // Chunky Pixel: quantize radial position into ~16 steps, checkerboard dither
+                    float qt = floor(t * 16.0f) / 16.0f;
+                    if (qt < 0.125f) {
+                        ringColor = float3(0.60f, 0.54f, 0.42f);
+                    } else if (qt < 0.375f) {
+                        ringColor = float3(0.88f, 0.80f, 0.60f);
+                    } else if (qt < 0.5625f) {
+                        ringColor = float3(0.82f, 0.74f, 0.56f);
+                    } else if (qt < 0.625f) {
+                        ringColor = float3(0.0f);
+                        ringAlpha = 0.0f;
+                    } else if (qt < 0.8125f) {
+                        ringColor = float3(0.76f, 0.68f, 0.52f);
+                    } else {
+                        ringColor = float3(0.66f, 0.58f, 0.44f);
+                    }
+                    int2 px = int2(in.position.xy);
+                    bool checker = ((px.x + px.y) % 2) == 0;
+                    if (!checker) { ringAlpha *= 0.6f; }
+                }
+                onRing = ringAlpha > 0.0f;
+            }
 
             // Sign rule from design: front if rp.y * sin(tilt) < 0.
             ringInFront = (rp.y * sinTilt) < 0.0f;

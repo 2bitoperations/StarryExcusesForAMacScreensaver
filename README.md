@@ -19,10 +19,9 @@ Very basic implementation.
 
 ### Planets TODO
 1. **Verify render order** — Planets draw after the building layer and before the moon in `encodeCompositeAndMoon()`. This *should* place them above all buildings and behind the moon. Visually confirm this is working correctly and adjust if needed.
-2. **Planet phase calculation** — Phase is hardcoded to 1.0 (fully lit) for all planets. Implement a plausible Earth-Sun-planet phase angle calculation.
+2. [x] **Planet phase calculation** — Implemented Earth-Sun-planet phase angle computation with per-planet illuminated fraction and waxing sign.
 3. **Coarse geolocation** — Observer location is hardcoded to Austin, TX (30.2672°N, 97.7431°W). Detect coarse location from system timezone or CoreLocation.
-4. **Saturn ring tilt visual** — Ring tilt angle is computed (Schlyter formula) and piped to the shader, but the shader does not yet dynamically adjust the ring texture orientation — it still uses the baked 22° texture. Wire the tilt into actual ring rendering.
-5. **Visual tuning** — Confirm all planet textures look right at runtime. Tweak band colors, Great Red Spot, limb darkening, storm details, and noise as needed.
+4. **Visual tuning** — Confirm all planet textures look right at runtime. Tweak band colors, Great Red Spot, limb darkening, storm details, and noise as needed.
 
 ## Provenance
 Fork of https://github.com/kimar/DeveloperExcuses and https://github.com/evangreen/starryn 

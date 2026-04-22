@@ -29,7 +29,7 @@ final class StarryMetalRenderer {
         var viewportSize: SIMD2<Float>
         var centerPx: SIMD2<Float>
         var params0: SIMD4<Float>  // x=radiusPx, y=phaseFraction, z=brightBrightness, w=darkBrightness
-        var params1: SIMD4<Float>  // x=ringTiltDeg, y=waxingSign, z=ringRotationDeg, w=unused
+        var params1: SIMD4<Float>  // x=ringTiltDeg, y=waxingSign, z=ringRotationDeg, w=ringStyle
         var params2: SIMD4<Float>  // x=terminatorMode, y=terminatorWidth, z=terminatorBands, w=textureAspect
     }
 
@@ -1651,7 +1651,7 @@ final class StarryMetalRenderer {
                         viewportSize: SIMD2<Float>(Float(drawData.size.width), Float(drawData.size.height)),
                         centerPx: SIMD2<Float>(pp.centerPx.x, pp.centerPx.y),
                         params0: SIMD4<Float>(pp.radiusPx, pp.phaseFraction, pp.brightBrightness, pp.darkBrightness),
-                        params1: SIMD4<Float>(pp.ringTiltDeg, pp.waxingSign, pp.ringRotationDeg, 0),
+                        params1: SIMD4<Float>(pp.ringTiltDeg, pp.waxingSign, pp.ringRotationDeg, Float(pp.ringStyle)),
                         params2: SIMD4<Float>(Float(pp.terminatorMode), pp.terminatorWidth, Float(pp.terminatorBands), pp.textureAspect)
                     )
                     encoder.setRenderPipelineState(planetPipeline)

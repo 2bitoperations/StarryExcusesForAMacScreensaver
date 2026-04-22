@@ -73,6 +73,16 @@ Three passes, one per layer:
 3. Draw the moon using `moonPipeline` with its dedicated vertex/fragment shader
 4. Optionally draw the debug overlay (FPS, CPU stats)
 
+## Planet Rendering
+
+Planets use a dedicated `PlanetVertex` / `PlanetFragment` shader pair similar to the moon pipeline:
+
+1. **Vertex shader**: Maps planet position and radius to screen space, supporting non-square aspect ratios (used only for Saturn to accommodate geometric rings).
+2. **Fragment shader**: Handles two distinct code paths:
+   - **Non-Saturn planets**: Standard textured sphere with phase-based illumination and terminator shading (same modes as moon: Hard, Smooth, Banded).
+   - **Saturn**: Geometric ring rendering with six procedural bands (C ring, B ring inner/outer, Cassini division, A ring inner/outer, Encke gap). Rings are composited with occlusion-aware blending — rings in front of the planet alpha-blend over the body; rings behind the planet are occluded. Ring tilt angle (B) and position angle (P) are computed from Keplerian orbital mechanics and passed via uniforms. Rings render as flat-shaded bands with distinct colors and opacity for retro pixel-art aesthetic. Edge-on guard skips ring rendering when opening angle is sub-pixel.
+3. **Textures**: All planets use square procedural textures except Saturn's legacy non-square path is removed — Saturn now uses a square body-only texture (rings are pure geometry).
+
 ## The Trail System (Decay-in-Place)
 
 The shooting star and satellite trails are the trickiest bit of rendering. Here's how they work:
