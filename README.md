@@ -16,6 +16,7 @@ Very basic implementation.
 - [x] satellites
 - [x] moon
 - [x] planets (Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto — individually toggleable)
+- [x] planetary moons (Io, Europa, Ganymede, Callisto around Jupiter; Titan around Saturn) as automatic dot sprites
 
 ### Planets TODO
 1. **Verify render order** — Planets draw after the building layer and before the moon in `encodeCompositeAndMoon()`. This *should* place them above all buildings and behind the moon. Visually confirm this is working correctly and adjust if needed.

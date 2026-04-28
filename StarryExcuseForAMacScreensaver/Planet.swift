@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import os
+import simd
 
 enum PlanetIdentity: String, CaseIterable {
     case mercury, venus, mars, jupiter, saturn, uranus, neptune, pluto
@@ -33,6 +34,14 @@ enum PlanetIdentity: String, CaseIterable {
 //   Azimuth 180° (S) → screen centre; 0°/360° (N) → spawn box left/right edges.
 //
 struct Planet {
+
+    struct MoonSpriteState {
+        let name: String
+        let center: CGPoint
+        let sizePx: Float
+        let color: SIMD3<Float>
+        let alpha: Float
+    }
 
     // MARK: - Observer (Austin, TX)
 
@@ -165,6 +174,59 @@ struct Planet {
             let offScreen = CGPoint(x: -Double(radius) * 2, y: -Double(radius) * 2)
             return (offScreen, 0.0, false, ringTilt, ringRotation, phase.fraction, phase.waxingSign)
         }
+    }
+
+    static func moonSpriteStates(
+        for parent: PlanetIdentity,
+        now: Date,
+        parentCenter: CGPoint,
+        parentRadiusPx: Double,
+        ringTiltDeg: Double
+    ) -> [MoonSpriteState] {
+        guard parentRadiusPx > 0 else { return [] }
+        let defs = moonOrbitDefinitions[parent] ?? []
+        guard !defs.isEmpty else { return [] }
+
+        let daysSinceJ2000 = now.timeIntervalSince(j2000MoonEpochUTC) / 86400.0
+        let baseReferenceRadiusPx: Double = parent == .jupiter ? 24.0 : 20.3
+        let sizeScale = max(0.6, min(parentRadiusPx / baseReferenceRadiusPx, 1.8))
+
+        let verticalForeshorten: Double
+        if parent == .jupiter {
+            verticalForeshorten = sin(toRad(3.0))
+        } else {
+            verticalForeshorten = sin(toRad(ringTiltDeg))
+        }
+
+        var states: [MoonSpriteState] = []
+        states.reserveCapacity(defs.count)
+
+        for moon in defs {
+            let angle = (2.0 * Double.pi * daysSinceJ2000 / moon.periodDays) + moon.initialPhaseRad
+            let x = moon.semiMajorAxisPlanetRadii * cos(angle)
+            let y = moon.semiMajorAxisPlanetRadii * sin(angle)
+
+            let screenX = parentCenter.x + x * parentRadiusPx
+            let screenY = parentCenter.y + (y * verticalForeshorten * parentRadiusPx)
+            let screenCenter = CGPoint(x: screenX, y: screenY)
+
+            let distanceToParentCenter = hypot(screenX - parentCenter.x, screenY - parentCenter.y)
+            let isBehindPlanetDisc = (y > 0.0) && (distanceToParentCenter < parentRadiusPx)
+            if isBehindPlanetDisc { continue }
+
+            let moonSizePx = Float(min(3.0, max(1.0, moon.baseSizePx * sizeScale)))
+            states.append(
+                MoonSpriteState(
+                    name: moon.name,
+                    center: screenCenter,
+                    sizePx: moonSizePx,
+                    color: moon.color,
+                    alpha: 0.78
+                )
+            )
+        }
+
+        return states
     }
 
     // MARK: - Screen Mapping
@@ -321,6 +383,64 @@ struct Planet {
             i1: 0.0
         )
     }
+
+    private struct MoonOrbitDefinition {
+        let name: String
+        let periodDays: Double
+        let semiMajorAxisPlanetRadii: Double
+        let initialPhaseRad: Double
+        let color: SIMD3<Float>
+        let baseSizePx: Double
+    }
+
+    private static let moonOrbitDefinitions: [PlanetIdentity: [MoonOrbitDefinition]] = [
+        .jupiter: [
+            MoonOrbitDefinition(
+                name: "Io",
+                periodDays: 1.769138,
+                semiMajorAxisPlanetRadii: 5.91,
+                initialPhaseRad: toRad(106.1),
+                color: SIMD3<Float>(1.0, 0.95, 0.6),
+                baseSizePx: 2.0
+            ),
+            MoonOrbitDefinition(
+                name: "Europa",
+                periodDays: 3.551181,
+                semiMajorAxisPlanetRadii: 9.40,
+                initialPhaseRad: toRad(175.8),
+                color: SIMD3<Float>(0.9, 0.9, 1.0),
+                baseSizePx: 1.5
+            ),
+            MoonOrbitDefinition(
+                name: "Ganymede",
+                periodDays: 7.154553,
+                semiMajorAxisPlanetRadii: 14.97,
+                initialPhaseRad: toRad(121.0),
+                color: SIMD3<Float>(0.85, 0.8, 0.7),
+                baseSizePx: 2.5
+            ),
+            MoonOrbitDefinition(
+                name: "Callisto",
+                periodDays: 16.689018,
+                semiMajorAxisPlanetRadii: 26.33,
+                initialPhaseRad: toRad(85.0),
+                color: SIMD3<Float>(0.5, 0.5, 0.5),
+                baseSizePx: 2.0
+            ),
+        ],
+        .saturn: [
+            MoonOrbitDefinition(
+                name: "Titan",
+                periodDays: 15.945421,
+                semiMajorAxisPlanetRadii: 20.27,
+                initialPhaseRad: toRad(15.0),
+                color: SIMD3<Float>(0.9, 0.7, 0.3),
+                baseSizePx: 2.0
+            )
+        ],
+    ]
+
+    private static let j2000MoonEpochUTC = Date(timeIntervalSince1970: 947678400)
 
     /// Computes altitude and azimuth (degrees) for any planet at the Austin TX
     /// observer location for the supplied date.

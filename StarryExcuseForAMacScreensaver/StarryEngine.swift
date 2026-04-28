@@ -942,8 +942,9 @@ final class StarryEngine {
 
         var planetEntries: [(id: String, params: PlanetParams)] = []
         var framePlanetAlbedoImages: [String: CGImage] = [:]
+        let frameNow = Date()
         for (key, p) in planets {
-            let state = p.frameState(now: Date())
+            let state = p.frameState(now: frameNow)
             
             let ringTilt: Float
             if key == PlanetIdentity.saturn.rawValue {
@@ -983,6 +984,31 @@ final class StarryEngine {
                 ringStyle: key == PlanetIdentity.saturn.rawValue ? config.saturnRingStyle : 0
             )
             planetEntries.append((id: key, params: params))
+            if state.brightness > 0.0, let parentIdentity = PlanetIdentity(rawValue: key) {
+                let moonStates = Planet.moonSpriteStates(
+                    for: parentIdentity,
+                    now: frameNow,
+                    parentCenter: state.center,
+                    parentRadiusPx: Double(p.radius),
+                    ringTiltDeg: state.ringTiltDeg
+                )
+                for moonState in moonStates {
+                    let half = max(0.5, moonState.sizePx * 0.5)
+                    baseSprites.append(
+                        SpriteInstance(
+                            centerPx: SIMD2<Float>(Float(moonState.center.x), Float(moonState.center.y)),
+                            halfSizePx: SIMD2<Float>(repeating: half),
+                            colorPremul: premulRGBA(
+                                r: moonState.color.x,
+                                g: moonState.color.y,
+                                b: moonState.color.z,
+                                a: moonState.alpha
+                            ),
+                            shape: .circle
+                        )
+                    )
+                }
+            }
             if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {
                 framePlanetAlbedoImages[key] = img
             }
@@ -1163,8 +1189,9 @@ final class StarryEngine {
 
         var planetEntries: [(id: String, params: PlanetParams)] = []
         var framePlanetAlbedoImages: [String: CGImage] = [:]
+        let frameNow = Date()
         for (key, p) in planets {
-            let state = p.frameState(now: Date())
+            let state = p.frameState(now: frameNow)
 
             let ringTilt: Float
             if key == PlanetIdentity.saturn.rawValue {
@@ -1204,6 +1231,31 @@ final class StarryEngine {
                 ringStyle: key == PlanetIdentity.saturn.rawValue ? config.saturnRingStyle : 0
             )
             planetEntries.append((id: key, params: params))
+            if state.brightness > 0.0, let parentIdentity = PlanetIdentity(rawValue: key) {
+                let moonStates = Planet.moonSpriteStates(
+                    for: parentIdentity,
+                    now: frameNow,
+                    parentCenter: state.center,
+                    parentRadiusPx: Double(p.radius),
+                    ringTiltDeg: state.ringTiltDeg
+                )
+                for moonState in moonStates {
+                    let half = max(0.5, moonState.sizePx * 0.5)
+                    baseSprites.append(
+                        SpriteInstance(
+                            centerPx: SIMD2<Float>(Float(moonState.center.x), Float(moonState.center.y)),
+                            halfSizePx: SIMD2<Float>(repeating: half),
+                            colorPremul: premulRGBA(
+                                r: moonState.color.x,
+                                g: moonState.color.y,
+                                b: moonState.color.z,
+                                a: moonState.alpha
+                            ),
+                            shape: .circle
+                        )
+                    )
+                }
+            }
             if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {
                 framePlanetAlbedoImages[key] = img
             }
@@ -1375,6 +1427,10 @@ final class StarryEngine {
                 )
             }
         }
+    }
+
+    private func premulRGBA(r: Float, g: Float, b: Float, a: Float) -> SIMD4<Float> {
+        return SIMD4<Float>(r * a, g * a, b * a, a)
     }
 
     private func value<T>(_ key: String, from userInfo: [AnyHashable: Any]?)
