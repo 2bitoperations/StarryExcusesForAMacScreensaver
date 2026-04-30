@@ -181,7 +181,8 @@ struct Planet {
         now: Date,
         parentCenter: CGPoint,
         parentRadiusPx: Double,
-        ringTiltDeg: Double
+        ringTiltDeg: Double,
+        rotationDeg: Double
     ) -> [MoonSpriteState] {
         guard parentRadiusPx > 0 else { return [] }
         let defs = moonOrbitDefinitions[parent] ?? []
@@ -206,8 +207,17 @@ struct Planet {
             let x = moon.semiMajorAxisPlanetRadii * cos(angle)
             let y = moon.semiMajorAxisPlanetRadii * sin(angle)
 
-            let screenX = parentCenter.x + x * parentRadiusPx
-            let screenY = parentCenter.y + (y * verticalForeshorten * parentRadiusPx)
+            // Foreshorten FIRST (matches shader's R(θ)·S convention)
+            let xp = x
+            let yp = y * verticalForeshorten
+
+            // THEN rotate in screen space
+            let theta = rotationDeg * (Double.pi / 180.0)
+            let xr = xp * cos(theta) - yp * sin(theta)
+            let yr = xp * sin(theta) + yp * cos(theta)
+
+            let screenX = parentCenter.x + xr * parentRadiusPx
+            let screenY = parentCenter.y + yr * parentRadiusPx
             let screenCenter = CGPoint(x: screenX, y: screenY)
 
             let distanceToParentCenter = hypot(screenX - parentCenter.x, screenY - parentCenter.y)

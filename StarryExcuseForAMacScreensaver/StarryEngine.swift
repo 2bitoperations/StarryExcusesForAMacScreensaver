@@ -42,6 +42,7 @@ struct StarryRuntimeConfig {
     var satellitesTrailing: Bool = true
 
     var debugOverlayEnabled: Bool = false
+    var debugMoonColors: Bool = false
 
     var starSamplingMode: Int = 0
 
@@ -120,6 +121,7 @@ extension StarryRuntimeConfig: CustomStringConvertible {
               satellitesBrightness: \(satellitesBrightness),
               satellitesTrailing: \(satellitesTrailing),
               debugOverlayEnabled: \(debugOverlayEnabled),
+              debugMoonColors: \(debugMoonColors),
               debugDropBaseEveryNFrames: \(debugDropBaseEveryNFrames),
               debugForceClearEveryNFrames: \(debugForceClearEveryNFrames),
               debugLogEveryFrame: \(debugLogEveryFrame),
@@ -810,6 +812,23 @@ final class StarryEngine {
         return config.debugOverlayEnabled
     }
 
+    private func debugMoonColorPremul(for moonName: String) -> SIMD4<Float>? {
+        switch moonName.lowercased() {
+        case "io":
+            return SIMD4<Float>(1.0, 0.0, 0.0, 1.0)
+        case "europa":
+            return SIMD4<Float>(0.0, 1.0, 0.0, 1.0)
+        case "ganymede":
+            return SIMD4<Float>(0.0, 0.0, 1.0, 1.0)
+        case "callisto":
+            return SIMD4<Float>(1.0, 1.0, 0.0, 1.0)
+        case "titan":
+            return SIMD4<Float>(1.0, 0.0, 1.0, 1.0)
+        default:
+            return nil
+        }
+    }
+
     func advanceFrameGPU() -> StarryDrawData {
         engineFrameIndex &+= 1
 
@@ -855,6 +874,8 @@ final class StarryEngine {
         var baseSprites: [SpriteInstance] = []
         var satellitesSprites: [SpriteInstance] = []
         var shootingSprites: [SpriteInstance] = []
+        var planetMoonsSprites: [SpriteInstance] = []
+        var planetMoonNames: [String] = []
 
         if let skyline = skyline,
             let skylineRenderer = skylineRenderer
@@ -985,16 +1006,22 @@ final class StarryEngine {
             )
             planetEntries.append((id: key, params: params))
             if state.brightness > 0.0, let parentIdentity = PlanetIdentity(rawValue: key) {
+                // Saturn's body is 0.846× the quad radius (rings fill the rest);
+                // other planets fill their full quad.
+                let bodyRadiusPx = parentIdentity == .saturn
+                    ? Double(p.radius) * 0.846
+                    : Double(p.radius)
                 let moonStates = Planet.moonSpriteStates(
                     for: parentIdentity,
                     now: frameNow,
                     parentCenter: state.center,
-                    parentRadiusPx: Double(p.radius),
-                    ringTiltDeg: state.ringTiltDeg
+                    parentRadiusPx: bodyRadiusPx,
+                    ringTiltDeg: Double(ringTilt),
+                    rotationDeg: Double(ringRotation)
                 )
                 for moonState in moonStates {
                     let half = max(0.5, moonState.sizePx * 0.5)
-                    baseSprites.append(
+                    planetMoonsSprites.append(
                         SpriteInstance(
                             centerPx: SIMD2<Float>(Float(moonState.center.x), Float(moonState.center.y)),
                             halfSizePx: SIMD2<Float>(repeating: half),
@@ -1007,10 +1034,19 @@ final class StarryEngine {
                             shape: .circle
                         )
                     )
+                    planetMoonNames.append(moonState.name)
                 }
             }
             if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {
                 framePlanetAlbedoImages[key] = img
+            }
+        }
+
+        if config.debugMoonColors {
+            for i in planetMoonsSprites.indices {
+                if let override = debugMoonColorPremul(for: planetMoonNames[i]) {
+                    planetMoonsSprites[i].colorPremul = override
+                }
             }
         }
 
@@ -1038,6 +1074,7 @@ final class StarryEngine {
             baseSprites: baseSprites,
             satellitesSprites: satellitesSprites,
             shootingSprites: shootingSprites,
+            planetMoonsSprites: planetMoonsSprites,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
             planets: planetEntries,
@@ -1107,6 +1144,8 @@ final class StarryEngine {
         var baseSprites: [SpriteInstance] = []
         var satellitesSprites: [SpriteInstance] = []
         var shootingSprites: [SpriteInstance] = []
+        var planetMoonsSprites: [SpriteInstance] = []
+        var planetMoonNames: [String] = []
 
         if let skyline = skyline,
             let skylineRenderer = skylineRenderer
@@ -1232,16 +1271,22 @@ final class StarryEngine {
             )
             planetEntries.append((id: key, params: params))
             if state.brightness > 0.0, let parentIdentity = PlanetIdentity(rawValue: key) {
+                // Saturn's body is 0.846× the quad radius (rings fill the rest);
+                // other planets fill their full quad.
+                let bodyRadiusPx = parentIdentity == .saturn
+                    ? Double(p.radius) * 0.846
+                    : Double(p.radius)
                 let moonStates = Planet.moonSpriteStates(
                     for: parentIdentity,
                     now: frameNow,
                     parentCenter: state.center,
-                    parentRadiusPx: Double(p.radius),
-                    ringTiltDeg: state.ringTiltDeg
+                    parentRadiusPx: bodyRadiusPx,
+                    ringTiltDeg: Double(ringTilt),
+                    rotationDeg: Double(ringRotation)
                 )
                 for moonState in moonStates {
                     let half = max(0.5, moonState.sizePx * 0.5)
-                    baseSprites.append(
+                    planetMoonsSprites.append(
                         SpriteInstance(
                             centerPx: SIMD2<Float>(Float(moonState.center.x), Float(moonState.center.y)),
                             halfSizePx: SIMD2<Float>(repeating: half),
@@ -1254,10 +1299,19 @@ final class StarryEngine {
                             shape: .circle
                         )
                     )
+                    planetMoonNames.append(moonState.name)
                 }
             }
             if planetAlbedoDirty.contains(key), let img = planetAlbedoImages[key] {
                 framePlanetAlbedoImages[key] = img
+            }
+        }
+
+        if config.debugMoonColors {
+            for i in planetMoonsSprites.indices {
+                if let override = debugMoonColorPremul(for: planetMoonNames[i]) {
+                    planetMoonsSprites[i].colorPremul = override
+                }
             }
         }
 
@@ -1285,6 +1339,7 @@ final class StarryEngine {
             baseSprites: baseSprites,
             satellitesSprites: satellitesSprites,
             shootingSprites: shootingSprites,
+            planetMoonsSprites: planetMoonsSprites,
             moon: moonParams,
             moonAlbedoImage: moonAlbedoDirty ? moonAlbedoImage : nil,
             planets: planetEntries,

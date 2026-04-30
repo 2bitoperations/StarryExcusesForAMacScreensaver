@@ -292,7 +292,7 @@ vertex PlanetVarying PlanetVertex(uint vid [[vertex_id]],
     float2 local = corners[vid];
     float radiusPx = uni.params0.x;
     float aspect = max(uni.params2.w, 1.0);
-    float2 offsetPx = float2(local.x * radiusPx * aspect, local.y * radiusPx);
+    float2 offsetPx = float2(local.x * radiusPx * aspect, local.y * radiusPx * aspect);
     float2 posPx = uni.centerPx + offsetPx;
     float2 ndc = float2((posPx.x / uni.viewportSize.x) * 2.0 - 1.0,
                         (posPx.y / uni.viewportSize.y) * 2.0 - 1.0);
@@ -369,9 +369,9 @@ fragment float4 PlanetFragment(PlanetVarying in [[stage_in]],
     }
 
     // Saturn path: geometric rings + textured planet body.
-    // in.local is [-1,+1], but PlanetVertex stretches X by `aspect` in screen pixels,
+    // in.local is [-1,+1], but PlanetVertex stretches both axes by `aspect` in screen pixels,
     // so convert to a screen-isotropic space before circular/elliptical tests.
-    float2 screenP = float2(local.x * aspect, local.y);
+    float2 screenP = float2(local.x * aspect, local.y * aspect);
 
     // Body radius from Saturn texture authoring: rBody=0.423 in UV-space,
     // therefore 0.846 in local [-1,+1] Y units.

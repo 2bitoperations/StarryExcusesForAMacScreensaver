@@ -584,6 +584,7 @@ class StarryExcuseForAView: ScreenSaverView {
             satellitesBrightness: defaultsManager.satellitesBrightness,
             satellitesTrailing: defaultsManager.satellitesTrailing,
             debugOverlayEnabled: defaultsManager.debugOverlayEnabled,
+            debugMoonColors: defaultsManager.debugMoonColors,
             starSamplingMode: defaultsManager.starSamplingMode,
             debugDropBaseEveryNFrames: 0,
             debugForceClearEveryNFrames: 0,

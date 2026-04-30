@@ -190,10 +190,16 @@ final class DebugLayerRenderer {
         let W = screenSize.width
         let H = screenSize.height
         guard W > 0 && H > 0 else { return }
+        let texW = CGFloat(max(overlayWidthPx, 1))
+        let texH = CGFloat(max(overlayHeightPx, 1))
+        let scaleX = texW / max(W, 1)
+        let scaleY = texH / max(H, 1)
+        let overlayWidthPts = texW / max(scaleX, 1)
+        let overlayHeightPts = texH / max(scaleY, 1)
         let x0: CGFloat = margin
         let y0: CGFloat = margin
-        let x1: CGFloat = min(x0 + CGFloat(overlayWidthPx), W)
-        let y1: CGFloat = min(y0 + CGFloat(overlayHeightPx), H)
+        let x1: CGFloat = min(x0 + overlayWidthPts, W)
+        let y1: CGFloat = min(y0 + overlayHeightPts, H)
 
         func toClipX(_ x: CGFloat) -> Float {
             return Float((x / W) * 2.0 - 1.0)

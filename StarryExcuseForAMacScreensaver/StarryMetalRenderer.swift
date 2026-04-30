@@ -14,7 +14,8 @@ final class StarryMetalRenderer {
         var satellitesScratch: MTLTexture?
         var shooting: MTLTexture?
         var shootingScratch: MTLTexture?
-        var size: CGSize = .zero
+        var pointsSize: CGSize = .zero
+        var pixelSize: CGSize = .zero
     }
 
     private struct MoonUniformsSwift {
@@ -149,6 +150,11 @@ final class StarryMetalRenderer {
     private var consecutiveDrawableAcquireFailures: Int = 0
     private var lastPostedDrawableAvailability: Bool? = nil
     private let drawableFailureThreshold: Int = 45  // ~0.75s at 60fps
+
+    // Triple-buffering: prevents the CPU from overwriting staging buffers
+    // while the GPU is still reading from a previous frame's blit.
+    private static let maxInflightFrames = 3
+    private let inflightSemaphore = DispatchSemaphore(value: maxInflightFrames)
 
     private let notificationCenters: [NotificationCenter] = [
         NotificationCenter.default,
@@ -643,9 +649,10 @@ final class StarryMetalRenderer {
         let wPx = Int(round(size.width * scale))
         let hPx = Int(round(size.height * scale))
         guard wPx > 0, hPx > 0 else { return }
+        let pixelSize = CGSize(width: CGFloat(wPx), height: CGFloat(hPx))
 
         if let layer = metalLayer {
-            let newDrawable = CGSize(width: CGFloat(wPx), height: CGFloat(hPx))
+            let newDrawable = pixelSize
             if newDrawable != lastAppliedDrawableSize {
                 layer.contentsScale = scale
                 layer.drawableSize = newDrawable
@@ -654,11 +661,13 @@ final class StarryMetalRenderer {
                 layer.contentsScale = scale
             }
         }
-        if size.width >= 1, size.height >= 1, size != layerTex.size {
-            allocateTextures(size: size)
+        if size.width >= 1, size.height >= 1,
+            (size != layerTex.pointsSize || pixelSize != layerTex.pixelSize)
+        {
+            allocateTextures(pointsSize: size, pixelSize: pixelSize)
             clearOffscreenTextures(reason: "Resize/allocate")
             os_log(
-                "updateDrawableSize: allocated and cleared layer textures for size %.0fx%.0f",
+                "updateDrawableSize: allocated and cleared layer textures for points %.0fx%.0f",
                 log: log,
                 type: .info,
                 Double(size.width),
@@ -1076,6 +1085,9 @@ final class StarryMetalRenderer {
     }
 
     func render(drawData: StarryDrawData) {
+        // Wait until an in-flight frame slot is available (triple-buffering).
+        inflightSemaphore.wait()
+
         if let img = drawData.moonAlbedoImage {
             setMoonAlbedo(image: img)
         }
@@ -1087,10 +1099,16 @@ final class StarryMetalRenderer {
         }
         ensurePlanetAlbedoTextureFromCacheIfNeeded()
 
-        if drawData.size.width >= 1, drawData.size.height >= 1,
-            drawData.size != layerTex.size
+        let pointsSize = drawData.size
+        let scale = metalLayer?.contentsScale ?? 1.0
+        let pixelSize = CGSize(
+            width: CGFloat(Int(round(pointsSize.width * scale))),
+            height: CGFloat(Int(round(pointsSize.height * scale)))
+        )
+        if pointsSize.width >= 1, pointsSize.height >= 1,
+            (pointsSize != layerTex.pointsSize || pixelSize != layerTex.pixelSize)
         {
-            allocateTextures(size: drawData.size)
+            allocateTextures(pointsSize: pointsSize, pixelSize: pixelSize)
             clearOffscreenTextures(reason: "Allocate on render()")
         }
         if drawData.clearAll {
@@ -1144,6 +1162,7 @@ final class StarryMetalRenderer {
             && !(debugOverlayEnabled && debugOverlayRenderer.hasOverlayTexture)
         if nothingToDraw {
             // Still advance frame index (so diagnostics cadence matches)
+            inflightSemaphore.signal()
             frameIndex &+= 1
             return
         }
@@ -1152,17 +1171,27 @@ final class StarryMetalRenderer {
         logFrameDiagnostics(prefix: "", drawData: drawData, dt: dt)
 
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            inflightSemaphore.signal()
             frameIndex &+= 1
             return
         }
         commandBuffer.label = "Starry Frame CommandBuffer"
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            self?.inflightSemaphore.signal()
+        }
 
-        if moonAlbedoNeedsBlit,
-            let staging = moonAlbedoStagingTexture,
-            let dst = moonAlbedoTexture
+        let needsMoonBlit = moonAlbedoNeedsBlit
+            && moonAlbedoStagingTexture != nil
+            && moonAlbedoTexture != nil
+        if needsMoonBlit || !planetAlbedoNeedsBlit.isEmpty,
+            let blit = commandBuffer.makeBlitCommandEncoder()
         {
-            if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "Blit+Mips MoonAlbedo staging->private"
+            blit.label = "Blit+Mips Albedo staging->private"
+
+            if needsMoonBlit,
+                let staging = moonAlbedoStagingTexture,
+                let dst = moonAlbedoTexture
+            {
                 let size = MTLSize(
                     width: staging.width,
                     height: staging.height,
@@ -1180,7 +1209,6 @@ final class StarryMetalRenderer {
                     destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
                 )
                 blit.generateMipmaps(for: dst)
-                blit.endEncoding()
                 os_log(
                     "render: enqueued moon albedo blit + mip gen (%dx%d)",
                     log: log,
@@ -1188,17 +1216,14 @@ final class StarryMetalRenderer {
                     dst.width,
                     dst.height
                 )
+                moonAlbedoNeedsBlit = false
+                moonAlbedoStagingTexture = nil
             }
-            moonAlbedoNeedsBlit = false
-            moonAlbedoStagingTexture = nil
-        }
 
-        for id in planetAlbedoNeedsBlit {
-            guard let staging = planetAlbedoStagingTextures[id],
-                let dst = planetAlbedoTextures[id]
-            else { continue }
-            if let blit = commandBuffer.makeBlitCommandEncoder() {
-                blit.label = "Blit+Mips PlanetAlbedo staging->private"
+            for id in planetAlbedoNeedsBlit {
+                guard let staging = planetAlbedoStagingTextures[id],
+                    let dst = planetAlbedoTextures[id]
+                else { continue }
                 let size = MTLSize(
                     width: staging.width,
                     height: staging.height,
@@ -1216,7 +1241,6 @@ final class StarryMetalRenderer {
                     destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
                 )
                 blit.generateMipmaps(for: dst)
-                blit.endEncoding()
                 os_log(
                     "render: enqueued planet albedo blit + mip gen (%dx%d)",
                     log: log,
@@ -1224,10 +1248,12 @@ final class StarryMetalRenderer {
                     dst.width,
                     dst.height
                 )
+                planetAlbedoStagingTextures.removeValue(forKey: id)
             }
-            planetAlbedoStagingTextures.removeValue(forKey: id)
+            planetAlbedoNeedsBlit.removeAll()
+
+            blit.endEncoding()
         }
-        planetAlbedoNeedsBlit.removeAll()
 
         encodeScenePasses(
             commandBuffer: commandBuffer,
@@ -1286,10 +1312,16 @@ final class StarryMetalRenderer {
             setPlanetAlbedo(id: id, image: img)
         }
         ensurePlanetAlbedoTextureFromCacheIfNeeded()
-        if drawData.size.width >= 1, drawData.size.height >= 1,
-            drawData.size != layerTex.size
+        let pointsSize = drawData.size
+        let scale = metalLayer?.contentsScale ?? 1.0
+        let pixelSize = CGSize(
+            width: CGFloat(Int(round(pointsSize.width * scale))),
+            height: CGFloat(Int(round(pointsSize.height * scale)))
+        )
+        if pointsSize.width >= 1, pointsSize.height >= 1,
+            (pointsSize != layerTex.pointsSize || pixelSize != layerTex.pixelSize)
         {
-            allocateTextures(size: drawData.size)
+            allocateTextures(pointsSize: pointsSize, pixelSize: pixelSize)
             clearOffscreenTextures(reason: "Allocate on renderToImage()")
         }
         if drawData.clearAll {
@@ -1520,61 +1552,30 @@ final class StarryMetalRenderer {
                     sprites: drawData.baseSprites,
                     pipeline: spriteOverPipeline,
                     commandBuffer: commandBuffer,
-                    provenance: .base
+                    provenance: .base,
+                    viewportPointsSize: drawData.size
                 )
             }
         }
 
         if debugCompositeMode != .baseOnly {
             if layerTex.satellites != nil {
-                applyDecay(
-                    into: .satellites,
+                encodeTrailLayer(
+                    which: .satellites,
+                    sprites: drawData.satellitesSprites,
                     dt: dt,
-                    commandBuffer: commandBuffer
+                    commandBuffer: commandBuffer,
+                    viewportPointsSize: drawData.size
                 )
-                if !debugSkipSatellitesDraw
-                    && !drawData.satellitesSprites.isEmpty
-                {
-                    if let safeDst = safeLayerTarget(.satellites) {
-                        renderSprites(
-                            into: safeDst,
-                            sprites: drawData.satellitesSprites,
-                            pipeline: spriteAdditivePipeline,
-                            commandBuffer: commandBuffer,
-                            provenance: .satellites
-                        )
-                    } else {
-                        os_log(
-                            "ALERT: No safe satellites target — skipping satellites draw",
-                            log: log,
-                            type: .fault
-                        )
-                    }
-                }
             }
             if layerTex.shooting != nil {
-                applyDecay(
-                    into: .shooting,
+                encodeTrailLayer(
+                    which: .shooting,
+                    sprites: drawData.shootingSprites,
                     dt: dt,
-                    commandBuffer: commandBuffer
+                    commandBuffer: commandBuffer,
+                    viewportPointsSize: drawData.size
                 )
-                if !drawData.shootingSprites.isEmpty {
-                    if let safeDst = safeLayerTarget(.shooting) {
-                        renderSprites(
-                            into: safeDst,
-                            sprites: drawData.shootingSprites,
-                            pipeline: spriteAdditivePipeline,
-                            commandBuffer: commandBuffer,
-                            provenance: .shooting
-                        )
-                    } else {
-                        os_log(
-                            "ALERT: No safe shooting target — skipping shooting draw",
-                            log: log,
-                            type: .fault
-                        )
-                    }
-                }
             }
         }
     }
@@ -1663,6 +1664,31 @@ final class StarryMetalRenderer {
             }
         }
 
+        if debugCompositeMode == .normal, !drawData.planetMoonsSprites.isEmpty {
+            encoder.setRenderPipelineState(spriteOverPipeline)
+            drawData.planetMoonsSprites.withUnsafeBytes { rawBytes in
+                guard let baseAddress = rawBytes.baseAddress else { return }
+                encoder.setVertexBytes(baseAddress, length: rawBytes.count, index: 1)
+                var uniforms = SpriteUniforms(
+                    viewportSize: SIMD2<Float>(
+                        Float(drawData.size.width),
+                        Float(drawData.size.height)
+                    )
+                )
+                encoder.setVertexBytes(
+                    &uniforms,
+                    length: MemoryLayout<SpriteUniforms>.stride,
+                    index: 2
+                )
+                encoder.drawPrimitives(
+                    type: .triangle,
+                    vertexStart: 0,
+                    vertexCount: 6,
+                    instanceCount: drawData.planetMoonsSprites.count
+                )
+            }
+        }
+
         if debugCompositeMode == .normal, let moon = drawData.moon {
             encoder.setRenderPipelineState(moonPipeline)
             var uni = MoonUniformsSwift(
@@ -1731,10 +1757,11 @@ final class StarryMetalRenderer {
         encoder.endEncoding()
     }
 
-    private func allocateTextures(size: CGSize) {
-        layerTex.size = size
-        let w = max(1, Int(size.width))
-        let h = max(1, Int(size.height))
+    private func allocateTextures(pointsSize: CGSize, pixelSize: CGSize) {
+        layerTex.pointsSize = pointsSize
+        layerTex.pixelSize = pixelSize
+        let w = max(1, Int(pixelSize.width))
+        let h = max(1, Int(pixelSize.height))
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm,
             width: w,
@@ -1866,10 +1893,13 @@ final class StarryMetalRenderer {
             )
         }
 
+        // No waitUntilCompleted — Metal's command queue ordering guarantees
+        // subsequent frames serialize after this clear. GPU-internal refcounting
+        // keeps backing memory alive until the clear finishes even if we nil
+        // our Swift references below.
         commandBuffer.commit()
-        commandBuffer.waitUntilCompleted()
         os_log(
-            "ClearOffscreenTextures: content cleared (reason=%@)",
+            "ClearOffscreenTextures: clear submitted (reason=%@)",
             log: log,
             type: .info,
             reason
@@ -2060,7 +2090,8 @@ final class StarryMetalRenderer {
         sprites: [SpriteInstance],
         pipeline: MTLRenderPipelineState,
         commandBuffer: MTLCommandBuffer,
-        provenance: LayerProvenance
+        provenance: LayerProvenance,
+        viewportPointsSize: CGSize
     ) {
         guard !sprites.isEmpty else { return }
 
@@ -2111,8 +2142,8 @@ final class StarryMetalRenderer {
         encoder.setVertexBuffer(deviceBuffer, offset: 0, index: 1)
         var uni = SpriteUniforms(
             viewportSize: SIMD2<Float>(
-                Float(target.width),
-                Float(target.height)
+                Float(viewportPointsSize.width),
+                Float(viewportPointsSize.height)
             )
         )
         encoder.setVertexBytes(
@@ -2235,6 +2266,146 @@ final class StarryMetalRenderer {
         encoder.setBlendColor(red: keep, green: keep, blue: keep, alpha: keep)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
         encoder.popDebugGroup()
+        encoder.endEncoding()
+    }
+
+    /// Merged decay + sprite draw in a single render encoder to avoid redundant
+    /// VRAM load/store cycles on tile-based GPUs.
+    private func encodeTrailLayer(
+        which: TrailLayer,
+        sprites: [SpriteInstance],
+        dt: CFTimeInterval?,
+        commandBuffer: MTLCommandBuffer,
+        viewportPointsSize: CGSize
+    ) {
+        let halfLife: Double =
+            (which == .satellites)
+            ? satellitesHalfLifeSeconds : shootingHalfLifeSeconds
+        let keep = decayKeep(forHalfLife: halfLife, dt: dt)
+
+        let target: MTLTexture? =
+            (which == .satellites) ? layerTex.satellites : layerTex.shooting
+        guard let tex = target else {
+            os_log(
+                "encodeTrailLayer: missing target texture for %@ layer",
+                log: log,
+                type: .error,
+                which == .satellites ? "satellites" : "shooting"
+            )
+            return
+        }
+
+        // Periodic decay logging gated by overlay flag
+        if debugOverlayEnabled && diagnosticsEnabled
+            && frameIndex % UInt64(diagnosticsEveryNFrames) == 0
+        {
+            os_log(
+                "Decay in-place %@ keep=%.4f (halfLife=%.3f dt=%.4f)",
+                log: log,
+                type: .debug,
+                (which == .satellites ? "satellites" : "shooting"),
+                keep,
+                halfLife,
+                (dt ?? 0)
+            )
+        }
+
+        // Edge case: full clear when decay factor is effectively zero
+        if keep <= 1e-6 {
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = tex
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].storeAction = .store
+            rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+            if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: rpd)
+            {
+                enc.pushDebugGroup("TrailLayer Clear -> \(tex.label ?? "tex")")
+                enc.setViewport(MTLViewport(
+                    originX: 0, originY: 0,
+                    width: Double(tex.width), height: Double(tex.height),
+                    znear: 0, zfar: 1
+                ))
+                enc.popDebugGroup()
+                enc.endEncoding()
+            }
+            return
+        }
+
+        // Upload sprites BEFORE opening the render encoder (blit encoder conflict).
+        let shouldDraw: Bool = {
+            if sprites.isEmpty { return false }
+            if which == .satellites && debugSkipSatellitesDraw { return false }
+            return true
+        }()
+
+        var deviceBuffer: MTLBuffer?
+        if shouldDraw {
+            deviceBuffer = uploadSpriteInstances(
+                sprites,
+                provenance: which == .satellites
+                    ? .satellites : .shooting,
+                commandBuffer: commandBuffer
+            )
+        }
+
+        // Single encoder: decay quad + sprite draw
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = tex
+        rpd.colorAttachments[0].loadAction = .load
+        rpd.colorAttachments[0].storeAction = .store
+
+        guard
+            let encoder = commandBuffer.makeRenderCommandEncoder(
+                descriptor: rpd
+            )
+        else { return }
+
+        let vp = MTLViewport(
+            originX: 0, originY: 0,
+            width: Double(tex.width), height: Double(tex.height),
+            znear: 0, zfar: 1
+        )
+        encoder.setViewport(vp)
+
+        // --- Decay pass (multiplicative fade) ---
+        encoder.pushDebugGroup(
+            "TrailDecay -> \(tex.label ?? "tex") keep=\(keep)"
+        )
+        encoder.setRenderPipelineState(decayInPlacePipeline)
+        if let quad = quadVertexBuffer {
+            encoder.setVertexBuffer(quad, offset: 0, index: 0)
+        }
+        encoder.setBlendColor(red: keep, green: keep, blue: keep, alpha: keep)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+        encoder.popDebugGroup()
+
+        // --- Sprite draw (additive) ---
+        if let buf = deviceBuffer {
+            encoder.pushDebugGroup(
+                "TrailSprites -> \(tex.label ?? "tex") count=\(sprites.count)"
+            )
+            encoder.setRenderPipelineState(spriteAdditivePipeline)
+            encoder.setVertexBuffer(buf, offset: 0, index: 1)
+            var uni = SpriteUniforms(
+                viewportSize: SIMD2<Float>(
+                    Float(viewportPointsSize.width),
+                    Float(viewportPointsSize.height)
+                )
+            )
+            encoder.setVertexBytes(
+                &uni,
+                length: MemoryLayout<SpriteUniforms>.stride,
+                index: 2
+            )
+            encoder.drawPrimitives(
+                type: .triangle,
+                vertexStart: 0,
+                vertexCount: 6,
+                instanceCount: sprites.count
+            )
+            encoder.popDebugGroup()
+        }
+
         encoder.endEncoding()
     }
 

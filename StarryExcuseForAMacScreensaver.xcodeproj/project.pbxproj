@@ -29,6 +29,7 @@
 		B1D2E3F40000000100000001 /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D2E3F30000000100000001 /* BuildInfo.swift */; };
 		C1000002000000010000000A /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000001000000010000000A /* main.swift */; };
 		C1000002000000010000000B /* PreviewAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000001000000010000000B /* PreviewAppDelegate.swift */; };
+		C100000200000001000000F4 /* ScreenshotMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000001000000010000000E /* ScreenshotMode.swift */; };
 		C100000200000001000000E1 /* StarryConfigSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E597E0E227BA8780092CA49 /* StarryConfigSheetController.swift */; };
 		C100000200000001000000E2 /* StarryDefaultsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E597E10227BAE390092CA49 /* StarryDefaultsManager.swift */; };
 		C100000200000001000000E3 /* StarryExcuseForAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAA85FE22792D30009F5745 /* StarryExcuseForAView.swift */; };
@@ -83,6 +84,7 @@
 		C1000001000000010000000B /* PreviewAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewAppDelegate.swift; sourceTree = "<group>"; };
 		C1000001000000010000000C /* PreviewApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "PreviewApp-Info.plist"; sourceTree = "<group>"; };
 		C1000001000000010000000D /* StarryPreview.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StarryPreview.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1000001000000010000000E /* ScreenshotMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotMode.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -156,6 +158,7 @@
 			children = (
 				C1000001000000010000000A /* main.swift */,
 				C1000001000000010000000B /* PreviewAppDelegate.swift */,
+				C1000001000000010000000E /* ScreenshotMode.swift */,
 				C1000001000000010000000C /* PreviewApp-Info.plist */,
 			);
 			path = PreviewApp;
@@ -294,6 +297,7 @@
 			files = (
 				C1000002000000010000000A /* main.swift in Sources */,
 				C1000002000000010000000B /* PreviewAppDelegate.swift in Sources */,
+				C100000200000001000000F4 /* ScreenshotMode.swift in Sources */,
 				C100000200000001000000E1 /* StarryConfigSheetController.swift in Sources */,
 				C100000200000001000000E2 /* StarryDefaultsManager.swift in Sources */,
 				C100000200000001000000E3 /* StarryExcuseForAView.swift in Sources */,
@@ -417,7 +421,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.3;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
@@ -474,7 +478,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 12.3;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
@@ -500,7 +504,8 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.2bitoperations.screensaver.StarryExcuseForAMacScreensaver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -526,7 +531,8 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.2bitoperations.screensaver.StarryExcuseForAMacScreensaver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -549,7 +555,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.2bitoperations.screensaver.StarryPreview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -572,7 +579,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.2bitoperations.screensaver.StarryPreview;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

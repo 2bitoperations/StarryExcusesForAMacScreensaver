@@ -161,6 +161,7 @@ public struct StarryDrawData {
     public var baseSprites: [SpriteInstance]  // Stars, building lights, flasher circles (persistent base)
     public var satellitesSprites: [SpriteInstance]  // rendered into satellites trail texture
     public var shootingSprites: [SpriteInstance]  // rendered into shooting-star trail texture
+    public var planetMoonsSprites: [SpriteInstance]  // Planet moon dots (rendered in composite pass, not accumulated)
 
     public var moon: MoonParams?  // draw on top (directly to final drawable)
     public var moonAlbedoImage: CGImage?  // provide when available/changed (optional)
@@ -187,6 +188,7 @@ public struct StarryDrawData {
         baseSprites: [SpriteInstance],
         satellitesSprites: [SpriteInstance],
         shootingSprites: [SpriteInstance],
+        planetMoonsSprites: [SpriteInstance],
         moon: MoonParams?,
         moonAlbedoImage: CGImage?,
         planets: [(id: String, params: PlanetParams)] = [],
@@ -203,6 +205,7 @@ public struct StarryDrawData {
         self.baseSprites = baseSprites
         self.satellitesSprites = satellitesSprites
         self.shootingSprites = shootingSprites
+        self.planetMoonsSprites = planetMoonsSprites
         self.moon = moon
         self.moonAlbedoImage = moonAlbedoImage
         self.planets = planets
@@ -222,6 +225,7 @@ public struct StarryDrawData {
         baseSprites: [SpriteInstance],
         satellitesSprites: [SpriteInstance],
         shootingSprites: [SpriteInstance],
+        planetMoonsSprites: [SpriteInstance] = [],
         moon: MoonParams?,
         moonAlbedoImage: CGImage?,
         showLightAreaTextureFillMask: Bool
@@ -232,6 +236,7 @@ public struct StarryDrawData {
             baseSprites: baseSprites,
             satellitesSprites: satellitesSprites,
             shootingSprites: shootingSprites,
+            planetMoonsSprites: planetMoonsSprites,
             moon: moon,
             moonAlbedoImage: moonAlbedoImage,
             planets: [],

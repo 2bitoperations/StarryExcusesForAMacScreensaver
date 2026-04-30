@@ -7,7 +7,12 @@
 
 import AppKit
 
-let app = NSApplication.shared
-let delegate = PreviewAppDelegate()
-app.delegate = delegate
-app.run()
+if ScreenshotMode.isScreenshotMode() {
+    ScreenshotMode.run()
+    exit(0)
+} else {
+    let app = NSApplication.shared
+    let delegate = PreviewAppDelegate()
+    app.delegate = delegate
+    app.run()
+}

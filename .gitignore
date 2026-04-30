@@ -116,3 +116,4 @@ StarryExcuseForAMacScreensaver.xcodeproj/**
 # End of https://www.gitignore.io/api/xcode,swift,macos,carthage
 .aider*
 .idea/
+.sisyphus/

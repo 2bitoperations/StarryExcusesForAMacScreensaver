@@ -1,5 +1,4 @@
 import Cocoa
-import CoreVideo
 import Foundation
 import Metal
 import QuartzCore
@@ -8,22 +7,6 @@ import os
 private let previewMaxFPS: CFTimeInterval = 60.0
 private let previewMinFrameInterval: CFTimeInterval = 1.0 / previewMaxFPS
 private let previewBurstGuardThreshold: CFTimeInterval = 0.5
-
-private func previewDisplayLinkCallback(
-    _ displayLink: CVDisplayLink,
-    _ inNow: UnsafePointer<CVTimeStamp>,
-    _ inOutputTime: UnsafePointer<CVTimeStamp>,
-    _ flagsIn: CVOptionFlags,
-    _ flagsOut: UnsafeMutablePointer<CVOptionFlags>,
-    _ displayLinkContext: UnsafeMutableRawPointer?
-) -> CVReturn {
-    guard let displayLinkContext else { return kCVReturnError }
-    let controller = Unmanaged<StarryConfigSheetController>.fromOpaque(
-        displayLinkContext
-    ).takeUnretainedValue()
-    controller.handleDisplayLinkTick()
-    return kCVReturnSuccess
-}
 
 class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     NSTextFieldDelegate
@@ -151,7 +134,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
 
     // Preview engine
     private var previewEngine: StarryEngine?
-    private var previewDisplayLink: CVDisplayLink?
+    private var previewDisplayLink: CADisplayLink?
     private var lastDisplayLinkFrameTimestamp: CFTimeInterval = 0
     private var lastPreviewFrameTimestamp: CFTimeInterval = 0
 
@@ -3095,33 +3078,21 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
     private func startPreviewTimer() {
         stopPreviewTimer()
 
-        var displayLink: CVDisplayLink?
-        let createResult = CVDisplayLinkCreateWithActiveCGDisplays(&displayLink)
-        guard createResult == kCVReturnSuccess, let displayLink else { return }
-
-        let callbackResult = CVDisplayLinkSetOutputCallback(
-            displayLink,
-            previewDisplayLinkCallback,
-            Unmanaged.passUnretained(self).toOpaque()
-        )
-        guard callbackResult == kCVReturnSuccess else {
-            return
-        }
-
+        guard let window = self.window else { return }
+        let displayLink = window.displayLink(target: self, selector: #selector(displayLinkFired(_:)))
         previewDisplayLink = displayLink
         lastDisplayLinkFrameTimestamp = 0
         lastPreviewFrameTimestamp = CACurrentMediaTime()
-        CVDisplayLinkStart(displayLink)
+        displayLink.add(to: .main, forMode: .common)
     }
 
     private func stopPreviewTimer() {
-        guard let displayLink = previewDisplayLink else { return }
-        CVDisplayLinkStop(displayLink)
+        previewDisplayLink?.invalidate()
         previewDisplayLink = nil
         lastDisplayLinkFrameTimestamp = 0
     }
 
-    func handleDisplayLinkTick() {
+    @objc private func displayLinkFired(_ sender: CADisplayLink) {
         let now = CACurrentMediaTime()
         if lastDisplayLinkFrameTimestamp > 0,
             now - lastDisplayLinkFrameTimestamp < previewMinFrameInterval
@@ -3129,10 +3100,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
             return
         }
         lastDisplayLinkFrameTimestamp = now
-
-        DispatchQueue.main.async { [weak self] in
-            self?.advancePreviewFrame()
-        }
+        advancePreviewFrame()
     }
 
     private func pausePreview(auto: Bool) {
@@ -3260,6 +3228,7 @@ class StarryConfigSheetController: NSWindowController, NSWindowDelegate,
                 ?? lastSatellitesBrightness,
             satellitesTrailing: satellitesTrailingCheckbox?.state == .on,
             debugOverlayEnabled: debugOverlayEnabledCheckbox?.state == .on,
+            debugMoonColors: defaultsManager.debugMoonColors,
             starSamplingMode: starSamplingModePopup?.indexOfSelectedItem
                 ?? lastStarSamplingMode,
             debugDropBaseEveryNFrames: 0,

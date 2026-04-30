@@ -109,6 +109,7 @@ class StarryDefaultsManager {
     private let defaultMoonTerminatorBands = 4
     private let defaultShowLightAreaTextureFillMask = false
     private let defaultDebugOverlayEnabled = false
+    private let defaultDebugMoonColors = false
 
     // Shooting Stars defaults
     private let defaultShootingStarsEnabled = true
@@ -506,6 +507,14 @@ class StarryDefaultsManager {
             defaults.synchronize()
         }
         get { safeBool("DebugOverlayEnabled") ?? defaultDebugOverlayEnabled }
+    }
+
+    var debugMoonColors: Bool {
+        set {
+            defaults.set(newValue, forKey: "DebugMoonColors")
+            defaults.synchronize()
+        }
+        get { safeBool("DebugMoonColors") ?? defaultDebugMoonColors }
     }
 
     // MARK: - Shooting Stars
