@@ -1,0 +1,24 @@
+[package]
+name = "starry-rs"
+version = "0.1.0"
+edition = "2024"
+description = "A cross-platform Rust + wgpu port of StarryExcuseForAMacScreensaver"
+license = "MIT"
+authors = ["Andrew Malota"]
+repository = "https://github.com/2bitoperations/StarryExcusesForAMacScreensaver"
+readme = "README.md"
+
+[dependencies]
+wgpu = "29"
+winit = "0.30"
+
+# Block on async wgpu setup without dragging in a full async runtime
+pollster = "0.4"
+
+# Logging — wgpu emits via `log` internally
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

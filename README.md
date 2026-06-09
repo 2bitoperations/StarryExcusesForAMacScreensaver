@@ -29,6 +29,12 @@ Fork of https://github.com/kimar/DeveloperExcuses and https://github.com/evangre
 
 And feel free to fork and contribute ;-)
 
+## Rust + wgpu port (in progress)
+
+A cross-platform Rust + wgpu rewrite is in progress under [`starry-rs/`](starry-rs/). The long-term plan is to migrate the entire project — including macOS — to that codebase, which can target macOS (Metal), Linux (Vulkan/GL), and Windows (D3D12) from a single source tree.
+
+Until then, the Swift code remains the visual ground-truth and the shipping macOS product. See [`starry-rs/README.md`](starry-rs/README.md) for the porting roadmap and how to build/run the Rust side.
+
 ## Getting started
 Open up *DeveloperExcuses.xcodeproj* using Xcode and hit Cmd+B to build it. That's it.
 

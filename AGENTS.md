@@ -44,11 +44,31 @@ This project is supposed to serve as a fun learning test bed for agentic program
  - `PreviewApp-Info.plist` - Minimal app plist for the preview target.
 
 
+## Rust + wgpu port (`starry-rs/`)
+
+A cross-platform Rust + wgpu rewrite lives in [`starry-rs/`](starry-rs/). The plan is to eventually retire the Swift codebase on every platform — including macOS — once the Rust side reaches feature parity. Until then the Swift code remains the visual ground-truth and the shipping macOS product, and both trees live happily side by side in this repo.
+
+### Status (Phase 0 — June 2026)
+Just a windowed app with a clear pass. winit `ApplicationHandler` + wgpu Surface/Device/Queue plumbing only. No sprites yet. See the phased roadmap in [`starry-rs/README.md`](starry-rs/README.md).
+
+### File layout (will grow as phases land)
+ - `starry-rs/Cargo.toml` - Crate manifest. Deps pinned to major versions: wgpu 29, winit 0.30, pollster 0.4, log 0.4, env_logger 0.11. Release profile uses `lto = "thin"` and `codegen-units = 1`.
+ - `starry-rs/src/main.rs` - Phase 0 entry point: `ApplicationHandler` impl, GPU init via `pollster`, per-frame clear pass.
+ - `starry-rs/README.md` - Build/run instructions, phased roadmap, layout notes.
+
+### Conventions specific to the Rust side
+ - **Pinned wgpu version.** Stay on `wgpu = "29"` until a deliberate, scoped upgrade. wgpu reshapes its API between minor releases — 29 alone introduced `experimental_features`, `multiview_mask`, `depth_slice`, and replaced `SurfaceError` with the `CurrentSurfaceTexture` enum. Bumping mid-port is a recipe for sadness.
+ - **Module layout deferred.** Code is currently flat in `main.rs`. It will split into a `starry-core` (headless, testable) + `starry-app` (winit shell) workspace at the first natural seam — probably around Phase 1 or 2.
+ - **Visual ground-truth = Swift.** When porting a layer, read the Swift source carefully and match behavior pixel-ish-for-pixel-ish. [`METAL_RENDERER_MAP.md`](METAL_RENDERER_MAP.md) is the architectural cheat sheet (5 pipelines: spriteOver, spriteAdditive, decayInPlace, moon, composite; ping-pong layer textures).
+ - **Rust style.** Standard `cargo fmt` + `cargo clippy` cleanliness. Same simplicity/readability bar as the Swift code — fancy optimizations only when they meaningfully help.
+
+
 ## Documentation Guidelines
 Any changes to code must be paired with updates to the relevant documentation if they materially change behavior, file roles, or architecture. This includes (but is not limited to):
  - Adding, removing, or renaming source files → update the File Contents section above.
  - Changing the rendering pipeline → update [METAL_RENDERER_MAP.md](METAL_RENDERER_MAP.md).
  - Adding or completing a feature → update the Status checklist in [README.md](README.md).
+ - Touching the Rust port (`starry-rs/`) → update [`starry-rs/README.md`](starry-rs/README.md) (phase status, file layout, dep versions) and the Rust section in this file when conventions change.
 
 
 ## Coding Guidelines
@@ -112,6 +132,23 @@ open "$BUILT/StarryPreview.app"
 ```
 
 Or equivalently, run the `StarryPreview` scheme directly from Xcode (⌘R with that scheme selected).
+
+### Build & run the Rust port
+
+The Rust crate is self-contained under `starry-rs/`. You need a Rust toolchain via [rustup](https://rustup.rs) (`sh.rustup.rs`); make sure `$HOME/.cargo/env` is sourced in your shell.
+
+```bash
+# Build (debug)
+cargo build --manifest-path starry-rs/Cargo.toml
+
+# Build + launch the window
+cargo run --manifest-path starry-rs/Cargo.toml
+
+# With logging
+RUST_LOG=info cargo run --manifest-path starry-rs/Cargo.toml
+```
+
+Or `cd starry-rs && cargo run`. Phase 0 just opens a window and clears to a deep night-sky color — sprites land in Phase 1. See [`starry-rs/README.md`](starry-rs/README.md) for the full roadmap.
 
 
 ## Known Quirks

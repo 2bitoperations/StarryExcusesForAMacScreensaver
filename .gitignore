@@ -117,3 +117,8 @@ StarryExcuseForAMacScreensaver.xcodeproj/**
 .aider*
 .idea/
 .sisyphus/
+
+### Rust ###
+target/
+Cargo.lock.bak
+**/*.rs.bk
