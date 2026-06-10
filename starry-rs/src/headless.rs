@@ -1,21 +1,28 @@
-//! Headless single-frame rendering: spin up wgpu without a window, draw
-//! the same scene the windowed shell would draw, copy the framebuffer back
-//! to the CPU, and write it to a PNG.
+//! Headless single-frame rendering: spin up wgpu without a window, simulate
+//! one engine tick at a fixed dt, render the resulting sprites to a texture,
+//! copy the texture back to the CPU, write it to a PNG.
 //!
 //! Why this exists:
 //!  - Visual verification from environments without display access (CI,
 //!    sandboxed shells).
 //!  - Foundation for the deterministic golden-image visual-diff tests
-//!    planned for Phase 6 — the seeded `generate_default_stars` produces
-//!    byte-stable output, so a saved reference PNG can be diffed against
-//!    future runs.
+//!    planned for Phase 6 — the seeded `Engine` produces byte-stable
+//!    output for a given (seed, width, height, dt), so a saved reference
+//!    PNG can be diffed against future runs.
+//!
+//! Headless skips the persistent-FBO architecture used by the windowed
+//! shell — there's exactly one frame, so accumulation across frames is
+//! meaningless. We render directly into the readback target with a clear
+//! background instead, which produces pixel-identical output to what
+//! `frame_output.sprites` would look like on the windowed shell's very
+//! first frame.
 
 use std::error::Error;
-use std::path::Path;
 
 use pollster::FutureExt as _;
 
-use crate::scene::{CLEAR_COLOR, SPRITE_CAPACITY, generate_default_stars};
+use crate::config::{CLEAR_COLOR, Config, SPRITE_CAPACITY};
+use crate::engine::Engine;
 use crate::sprite::SpriteRenderer;
 
 /// Mirror the windowed swapchain choice (wgpu picks an sRGB surface format
@@ -23,14 +30,25 @@ use crate::sprite::SpriteRenderer;
 /// what a real window would display.
 const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-/// Render one frame of the default scene at the given resolution and write
-/// the result to `path` as an 8-bit RGBA PNG.
-pub fn dump_png(path: &Path, width: u32, height: u32) -> Result<(), Box<dyn Error>> {
-    dump_png_async(path, width, height).block_on()
+/// Simulated time the headless engine advances before rendering. Picked to
+/// produce a visually-rich frame (~800 star attempts + ~150 light attempts
+/// at the default 1280x800) without crossing into wall-clock territory
+/// where the wall-clock `frame()` clamp would kick in. (`frame_with_dt`
+/// trusts the caller — see engine.rs.)
+const HEADLESS_DT_SECONDS: f64 = 5.0;
+
+pub fn dump_png(config: &Config) -> Result<(), Box<dyn Error>> {
+    dump_png_async(config).block_on()
 }
 
-async fn dump_png_async(path: &Path, width: u32, height: u32) -> Result<(), Box<dyn Error>> {
+async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
+    let width = config.width;
+    let height = config.height;
     assert!(width > 0 && height > 0, "headless dimensions must be positive");
+    let path = config
+        .dump_png
+        .as_ref()
+        .ok_or("dump_png called without --dump-png path")?;
 
     let instance = wgpu::Instance::default();
     let adapter = instance
@@ -58,8 +76,6 @@ async fn dump_png_async(path: &Path, width: u32, height: u32) -> Result<(), Box<
         })
         .await?;
 
-    // RENDER_ATTACHMENT lets us draw into the texture; COPY_SRC lets us
-    // pull the result back through `copy_texture_to_buffer`.
     let target = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("headless target"),
         size: wgpu::Extent3d {
@@ -78,12 +94,17 @@ async fn dump_png_async(path: &Path, width: u32, height: u32) -> Result<(), Box<
 
     let mut sprites = SpriteRenderer::new(&device, TEXTURE_FORMAT, SPRITE_CAPACITY);
     sprites.set_viewport(&queue, width as f32, height as f32);
-    let stars = generate_default_stars(width, height);
-    sprites.set_instances(&queue, &stars);
 
-    // Texture-to-buffer copies require each row to be padded to
-    // `COPY_BYTES_PER_ROW_ALIGNMENT` (256 on every backend). We pad on copy
-    // and strip the padding back off before handing bytes to the PNG encoder.
+    let mut engine = Engine::new(config.clone());
+    let frame_output = engine.frame_with_dt(HEADLESS_DT_SECONDS);
+    log::info!(
+        "headless engine tick: dt={:.2}s, sprites_emitted={}, clear_layer={}",
+        HEADLESS_DT_SECONDS,
+        frame_output.sprites.len(),
+        frame_output.clear_layer
+    );
+    sprites.set_instances(&device, &queue, frame_output.sprites);
+
     let bytes_per_pixel = 4u32;
     let unpadded_bytes_per_row = width * bytes_per_pixel;
     let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -139,9 +160,6 @@ async fn dump_png_async(path: &Path, width: u32, height: u32) -> Result<(), Box<
     );
     queue.submit(std::iter::once(encoder.finish()));
 
-    // `map_async` is callback-driven; we forward the result through a
-    // channel and use `poll(Wait)` to drive the device until the mapping
-    // completes (no winit event loop here to do it for us).
     let slice = readback.slice(..);
     let (tx, rx) = std::sync::mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |result| {

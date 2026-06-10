@@ -26,11 +26,13 @@ fn vs_main(
 ) -> VertexOut {
     let world_px = inst_position + quad_pos * inst_size;
 
-    // Top-left origin in pixels -> NDC with Y flipped so (0,0) is the
-    // top-left of the framebuffer (matching the Swift renderer's convention).
+    // Bottom-left origin in pixels -> NDC. Matches the Swift Metal shader
+    // (Shaders.metal line 80-81) so building startY=0 lands at the bottom
+    // of the framebuffer, with skyFloor[x] separating buildings (low y)
+    // from sky (high y) the way Skyline.swift expects.
     let ndc = vec2<f32>(
         (world_px.x / viewport.size.x) * 2.0 - 1.0,
-        1.0 - (world_px.y / viewport.size.y) * 2.0,
+        (world_px.y / viewport.size.y) * 2.0 - 1.0,
     );
 
     var out: VertexOut;

@@ -31,6 +31,10 @@ bytemuck = { version = "1", features = ["derive"] }
 # the standard image-format crate of the Rust ecosystem.
 png = "0.17"
 
+# CLI parsing. Derive macros let each setting live next to its docs and default.
+# Phase-2-only flags now; later phases will grow Config as their settings land.
+clap = { version = "4", features = ["derive"] }
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

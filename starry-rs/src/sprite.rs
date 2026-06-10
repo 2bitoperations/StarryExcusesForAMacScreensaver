@@ -1,7 +1,9 @@
 //! Sprite renderer: one instanced-quad pipeline that draws screen-space
-//! points/discs. Phase 1 uses it for stars; later phases extend
-//! `SpriteInstance` (shape enum, additive blend, trail data) and reuse the
-//! same plumbing.
+//! points/discs. Phase 2 uses it for stars + building lights + the flasher;
+//! later phases extend `SpriteInstance` (shape enum, additive blend, trail
+//! data) and reuse the same plumbing. The instance buffer starts at the
+//! capacity passed to `new()` and grows on demand if a frame ever exceeds
+//! it (next power of two; logged at warn).
 
 use std::mem;
 
@@ -199,14 +201,29 @@ impl SpriteRenderer {
         queue.write_buffer(&self.viewport_ubo, 0, bytemuck::cast_slice(&data));
     }
 
-    pub fn set_instances(&mut self, queue: &wgpu::Queue, instances: &[SpriteInstance]) {
+    pub fn set_instances(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        instances: &[SpriteInstance],
+    ) {
         let n = instances.len() as u64;
-        assert!(
-            n <= self.instance_capacity,
-            "sprite instance overflow: tried to upload {} sprites but capacity is {}",
-            n,
-            self.instance_capacity
-        );
+        if n > self.instance_capacity {
+            let new_capacity = n.next_power_of_two().max(self.instance_capacity * 2);
+            log::warn!(
+                "sprite instance buffer growing: {} -> {} (requested {})",
+                self.instance_capacity,
+                new_capacity,
+                n
+            );
+            self.instance_vb = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("sprite instance vb (grown)"),
+                size: new_capacity * mem::size_of::<SpriteInstance>() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.instance_capacity = new_capacity;
+        }
         if !instances.is_empty() {
             queue.write_buffer(&self.instance_vb, 0, bytemuck::cast_slice(instances));
         }

@@ -1,50 +1,38 @@
 //! starry-rs — cross-platform Rust + wgpu port of the macOS Starry Night
-//! screensaver. Entry point: dispatches to either the windowed shell or
-//! the headless single-frame PNG dump mode based on CLI args.
+//! screensaver. Entry point: parses CLI args via clap, then dispatches to
+//! either the headless single-frame PNG dump or the windowed shell.
 
 mod app;
+mod buildings;
+mod composite;
+mod config;
+mod engine;
 mod gpu;
 mod headless;
-mod scene;
+mod skyline;
+mod skyline_renderer;
 mod sprite;
+mod types;
 
-use std::path::PathBuf;
-
+use clap::Parser;
 use winit::event_loop::{ControlFlow, EventLoop};
 
-use crate::{
-    app::App,
-    scene::{DEFAULT_HEIGHT, DEFAULT_WIDTH},
-};
+use crate::{app::App, config::Config};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    log::info!("starry-rs phase 1 starting — homage to the homage to the homage");
+    let config = Config::parse();
+    log::info!("starry-rs phase 2 starting — homage to the homage to the homage");
 
-    if let Some(path) = parse_dump_png_arg()? {
-        return headless::dump_png(&path, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+    if config.dump_png.is_some() {
+        return headless::dump_png(&config);
     }
 
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = App::default();
+    let mut app = App::new(config);
     event_loop.run_app(&mut app)?;
     Ok(())
-}
-
-fn parse_dump_png_arg() -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
-    let mut iter = std::env::args().skip(1);
-    while let Some(arg) = iter.next() {
-        if arg == "--dump-png" {
-            let path = iter
-                .next()
-                .ok_or("--dump-png requires a path argument")?;
-            return Ok(Some(PathBuf::from(path)));
-        } else {
-            return Err(format!("unknown argument: {arg}").into());
-        }
-    }
-    Ok(None)
 }
