@@ -19,6 +19,18 @@ pollster = "0.4"
 log = "0.4"
 env_logger = "0.11"
 
+# Seeded RNG for reproducible star fields (Phase 1+). Real per-launch
+# randomness arrives when settings/config land.
+rand = "0.8"
+
+# Bytemuck lets us safely view our POD structs as &[u8] for GPU upload
+# without writing unsafe transmutes ourselves.
+bytemuck = { version = "1", features = ["derive"] }
+
+# PNG encoding for the headless --dump-png path. Pure-Rust, minimal deps,
+# the standard image-format crate of the Rust ecosystem.
+png = "0.17"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

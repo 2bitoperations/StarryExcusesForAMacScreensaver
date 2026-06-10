@@ -13,7 +13,7 @@ Until that migration is complete, the Swift code remains the visual ground-truth
 Working on the **Rust port roadmap**:
 
 - [x] **Phase 0** — winit window + wgpu device + clear color (foundation)
-- [ ] **Phase 1** — sprite pipeline (random dots as star stand-ins)
+- [x] **Phase 1** — sprite pipeline (random dots as star stand-ins) + headless `--dump-png` mode
 - [ ] **Phase 2** — port `Buildings`, `Skyline`, `SkylineCoreRenderer` (stars, buildings, window lights, flasher)
 - [ ] **Phase 3** — ping-pong textures + decay pipeline + shooting stars + satellites
 - [ ] **Phase 4** — procedural moon texture + moon shader (phase + traversal)
@@ -33,6 +33,16 @@ cargo run --release  # release build, full performance
 
 Closing the window exits the process.
 
+### Headless single-frame render (`--dump-png`)
+
+For visual verification from environments without display access (CI servers, sandboxed shells, remote machines), and as the foundation for future Phase 6 golden-image diff tests:
+
+```bash
+cargo run -- --dump-png /tmp/starry.png
+```
+
+Renders one frame of the default scene at 1280×800 to an 8-bit RGBA PNG, then exits. Because the star generator uses a fixed seed, the output is byte-stable across runs — perfect for committing reference images and diffing later.
+
 ### Logging
 
 The app uses `env_logger`. Crank verbosity via the `RUST_LOG` environment variable:
@@ -45,18 +55,18 @@ RUST_LOG=wgpu_core=warn,starry_rs=debug cargo run  # mix-and-match
 
 ## Layout
 
-Currently flat — everything is in `src/main.rs` because Phase 0 is just a window + clear pass. Phase 1+ will introduce the module structure:
-
 ```
 src/
-├── main.rs              entry point + winit/wgpu glue
-├── app.rs               app state
-├── core/                simulation (engine, skyline, moon, planet, ...)
-├── render/              wgpu renderer (pipelines, layer textures, frame encode)
-├── textures/            procedural moon + planet textures
-└── debug/               FPS counter, build info overlay
-shaders/                 WGSL shaders
+├── main.rs         entry point + CLI dispatch (windowed vs --dump-png)
+├── app.rs          winit ApplicationHandler — owns the window + GpuState
+├── gpu.rs          wgpu Surface/Device/Queue + per-frame render loop
+├── sprite.rs       instanced-quad sprite pipeline (SpriteRenderer)
+├── scene.rs        scene data & visual constants (stars, clear color, sizes)
+├── headless.rs     offscreen render to PNG for visual verification / tests
+└── shader.wgsl     vertex + fragment shaders for the sprite pipeline
 ```
+
+Phase 2+ will grow `scene.rs` into a proper `Skyline` simulation module and likely split `gpu.rs` into per-layer renderers.
 
 ## License
 

@@ -48,17 +48,23 @@ This project is supposed to serve as a fun learning test bed for agentic program
 
 A cross-platform Rust + wgpu rewrite lives in [`starry-rs/`](starry-rs/). The plan is to eventually retire the Swift codebase on every platform — including macOS — once the Rust side reaches feature parity. Until then the Swift code remains the visual ground-truth and the shipping macOS product, and both trees live happily side by side in this repo.
 
-### Status (Phase 0 — June 2026)
-Just a windowed app with a clear pass. winit `ApplicationHandler` + wgpu Surface/Device/Queue plumbing only. No sprites yet. See the phased roadmap in [`starry-rs/README.md`](starry-rs/README.md).
+### Status (Phase 1 — June 2026)
+Windowed app draws ~1000 random round-disc star sprites via an instanced quad pipeline. Also has a headless `--dump-png <path>` mode that renders one offscreen frame straight to a PNG file (perfect for visual sanity checks and the future golden-image tests in Phase 6). No simulation, no buildings, no moon, no decay yet. See the phased roadmap in [`starry-rs/README.md`](starry-rs/README.md).
 
 ### File layout (will grow as phases land)
- - `starry-rs/Cargo.toml` - Crate manifest. Deps pinned to major versions: wgpu 29, winit 0.30, pollster 0.4, log 0.4, env_logger 0.11. Release profile uses `lto = "thin"` and `codegen-units = 1`.
- - `starry-rs/src/main.rs` - Phase 0 entry point: `ApplicationHandler` impl, GPU init via `pollster`, per-frame clear pass.
- - `starry-rs/README.md` - Build/run instructions, phased roadmap, layout notes.
+ - `starry-rs/Cargo.toml` - Crate manifest. Deps pinned to major versions: wgpu 29, winit 0.30, pollster 0.4, log 0.4, env_logger 0.11, rand 0.8, bytemuck 1 (derive), png 0.17. Release profile uses `lto = "thin"` and `codegen-units = 1`.
+ - `starry-rs/src/main.rs` - Entry point: env_logger init, strict CLI parse (`--dump-png <path>`), dispatch to either the windowed path or the headless single-frame PNG dump.
+ - `starry-rs/src/app.rs` - winit `ApplicationHandler` impl: window creation, GPU lifecycle, redraw loop.
+ - `starry-rs/src/gpu.rs` - `GpuState` — wgpu Instance/Adapter/Device/Queue/Surface plumbing for the windowed path. Owns a `SpriteRenderer` and encodes per-frame scenes against the swapchain.
+ - `starry-rs/src/sprite.rs` - `SpriteInstance` (POD, `repr(C)`) + `SpriteRenderer` (instanced quad pipeline, viewport UBO, fixed-capacity instance vertex buffer, premultiplied-alpha blend).
+ - `starry-rs/src/scene.rs` - Scene-shape constants (`CLEAR_COLOR`, `STAR_COUNT`, `STAR_SEED`, `SPRITE_CAPACITY`, `DEFAULT_WIDTH`/`DEFAULT_HEIGHT`) and `generate_default_stars()`. Will grow into the `Skyline` simulation in Phase 2.
+ - `starry-rs/src/headless.rs` - `dump_png()` — offscreen `Rgba8UnormSrgb` render-to-texture, reuses `SpriteRenderer`, padded `copy_texture_to_buffer` readback, writes PNG via the `png` crate. Used for visual verification and (eventually) golden-image tests.
+ - `starry-rs/src/shader.wgsl` - Sprite vertex (pixel→NDC via viewport UBO) + fragment (round-disc with soft edge, premultiplied output) shaders.
+ - `starry-rs/README.md` - Build/run instructions, phased roadmap, headless usage, layout notes.
 
 ### Conventions specific to the Rust side
  - **Pinned wgpu version.** Stay on `wgpu = "29"` until a deliberate, scoped upgrade. wgpu reshapes its API between minor releases — 29 alone introduced `experimental_features`, `multiview_mask`, `depth_slice`, and replaced `SurfaceError` with the `CurrentSurfaceTexture` enum. Bumping mid-port is a recipe for sadness.
- - **Module layout deferred.** Code is currently flat in `main.rs`. It will split into a `starry-core` (headless, testable) + `starry-app` (winit shell) workspace at the first natural seam — probably around Phase 1 or 2.
+ - **Module layout — single crate for now, workspace split deferred.** Code is split into focused modules within the single `starry-rs` crate (`app`, `gpu`, `sprite`, `scene`, `headless`, plus `shader.wgsl`). It'll split into a `starry-core` (headless, testable) + `starry-app` (winit shell) workspace at the first natural seam — probably around Phase 3+ as the simulation layer grows.
  - **Visual ground-truth = Swift.** When porting a layer, read the Swift source carefully and match behavior pixel-ish-for-pixel-ish. [`METAL_RENDERER_MAP.md`](METAL_RENDERER_MAP.md) is the architectural cheat sheet (5 pipelines: spriteOver, spriteAdditive, decayInPlace, moon, composite; ping-pong layer textures).
  - **Rust style.** Standard `cargo fmt` + `cargo clippy` cleanliness. Same simplicity/readability bar as the Swift code — fancy optimizations only when they meaningfully help.
 
