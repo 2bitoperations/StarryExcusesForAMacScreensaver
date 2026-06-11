@@ -1,9 +1,11 @@
-// Composite shader: copies the persistent skyline texture into the
-// swapchain via a single fullscreen triangle. No sampler is bound —
-// `textureLoad` does an exact 1:1 nearest-neighbor fetch, which is what
-// we want since skyline_tex is always sized to match the output target.
+// Composite shader: copies a layer texture onto the bound render target
+// via a single fullscreen triangle. No sampler — `textureLoad` does an
+// exact 1:1 nearest-neighbor fetch since every layer texture is sized to
+// match the output. The pipeline's blend state is set to
+// `PREMULTIPLIED_ALPHA_BLENDING` on the Rust side, so multiple calls to
+// this shader (one per layer) cleanly stack in Z-order.
 
-@group(0) @binding(0) var skyline_tex: texture_2d<f32>;
+@group(0) @binding(0) var layer_tex: texture_2d<f32>;
 
 struct VsOut {
     @builtin(position) clip_position: vec4<f32>,
@@ -27,10 +29,10 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // clip_position in fragment stage is window-space pixel coordinates
-    // (top-left origin, y-down — the GPU hardware convention). skyline_tex
-    // texels use the same convention, so direct integer fetch works without
-    // any Y-flip wrangling, even though our sprite layer logically thinks
-    // in Y-up world coords.
+    // (top-left origin, y-down — the GPU hardware convention). Layer
+    // textures use the same convention, so direct integer fetch works
+    // without any Y-flip wrangling, even though our sprite layer logically
+    // thinks in Y-up world coords.
     let p = vec2<i32>(in.clip_position.xy);
-    return textureLoad(skyline_tex, p, 0);
+    return textureLoad(layer_tex, p, 0);
 }

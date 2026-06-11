@@ -20,11 +20,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::{
-    config::{Config, SPRITE_CAPACITY},
-    engine::Engine,
-    gpu::GpuState,
-};
+use crate::{config::Config, engine::Engine, gpu::GpuState};
 
 pub struct App {
     config: Config,
@@ -60,7 +56,7 @@ impl ApplicationHandler for App {
                 .expect("create winit window"),
         );
 
-        let gpu = GpuState::new(window.clone(), SPRITE_CAPACITY);
+        let gpu = GpuState::new(window.clone(), &self.config);
 
         let size = window.inner_size();
         let initial_config = config_with_dims(&self.config, size.width, size.height);

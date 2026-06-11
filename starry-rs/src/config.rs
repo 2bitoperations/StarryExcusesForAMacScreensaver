@@ -112,6 +112,93 @@ pub struct Config {
     /// fixed value so headless dumps are reproducible across runs.
     #[arg(long, default_value_t = 42)]
     pub seed: u64,
+
+    // ---- Phase 3: shooting stars ----
+    /// Enable the shooting-stars layer. Swift default
+    /// (`defaultShootingStarsEnabled`) is `true`.
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = true)]
+    pub shooting_stars_enabled: bool,
+
+    /// Mean seconds between shooting-star spawn attempts (per-frame
+    /// Bernoulli with p = dt/avg). Swift default
+    /// (`defaultShootingStarsAvgSeconds`) is 7.0.
+    #[arg(long, default_value_t = 7.0)]
+    pub shooting_stars_avg_seconds: f64,
+
+    /// Direction mode: 0=Random, 1=LeftToRight, 2=RightToLeft,
+    /// 3=TopLeftToBottomRight, 4=TopRightToBottomLeft. Unknown values
+    /// fall back to Random. Swift default
+    /// (`defaultShootingStarsDirectionMode`) is 0.
+    #[arg(long, default_value_t = 0)]
+    pub shooting_stars_direction_mode: i32,
+
+    /// Base streak length in pixels (randomized ±15% per spawn). Swift
+    /// default (`defaultShootingStarsLength`) is 160.
+    #[arg(long, default_value_t = 160.0)]
+    pub shooting_stars_length: f32,
+
+    /// Streak speed in pixels/second. Lifetime = length / speed. Swift
+    /// default (`defaultShootingStarsSpeed`) is 600.
+    #[arg(long, default_value_t = 600.0)]
+    pub shooting_stars_speed: f32,
+
+    /// Streak thickness in pixels (head sprite size). Swift default
+    /// (`defaultShootingStarsThickness`) is 2.
+    #[arg(long, default_value_t = 2.0)]
+    pub shooting_stars_thickness: f32,
+
+    /// Streak brightness multiplier in [0, 1]. Swift default
+    /// (`defaultShootingStarsBrightness`) is 0.2.
+    #[arg(long, default_value_t = 0.2)]
+    pub shooting_stars_brightness: f32,
+
+    /// Trail half-life in seconds — every `trail_half_life_s` seconds
+    /// the layer fades to half intensity. 0 wipes the layer transparent
+    /// every frame (no trail). Swift default
+    /// (`defaultShootingStarsTrailHalfLifeSeconds`) is 0.18.
+    #[arg(long, default_value_t = 0.18)]
+    pub shooting_stars_trail_half_life_s: f32,
+
+    // ---- Phase 3: satellites ----
+    /// Enable the satellites layer. Swift default
+    /// (`defaultSatellitesEnabled`) is `true`.
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = true)]
+    pub satellites_enabled: bool,
+
+    /// Mean seconds between satellite spawns (exponential distribution).
+    /// Floored at 0.05s internally. Swift default
+    /// (`defaultSatellitesAvgSpawnSeconds`) is 0.75.
+    #[arg(long, default_value_t = 0.75)]
+    pub satellites_avg_spawn_seconds: f64,
+
+    /// Satellite horizontal speed in pixels/second. Swift default
+    /// (`defaultSatellitesSpeed`) is 30.
+    #[arg(long, default_value_t = 30.0)]
+    pub satellites_speed: f32,
+
+    /// Satellite head sprite diameter in pixels. Floored at 1.0px
+    /// internally. Swift default (`defaultSatellitesSize`) is 2.
+    #[arg(long, default_value_t = 2.0)]
+    pub satellites_size: f32,
+
+    /// Satellite brightness in [0, 1.2]; the upper bound matches Swift's
+    /// `satellitesBrightnessMax = 1.2` (lets satellites visually pop).
+    /// Internally clamped to [0, 1]. Swift default
+    /// (`defaultSatellitesBrightness`) is 0.5.
+    #[arg(long, default_value_t = 0.5)]
+    pub satellites_brightness: f32,
+
+    /// Whether the satellites layer leaves a fading trail. When false,
+    /// each frame wipes the layer transparent (no trail). Swift default
+    /// (`defaultSatellitesTrailing`) is `true`.
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = true)]
+    pub satellites_trailing: bool,
+
+    /// Satellite trail half-life in seconds. 0 (with `trailing: true`)
+    /// or `trailing: false` both wipe the layer every frame. Swift
+    /// default (`defaultSatellitesTrailHalfLifeSeconds`) is 0.10.
+    #[arg(long, default_value_t = 0.10)]
+    pub satellites_trail_half_life_s: f32,
 }
 
 impl Default for Config {

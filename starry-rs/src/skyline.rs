@@ -46,6 +46,12 @@ pub struct Skyline {
     pub buildings: Vec<Building>,
     sky_floor: Vec<i32>,
 
+    /// Cap on building height in pixels (Swift `buildingMaxHeight` —
+    /// `screenHeight * heightPctMax`, floored to ≥1). Stored so layers
+    /// like shooting-stars can place their `safe_min_y` above the tallest
+    /// possible rooftop without re-deriving it from the config.
+    pub building_max_height: i32,
+
     pub flasher_pos: Option<Point>,
     pub flasher_radius: i32,
     flasher_period: Duration,
@@ -129,6 +135,7 @@ impl Skyline {
             height: screen_height,
             buildings,
             sky_floor,
+            building_max_height,
             flasher_pos,
             flasher_radius,
             flasher_period: Duration::from_secs_f64(flasher_period_s.max(0.0)),

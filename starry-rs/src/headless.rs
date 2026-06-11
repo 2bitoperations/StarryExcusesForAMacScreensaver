@@ -10,12 +10,21 @@
 //!    output for a given (seed, width, height, dt), so a saved reference
 //!    PNG can be diffed against future runs.
 //!
-//! Headless skips the persistent-FBO architecture used by the windowed
-//! shell — there's exactly one frame, so accumulation across frames is
-//! meaningless. We render directly into the readback target with a clear
-//! background instead, which produces pixel-identical output to what
-//! `frame_output.sprites` would look like on the windowed shell's very
-//! first frame.
+//! Headless skips the windowed shell's ping-pong + persistent-FBO machinery
+//! entirely — there's exactly one frame, so cross-frame state is moot.
+//! Instead we draw all enabled layers directly into the readback target
+//! in Swift's Z-order (skyline → satellites → shooting), each in its own
+//! render pass so the per-layer blend mode is preserved:
+//!   - Pass 1: clear `CLEAR_COLOR` + skyline sprites (Over)
+//!   - Pass 2: load + satellites sprites (Additive)  [if enabled]
+//!   - Pass 3: load + shooting   sprites (Additive)  [if enabled]
+//!
+//! At `dt = HEADLESS_DT_SECONDS = 5.0`, the decay layers' keep_factors
+//! collapse to ~0 (default half-lives are 0.10s and 0.18s, so
+//! `0.5^(5/0.10) ≈ 0`), which means the windowed shell would also draw
+//! essentially just this frame's sprites on a single tick. So even though
+//! we skip the decay pass, the pixel output matches the windowed shell's
+//! first frame at the same `(seed, w, h, dt)`.
 
 use std::error::Error;
 
@@ -23,7 +32,7 @@ use pollster::FutureExt as _;
 
 use crate::config::{CLEAR_COLOR, Config, SPRITE_CAPACITY};
 use crate::engine::Engine;
-use crate::sprite::SpriteRenderer;
+use crate::sprite::{BlendMode, SpriteRenderer};
 
 /// Mirror the windowed swapchain choice (wgpu picks an sRGB surface format
 /// via `is_srgb`) so the headless render is colorimetrically identical to
@@ -92,18 +101,42 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
     });
     let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
 
-    let mut sprites = SpriteRenderer::new(&device, TEXTURE_FORMAT, SPRITE_CAPACITY);
-    sprites.set_viewport(&queue, width as f32, height as f32);
-
     let mut engine = Engine::new(config.clone());
     let frame_output = engine.frame_with_dt(HEADLESS_DT_SECONDS);
+
+    // Build one SpriteRenderer per layer that actually has data. We construct
+    // the optional layer renderers eagerly here (rather than mid-encode)
+    // because `set_instances` writes the GPU buffer via `queue.write_buffer`
+    // — staging it before any render passes is encoded keeps things linear.
+    let mut skyline_sprites =
+        SpriteRenderer::new(&device, TEXTURE_FORMAT, SPRITE_CAPACITY, BlendMode::Over);
+    skyline_sprites.set_viewport(&queue, width as f32, height as f32);
+    skyline_sprites.set_instances(&device, &queue, frame_output.skyline_sprites);
+
+    let satellites_sprites = frame_output.satellites.as_ref().map(|layer| {
+        let mut s =
+            SpriteRenderer::new(&device, TEXTURE_FORMAT, SPRITE_CAPACITY, BlendMode::Additive);
+        s.set_viewport(&queue, width as f32, height as f32);
+        s.set_instances(&device, &queue, layer.sprites);
+        s
+    });
+
+    let shooting_sprites = frame_output.shooting.as_ref().map(|layer| {
+        let mut s =
+            SpriteRenderer::new(&device, TEXTURE_FORMAT, SPRITE_CAPACITY, BlendMode::Additive);
+        s.set_viewport(&queue, width as f32, height as f32);
+        s.set_instances(&device, &queue, layer.sprites);
+        s
+    });
+
     log::info!(
-        "headless engine tick: dt={:.2}s, sprites_emitted={}, clear_layer={}",
+        "headless engine tick: dt={:.2}s, clear_skyline={}, skyline={}, satellites={}, shooting={}",
         HEADLESS_DT_SECONDS,
-        frame_output.sprites.len(),
-        frame_output.clear_layer
+        frame_output.clear_skyline,
+        frame_output.skyline_sprites.len(),
+        frame_output.satellites.as_ref().map_or(0, |l| l.sprites.len()),
+        frame_output.shooting.as_ref().map_or(0, |l| l.sprites.len()),
     );
-    sprites.set_instances(&device, &queue, frame_output.sprites);
 
     let bytes_per_pixel = 4u32;
     let unpadded_bytes_per_row = width * bytes_per_pixel;
@@ -121,9 +154,11 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
         label: Some("headless encoder"),
     });
+
+    // Pass 1: clear + skyline sprites (Over blend).
     {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("headless scene pass"),
+            label: Some("headless skyline pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &target_view,
                 resolve_target: None,
@@ -135,8 +170,45 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
             })],
             ..Default::default()
         });
-        sprites.draw(&mut pass);
+        skyline_sprites.draw(&mut pass);
     }
+
+    // Pass 2: satellites (Additive) layered on top.
+    if let Some(s) = &satellites_sprites {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("headless satellites pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        s.draw(&mut pass);
+    }
+
+    // Pass 3: shooting stars (Additive) layered on top.
+    if let Some(s) = &shooting_sprites {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("headless shooting pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        s.draw(&mut pass);
+    }
+
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
             texture: &target,

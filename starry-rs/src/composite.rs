@@ -1,25 +1,25 @@
-//! Composite pass: copy the persistent skyline texture into the swapchain
-//! each frame via a fullscreen triangle. No sampler bound — `textureLoad`
-//! does an exact 1:1 nearest-neighbor fetch since skyline_tex is always
-//! sized to match the output target. This is the second half of the Swift-
-//! parity persistence model: the sprite pipeline writes new sprites into
-//! skyline_tex (no clear), and this pass shows the accumulated result.
+//! Composite pass: stack one or more decay-layer textures onto a render
+//! target in caller-supplied Z-order. Each layer is drawn as a fullscreen
+//! triangle with `textureLoad` (1:1 nearest-neighbor fetch) and
+//! `PREMULTIPLIED_ALPHA_BLENDING` so brighter layer pixels occlude the
+//! darker layers underneath.
 //!
-//! The bind group references skyline_tex's TextureView, so anything that
-//! recreates skyline_tex (window resize, headless setup) must call
-//! `rebind` afterward.
+//! Bind groups are rebuilt every `draw_all()` call rather than cached on
+//! the renderer. This is intentional: layer texture views ping-pong each
+//! frame (decay reads "active" and writes "scratch", then they swap), so
+//! the bind groups would need recreation every frame anyway. Building
+//! them inline keeps the API stateless and removes the need for a
+//! `rebind()` lifecycle hook.
 
 pub struct CompositeRenderer {
     pipeline: wgpu::RenderPipeline,
     bgl: wgpu::BindGroupLayout,
-    bind_group: wgpu::BindGroup,
 }
 
 impl CompositeRenderer {
     pub fn new(
         device: &wgpu::Device,
         output_format: wgpu::TextureFormat,
-        skyline_view: &wgpu::TextureView,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("composite shader"),
@@ -39,8 +39,6 @@ impl CompositeRenderer {
                 count: None,
             }],
         });
-
-        let bind_group = Self::make_bind_group(device, &bgl, skyline_view);
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("composite pipeline layout"),
@@ -82,37 +80,41 @@ impl CompositeRenderer {
             cache: None,
         });
 
-        Self {
-            pipeline,
-            bgl,
-            bind_group,
-        }
+        Self { pipeline, bgl }
     }
 
-    /// Rebind the bind group to a new skyline texture view. Call this after
-    /// any operation that recreates skyline_tex (resize, format change).
-    pub fn rebind(&mut self, device: &wgpu::Device, skyline_view: &wgpu::TextureView) {
-        self.bind_group = Self::make_bind_group(device, &self.bgl, skyline_view);
-    }
-
-    fn make_bind_group(
+    /// Composite each layer view onto the bound render target, in slice
+    /// order: index 0 is the back layer, index N-1 is the front. Caller
+    /// owns the Z-order decision. Bind groups are built fresh from the
+    /// supplied views, so callers can pass ping-pong-swapped views every
+    /// frame without ceremony.
+    pub fn draw_all(
+        &self,
         device: &wgpu::Device,
-        bgl: &wgpu::BindGroupLayout,
-        skyline_view: &wgpu::TextureView,
-    ) -> wgpu::BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("composite bg"),
-            layout: bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(skyline_view),
-            }],
-        })
-    }
+        pass: &mut wgpu::RenderPass<'_>,
+        layer_views: &[&wgpu::TextureView],
+    ) {
+        // Build all bind groups first, then issue draws. wgpu 29 internally
+        // ref-counts bind groups so this local Vec can drop at end-of-fn
+        // without invalidating the recorded commands.
+        let bind_groups: Vec<wgpu::BindGroup> = layer_views
+            .iter()
+            .map(|view| {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("composite layer bg"),
+                    layout: &self.bgl,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    }],
+                })
+            })
+            .collect();
 
-    pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.draw(0..3, 0..1);
+        for bg in &bind_groups {
+            pass.set_bind_group(0, bg, &[]);
+            pass.draw(0..3, 0..1);
+        }
     }
 }

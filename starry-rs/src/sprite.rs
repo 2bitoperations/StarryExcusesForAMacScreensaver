@@ -1,9 +1,11 @@
-//! Sprite renderer: one instanced-quad pipeline that draws screen-space
-//! points/discs. Phase 2 uses it for stars + building lights + the flasher;
-//! later phases extend `SpriteInstance` (shape enum, additive blend, trail
-//! data) and reuse the same plumbing. The instance buffer starts at the
-//! capacity passed to `new()` and grows on demand if a frame ever exceeds
-//! it (next power of two; logged at warn).
+//! Sprite renderer: one instanced-quad pipeline (per blend mode) that draws
+//! screen-space points/discs. Phase 2 uses it for stars + building lights +
+//! the flasher (`BlendMode::Over`); Phase 3 adds satellite and shooting-star
+//! layers (`BlendMode::Additive`). Each `SpriteRenderer` owns one pipeline
+//! with one blend state, so the engine instantiates one per layer that needs
+//! a different mode. The instance buffer starts at the capacity passed to
+//! `new()` and grows on demand if a frame ever exceeds it (next power of
+//! two; logged at warn).
 
 use std::mem;
 
@@ -50,6 +52,18 @@ const QUAD_VERTICES: [QuadVertex; 4] = [
     QuadVertex { position: [ 0.5,  0.5] },
 ];
 
+/// Selects the color-blend equation used by a `SpriteRenderer`'s pipeline.
+///
+/// `Over` is standard premultiplied-alpha compositing for opaque layers
+/// (skyline base). `Additive` accumulates emission for self-luminous layers
+/// (shooting-star trails, satellite head sprites) — matches the Swift
+/// renderer's `BlendOperation::Add` with `src=One, dst=One`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BlendMode {
+    Over,
+    Additive,
+}
+
 pub struct SpriteRenderer {
     pipeline: wgpu::RenderPipeline,
     quad_vb: wgpu::Buffer,
@@ -65,6 +79,7 @@ impl SpriteRenderer {
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
         max_instances: u64,
+        blend_mode: BlendMode,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sprite shader"),
@@ -153,7 +168,7 @@ impl SpriteRenderer {
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: surface_format,
-                    blend: Some(premultiplied_alpha_over()),
+                    blend: Some(blend_state(blend_mode)),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -242,19 +257,35 @@ impl SpriteRenderer {
     }
 }
 
-/// Standard "over" compositing with premultiplied source alpha.
-/// Pairs with the shader's `vec4(color.rgb * alpha, color.a * alpha)` output.
-fn premultiplied_alpha_over() -> wgpu::BlendState {
-    wgpu::BlendState {
-        color: wgpu::BlendComponent {
-            src_factor: wgpu::BlendFactor::One,
-            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-            operation: wgpu::BlendOperation::Add,
+/// Builds the wgpu blend state for a given `BlendMode`. Both modes assume
+/// the fragment shader emits premultiplied colors — i.e. `rgb = color*alpha,
+/// a = alpha` for `Over`, and the same shape works for `Additive` because
+/// `dst=One` ignores destination alpha entirely.
+fn blend_state(mode: BlendMode) -> wgpu::BlendState {
+    match mode {
+        BlendMode::Over => wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
         },
-        alpha: wgpu::BlendComponent {
-            src_factor: wgpu::BlendFactor::One,
-            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-            operation: wgpu::BlendOperation::Add,
+        BlendMode::Additive => wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
         },
     }
 }
