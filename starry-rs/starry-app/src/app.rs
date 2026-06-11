@@ -12,6 +12,7 @@
 
 use std::sync::Arc;
 
+use starry_core::{config::Config, engine::Engine};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -20,12 +21,12 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::{config::Config, engine::Engine, gpu::GpuState};
+use crate::gpu::WindowedGpu;
 
 pub struct App {
     config: Config,
     window: Option<Arc<Window>>,
-    gpu: Option<GpuState>,
+    gpu: Option<WindowedGpu>,
     engine: Option<Engine>,
 }
 
@@ -50,13 +51,13 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("starry-rs — phase 2")
+                        .with_title("starry-rs — phase 3.5")
                         .with_inner_size(PhysicalSize::new(self.config.width, self.config.height)),
                 )
                 .expect("create winit window"),
         );
 
-        let gpu = GpuState::new(window.clone(), &self.config);
+        let gpu = WindowedGpu::new(window.clone(), &self.config);
 
         let size = window.inner_size();
         let initial_config = config_with_dims(&self.config, size.width, size.height);

@@ -1892,18 +1892,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "starry-rs"
+name = "starry-app"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "env_logger",
+ "log",
+ "pollster",
+ "starry-core",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "starry-core"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "clap",
- "env_logger",
  "log",
  "png",
  "pollster",
  "rand",
  "wgpu",
- "winit",
 ]
 
 [[package]]

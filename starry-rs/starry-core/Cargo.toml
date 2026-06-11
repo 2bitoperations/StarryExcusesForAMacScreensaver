@@ -1,0 +1,20 @@
+[package]
+name = "starry-core"
+description = "Simulation + GPU renderer + headless PNG dump for the starry-rs port"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+wgpu.workspace = true
+log.workspace = true
+rand.workspace = true
+bytemuck.workspace = true
+png.workspace = true
+clap.workspace = true
+pollster.workspace = true

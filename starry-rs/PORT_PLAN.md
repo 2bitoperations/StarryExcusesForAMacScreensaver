@@ -12,7 +12,8 @@ active todos, validation snapshots, and open questions.
 | 0 — winit + wgpu + clear color | ✅ done | `97f6172` | Foundation |
 | 1 — sprite pipeline + `--dump-png` | ✅ done | `c4b8e18` | Headless visual verification |
 | 2 — skyline simulation + persistent FBO | ✅ done | `a191364` | Swift-parity clear ops; clap CLI |
-| 3 — decay pipeline (shooting stars, satellites) | ✅ done | _(pending)_ | Plan approved 2026-06-10; cadence **B** (single Phase-3 commit); step ordering "composite-before-renderers"; Option-wrapped renderers for enable flags |
+| 3 — decay pipeline (shooting stars, satellites) | ✅ done | `c3a5382` | Plan approved 2026-06-10; cadence **B** (single Phase-3 commit); step ordering "composite-before-renderers"; Option-wrapped renderers for enable flags |
+| 3.5 — workspace split (`starry-core` + `starry-app`) | ✅ done | _(pending)_ | Promoted from "deferred to 4-5" — natural seam emerged once GPU lifecycle (window-agnostic) vs. surface management (winit-bound) split became obvious. Zero-impact refactor proven via headless SHA parity with Phase 3 (`476e74bc...` byte-for-byte) |
 | 4 — procedural moon | ⏳ | — | Texture gen + phase/traversal shader |
 | 5 — planets (parity with Swift) | ⏳ | — | All 8 + Jovian/Saturnian moons |
 | 6 — TOML config + debug overlay + v0.1 | ⏳ | — | Determinism mode for golden-image tests |
@@ -32,9 +33,31 @@ active todos, validation snapshots, and open questions.
 - [x] `main.rs`: register `mod decay; mod shooting_stars; mod satellites;` (done as part of steps 5/7/8)
 - [x] Validate: `cargo build` ✅ + `cargo clippy --all-targets -- -D warnings` ✅ + headless byte-stable @ seed=42 ✅ + Option-wrap flag tests ✅ + Phase-2 SHA parity confirmed
 - [x] Doc closeout: `README.md`, `AGENTS.md`, this file
-- [ ] Single Phase-3 commit (gated on explicit user OK)
-- [ ] Post-commit: patch Phase 3 commit hash into the phase status table above
+- [x] Single Phase-3 commit — `c3a5382`
+- [x] Post-commit: patch Phase 3 commit hash into the phase status table above
 - [ ] Future: windowed smoke test (multi-frame decay ping-pong is the one path headless can't exercise)
+
+## Phase 3.5 Scoping (executed 2026-06-11)
+
+Split the single-crate `starry-rs` into a **Cargo workspace** with two members:
+- `starry-core` (library): all simulation + GPU pipeline code + WGSL shaders + headless renderer. Window-agnostic. Future home for any non-windowed embedders (CI tests, headless tooling, alternate UI shells).
+- `starry-app` (binary): the thin winit-driven shell. Owns `Surface` + `SurfaceConfiguration` + main event loop + CLI dispatch. Depends on `starry-core` via path.
+
+Why now (vs. the "Phase 4-5" timeline in the Phase 3 decisions log): the `GpuState` struct in Phase 3 grew to own *both* the surface and the entire pipeline universe. Splitting it cleanly into `GpuPipelines` (window-agnostic, in `starry-core`) and `WindowedGpu` (Surface + SurfaceConfiguration wrapper, in `starry-app`) became the obvious factoring as soon as the moon work needed to think about render-target abstraction. Doing the split *before* Phase 4 means moon shader code lands in `starry-core` from day one.
+
+Step plan (executed in a single commit):
+1. Workspace root `Cargo.toml` (resolver=3, members, `default-members=["starry-app"]` so `cargo run` from workspace root still works, `[workspace.package]`, `[workspace.dependencies]` with all pins)
+2. `starry-core/Cargo.toml` (lib; wgpu/log/rand/bytemuck/png/clap/pollster — all `.workspace = true`)
+3. `starry-app/Cargo.toml` (bin; starry-core path + wgpu/winit/pollster/log/env_logger/clap)
+4. `starry-core/src/lib.rs` (13 `pub mod` declarations, no re-exports — keep the import surface explicit)
+5. `git mv` all 18 existing source files (`.rs` + `.wgsl`) into their new crate homes, preserving git history as renames
+6. Rewrite `starry-core/src/gpu.rs`: strip Arc/pollster/winit imports; rename `GpuState` → `GpuPipelines`; new constructor `new(device, queue, format, width, height, &Config)`; new `resize(width, height)`; new `render_to_view(target_view, FrameOutput)`; add `device()/queue()/format()` accessors. `DecayLayer` + `run_decay_layer` + `create_layer_target` unchanged.
+7. Write new `starry-app/src/gpu.rs`: `WindowedGpu` owns Surface + SurfaceConfiguration + `GpuPipelines`. Handles instance/adapter/device/queue setup + surface format pick. `resize` reconfigures surface then delegates. `render` acquires `SurfaceTexture`, handles all error variants, presents.
+8. Rewrite `starry-app/src/main.rs`: `mod app; mod gpu;` + `use starry_core::{config::Config, headless};`
+9. Rewrite `starry-app/src/app.rs`: `use starry_core::{config::Config, engine::Engine};` + `use crate::gpu::WindowedGpu;`
+10. Validate: `cargo build --workspace` + `cargo clippy --workspace --all-targets -- -D warnings` + headless SHA parity vs. Phase 3 baseline
+11. Doc updates: `README.md` (layout block), `AGENTS.md` (file paths + conventions), this file
+12. Single commit "Phase 3.5 — workspace split"
 
 ## Phase 3 Scoping (approved 2026-06-10)
 
@@ -84,15 +107,29 @@ This section captures decisions made between commits.
 - **(Step 12 refinement)** Headless intentionally skips ping-pong entirely — at dt=5s the decay layers mathematically collapse to ~0 (`0.5^(5/0.10) ≈ 1.4e-15`), so a single-frame render matches windowed first-frame output. Three separate render passes (load-after-clear) preserve per-layer blend modes without the complexity of intermediate FBOs.
 - **(Step 12 recovery)** Edit-tool footgun observed: partial-file `oldString` + large `newString` can leave the original tail intact, producing duplicate code. Recovered via `Write` for whole-file rewrites. Lesson: prefer `Write` over `Edit` when restructuring >50% of a file.
 
+### Phase 3.5 (2026-06-11)
+
+- **Workspace shape**: two members — `starry-core` (lib) and `starry-app` (bin). Workspace root holds `Cargo.toml`, `README.md`, `PORT_PLAN.md`. `default-members = ["starry-app"]` so the existing `cargo run` ergonomic survives the split (no `-p starry-app` needed for the common case).
+- **Dependency pinning via `[workspace.dependencies]`**: all versions live in one place at workspace root; member manifests use `.workspace = true`. wgpu pin in particular (29.x) is now load-bearing in a single spot — matches the AGENTS.md "Pinned wgpu version" rule.
+- **`GpuPipelines` API (window-agnostic)**: lives in `starry-core/src/gpu.rs`. Owns `device: wgpu::Device`, `queue: wgpu::Queue`, `format: TextureFormat`, all `SpriteRenderer`s, `CompositeRenderer`, optional `DecayLayer`s, skyline target texture. New surface-free constructor: `new(device, queue, format, width, height, &Config)`. Renders into a caller-supplied `&TextureView` via `render_to_view(target_view, FrameOutput)`. Exposes `device()`, `queue()`, `format()` accessors so `WindowedGpu` doesn't need to duplicate them.
+- **`WindowedGpu` shell (winit-bound)**: lives in `starry-app/src/gpu.rs`. Owns `Surface`, `SurfaceConfiguration`, and a `GpuPipelines` instance. Creates the wgpu Instance, picks adapter (high-perf preference, surface-compatible), creates Device+Queue, picks surface format (sRGB-preferred), then hands all four into `GpuPipelines::new`. `resize` reconfigures the surface then delegates. `render` acquires `SurfaceTexture`, handles `Lost`/`Outdated`/`Timeout`/`Other` error variants (reconfigure-and-retry, swallow-and-skip respectively), creates the view, calls `pipelines.render_to_view`, presents.
+- **Headless unchanged**: `headless::dump_png` stayed in `starry-core` and was *not* refactored to call `GpuPipelines`. Two reasons: (a) preserves byte-stable SHA across the split (critical validation), (b) decouples headless from any future `GpuPipelines` API churn. It builds its own device/queue/textures from scratch — same code, just lives in a different crate now.
+- **WGSL `include_str!()` paths**: confirmed file-relative (not crate-root-relative). All `.rs` files that `include_str!` a `.wgsl` were moved together with their shader, so zero shader-path edits needed across the split.
+- **`pollster` lives in both manifests**: `starry-core` needs it for headless device acquisition; `starry-app` needs it for windowed device acquisition. Workspace dep makes the pin single-source.
+- **No re-exports in `starry-core/lib.rs`**: 13 `pub mod` declarations, no `pub use`. Keeps the import surface explicit at call sites — `use starry_core::config::Config` over `use starry_core::Config` — and avoids the trap of "what does the crate root re-export this week".
+- **`default-members` over a top-level `[[bin]]` proxy**: workspace virtual manifest + `default-members = ["starry-app"]` gives `cargo run` from workspace root for free, without needing a fake binary at the root. `cargo run -p starry-app` is the explicit form.
+- **Validation strategy**: headless SHA parity with Phase 3 baseline (`476e74bc...`) is the gold-standard test — it proves the entire simulation pipeline + skyline GPU pass + composite are byte-for-byte unchanged across the refactor. The only path that SHA doesn't cover is the windowed Surface/SwapChain acquisition, which still needs a human eyeball.
+
 ## Validation History
 
 | Date | Build | Clippy | Headless `--dump-png` | Notes |
 |---|---|---|---|---|
 | 2026-06-10 | ✅ clean | ✅ clean (`--all-targets -- -D warnings`) | ✅ 593 sprites @ seed=42 1280×800 dt=5.0s; 149 yellow building lights in Y∈[530, 799]; 37 red flasher pixels; 449 star pixels; bg pure (0,0,0) on 99.94% of canvas. **Determinism verified**: 2 runs → identical SHA256 `c4fac4d71ed46e1d427edacdec947edeba11bf1d58514eb8689b6719592a6237`. | Post-Phase-2 commit `a191364` |
 | 2026-06-10 | ✅ clean | ✅ clean | ✅ Phase-3 default (sky+sat+shoot) @ seed=42 1280×800 dt=5.0s → 593 skyline / 1 satellite / 0 shooting; SHA `476e74bc...` byte-stable across 2 runs. Option-wrap matrix: `--satellites-enabled false` → 0 sat sprites (SHA differs); `--shooting-stars-enabled false` → same as default (low spawn rate gives 0 shooting at dt=5s anyway); **both disabled → SHA `c4fac4d7...` matches Phase-2 baseline byte-for-byte**, proving the 6-pass refactor preserved skyline parity exactly. | Phase 3 closeout (commit pending) |
+| 2026-06-11 | ✅ clean (`cargo build --workspace`) | ✅ clean (`cargo clippy --workspace --all-targets -- -D warnings`) | ✅ Phase-3.5 default @ seed=42 1280×800 dt=5.0s → SHA `476e74bca9286c4ec046a288e2f567eb4a5109f39544a3c4cf20877439e6c044` — **byte-for-byte identical to Phase 3 baseline**, proving the workspace split is a zero-impact refactor at the simulation + GPU pipeline level. Windowed surface path (the only code not exercised by headless) pending human eyeball. | Phase 3.5 closeout (commit pending) |
 
 ## Open Questions / Parking Lot
 
-- Workspace split (`starry-core` headless + `starry-app` winit) — deferred to Phase 4-5 (see Decisions Log).
+- ~~Workspace split (`starry-core` headless + `starry-app` winit) — deferred to Phase 4-5~~ → **done in Phase 3.5** (2026-06-11). See decisions log entries above.
 - Determinism testing harness — Phase 6 deliverable, but `--dump-png` already produces byte-stable output. Could add a `cargo test`-driven golden-image diff sooner if useful.
 - Should the in-tree `PORT_PLAN.md` pattern be promoted to MASTER.md as a general practice, or kept project-local? (Raised mid-Phase-3 kickoff; no decision yet.)

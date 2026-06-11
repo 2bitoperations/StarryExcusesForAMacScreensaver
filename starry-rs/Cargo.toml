@@ -1,38 +1,32 @@
-[package]
-name = "starry-rs"
+[workspace]
+resolver = "3"
+members = ["starry-core", "starry-app"]
+# `cargo run` / `cargo build` from the workspace root operates on starry-app
+# by default, so the post-split UX matches the pre-split single-crate days
+# ("cargo run" Just Works without remembering `-p starry-app`).
+default-members = ["starry-app"]
+
+# Shared package metadata. Each member crate inherits via `.workspace = true`
+# so version bumps, license changes, etc. happen in exactly one place.
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
-description = "A cross-platform Rust + wgpu port of StarryExcuseForAMacScreensaver"
 license = "MIT"
 authors = ["Andrew Malota"]
 repository = "https://github.com/2bitoperations/StarryExcusesForAMacScreensaver"
-readme = "README.md"
 
-[dependencies]
+# Single source of truth for dependency versions across the workspace.
+# Crates opt in per-dep with `name.workspace = true`.
+[workspace.dependencies]
+# wgpu pinned to 29; mid-port upgrades reshape API surface — see AGENTS.md.
 wgpu = "29"
 winit = "0.30"
-
-# Block on async wgpu setup without dragging in a full async runtime
 pollster = "0.4"
-
-# Logging — wgpu emits via `log` internally
 log = "0.4"
 env_logger = "0.11"
-
-# Seeded RNG for reproducible star fields (Phase 1+). Real per-launch
-# randomness arrives when settings/config land.
 rand = "0.8"
-
-# Bytemuck lets us safely view our POD structs as &[u8] for GPU upload
-# without writing unsafe transmutes ourselves.
 bytemuck = { version = "1", features = ["derive"] }
-
-# PNG encoding for the headless --dump-png path. Pure-Rust, minimal deps,
-# the standard image-format crate of the Rust ecosystem.
 png = "0.17"
-
-# CLI parsing. Derive macros let each setting live next to its docs and default.
-# Phase-2-only flags now; later phases will grow Config as their settings land.
 clap = { version = "4", features = ["derive"] }
 
 [profile.release]

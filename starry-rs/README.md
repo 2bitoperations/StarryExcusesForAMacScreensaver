@@ -16,6 +16,7 @@ Working on the **Rust port roadmap**:
 - [x] **Phase 1** — sprite pipeline (random dots as star stand-ins) + headless `--dump-png` mode
 - [x] **Phase 2** — port `Buildings`, `Skyline`, `SkylineCoreRenderer` (stars, buildings, window lights, flasher) + persistent skyline-layer FBO + composite pass (Swift parity)
 - [x] **Phase 3** — ping-pong textures + decay pipeline + shooting stars + satellites
+- [x] **Phase 3.5** — workspace split into `starry-core` (lib) + `starry-app` (bin)
 - [ ] **Phase 4** — procedural moon texture + moon shader (phase + traversal)
 - [ ] **Phase 5** — `Planet` + `PlanetTexture` (all 8 planets, Jovian/Saturnian moons) → feature parity with Swift build
 - [ ] **Phase 6** — TOML config, debug overlay, deterministic seed mode → v0.1
@@ -27,8 +28,9 @@ Platform packaging (`.saver` bundle on macOS, `.scr` on Windows, xscreensaver ha
 Requires a stable Rust toolchain (install via [rustup](https://rustup.rs)).
 
 ```bash
-cargo run            # debug build, fast iteration
+cargo run            # debug build, fast iteration (uses workspace default-member starry-app)
 cargo run --release  # release build, full performance
+cargo run -p starry-app  # explicit form — equivalent to the above
 ```
 
 Closing the window exits the process.
@@ -102,29 +104,46 @@ RUST_LOG=wgpu_core=warn,starry_rs=debug cargo run  # mix-and-match
 
 ## Layout
 
+A Cargo workspace with two members:
+
 ```
-src/
-├── main.rs                entry point + CLI dispatch (windowed vs --dump-png)
-├── app.rs                 winit ApplicationHandler — owns Window + GpuState + Engine
-├── config.rs              clap Config (27 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR
-├── types.rs               Color + Point value types + random_star_color
-├── buildings.rs           6 BuildingStyles + Building + tile-pattern lookup
-├── skyline.rs             Static world: building generation, sky-floor, flasher, periodic-clear timer
-├── skyline_renderer.rs    Per-frame sprite emitter (rate-clocked stars/lights/flasher)
-├── shooting_stars.rs      Shooting-stars layer: Poisson spawn, 18-segment trail, 15% fade-in
-├── satellites.rs          Satellites layer: exponential next-spawn, flasher-constrained band
-├── engine.rs              Simulation orchestrator: Skyline + 3 layer renderers (Option-wrapped) + RNG + dt clock
-├── gpu.rs                 wgpu Surface/Device/Queue + DecayLayer ping-pong + 6-pass render orchestration
-├── sprite.rs              Instanced-quad sprite pipeline w/ BlendMode::{Over, Additive} + grow-on-demand VBO
-├── decay.rs               Fullscreen-quad fragment pass: out = textureLoad(src) * keep_factor
-├── composite.rs           Stateless N-layer compositor: draw_all(device, pass, &[&TextureView])
-├── headless.rs            Offscreen single-frame render to PNG (3-pass direct-to-target, no ping-pong)
-├── shader.wgsl            Sprite vertex + fragment (pixel→NDC, round-disc, premultiplied output)
-├── decay.wgsl             Fullscreen-tri + textureLoad(src) * keep — per-frame UBO
-└── composite.wgsl         Composite vertex (3-vert fullscreen tri) + fragment (textureLoad passthrough)
+starry-rs/
+├── Cargo.toml                workspace root: members, default-members, [workspace.package], [workspace.dependencies]
+├── README.md                 this file
+├── PORT_PLAN.md              in-tree engineering scratchpad
+│
+├── starry-core/              library crate — window-agnostic; all simulation + GPU pipeline + WGSL + headless
+│   ├── Cargo.toml
+│   └── src/
+│       ├── lib.rs                13 pub mod declarations (no re-exports)
+│       ├── config.rs             clap Config (27 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR
+│       ├── types.rs              Color + Point value types + random_star_color
+│       ├── buildings.rs          6 BuildingStyles + Building + tile-pattern lookup
+│       ├── skyline.rs            Static world: building generation, sky-floor, flasher, periodic-clear timer
+│       ├── skyline_renderer.rs   Per-frame sprite emitter (rate-clocked stars/lights/flasher)
+│       ├── shooting_stars.rs     Shooting-stars layer: Poisson spawn, 18-segment trail, 15% fade-in
+│       ├── satellites.rs         Satellites layer: exponential next-spawn, flasher-constrained band
+│       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers (Option-wrapped) + RNG + dt clock
+│       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong + 6-pass render orchestration; renders into a caller-supplied &TextureView
+│       ├── sprite.rs             Instanced-quad sprite pipeline w/ BlendMode::{Over, Additive} + grow-on-demand VBO
+│       ├── decay.rs              Fullscreen-quad fragment pass: out = textureLoad(src) * keep_factor
+│       ├── composite.rs          Stateless N-layer compositor: draw_all(device, pass, &[&TextureView])
+│       ├── headless.rs           Offscreen single-frame render to PNG (3-pass direct-to-target, no ping-pong)
+│       ├── shader.wgsl           Sprite vertex + fragment (pixel→NDC, round-disc, premultiplied output)
+│       ├── decay.wgsl            Fullscreen-tri + textureLoad(src) * keep — per-frame UBO
+│       └── composite.wgsl        Composite vertex (3-vert fullscreen tri) + fragment (textureLoad passthrough)
+│
+└── starry-app/               binary crate — winit shell; owns the surface + main event loop
+    ├── Cargo.toml
+    └── src/
+        ├── main.rs               entry point + CLI dispatch (windowed vs --dump-png)
+        ├── app.rs                winit ApplicationHandler — owns Window + WindowedGpu + Engine
+        └── gpu.rs                WindowedGpu — surface + swap-chain wrapper around GpuPipelines
 ```
 
-Phase 4 will add procedural moon-texture generation + moon shader (phase + traversal arc).
+The split keeps `starry-core` free of any winit/Surface entanglement so it can be embedded headlessly (CI tests, future tooling, alternate UI shells). `starry-app` is the thin windowed shell — instance creation, adapter pick, surface format selection, event loop, and CLI dispatch.
+
+Phase 4 will add procedural moon-texture generation + moon shader (phase + traversal arc), both landing in `starry-core`.
 
 ## License
 

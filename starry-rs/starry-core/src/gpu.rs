@@ -1,5 +1,7 @@
-//! Owns the wgpu Surface / Device / Queue and orchestrates the three
-//! rendering layers each frame:
+//! Owns the wgpu device/queue and orchestrates the three rendering layers
+//! each frame. Window-agnostic: the windowed shell (`starry-app`) wraps
+//! this in a swapchain adapter, but the same pipeline could just as easily
+//! drive an offscreen texture for tests or a future video-capture mode.
 //!
 //! - **Skyline** (persist-and-wipe): one full-size texture (`skyline_tex`)
 //!   that accumulates sprites across frames until the engine fires
@@ -22,16 +24,12 @@
 //!   3. Skyline sprite pass  → `skyline_tex` with conditional Clear
 //!   4. Satellites sprite pass  → active view, additive over decayed result
 //!   5. Shooting   sprite pass  → active view, additive over decayed result
-//!   6. Composite pass: clear swapchain to `CLEAR_COLOR`, then stack the
-//!      enabled layer views in Z-order [skyline, satellites, shooting].
+//!   6. Composite pass: clear the caller's target view to `CLEAR_COLOR`,
+//!      then stack enabled layer views in Z-order [skyline, satellites,
+//!      shooting].
 //!
 //! Disabled layers skip steps 1/4 (or 2/5) entirely and are omitted from
 //! the composite layer list — no GPU work, no allocated textures.
-
-use std::sync::Arc;
-
-use pollster::FutureExt as _;
-use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::composite::CompositeRenderer;
 use crate::config::{CLEAR_COLOR, Config, LAYER_WIPE_COLOR, SPRITE_CAPACITY};
@@ -129,11 +127,17 @@ impl DecayLayer {
     }
 }
 
-pub struct GpuState {
-    surface: wgpu::Surface<'static>,
+/// Window-agnostic GPU state: owns the device/queue plus every persistent
+/// pipeline, texture, and renderer needed to draw a `FrameOutput`. The
+/// caller supplies the target texture view on each `render_to_view` call,
+/// which is what lets the same struct power both the windowed shell
+/// (swapchain view per frame) and any future test/offscreen path.
+pub struct GpuPipelines {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
+    format: wgpu::TextureFormat,
+    width: u32,
+    height: u32,
     skyline_sprites: SpriteRenderer,
     skyline_tex: wgpu::Texture,
     skyline_view: wgpu::TextureView,
@@ -142,80 +146,29 @@ pub struct GpuState {
     composite: CompositeRenderer,
 }
 
-impl GpuState {
-    pub fn new(window: Arc<Window>, app_config: &Config) -> Self {
-        Self::new_async(window, app_config).block_on()
-    }
-
-    async fn new_async(window: Arc<Window>, app_config: &Config) -> Self {
-        let size = window.inner_size();
-
-        let instance = wgpu::Instance::default();
-        let surface = instance
-            .create_surface(window.clone())
-            .expect("create wgpu surface from winit window");
-
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("request wgpu adapter");
-
-        let info = adapter.get_info();
-        log::info!(
-            "wgpu adapter: {} (backend={:?}, device_type={:?})",
-            info.name,
-            info.backend,
-            info.device_type
-        );
-
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("starry-rs device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
-                ..Default::default()
-            })
-            .await
-            .expect("request wgpu device");
-
-        let caps = surface.get_capabilities(&adapter);
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(wgpu::TextureFormat::is_srgb)
-            .unwrap_or(caps.formats[0]);
-
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: size.width.max(1),
-            height: size.height.max(1),
-            present_mode: caps.present_modes[0],
-            alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&device, &config);
-
+impl GpuPipelines {
+    pub fn new(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+        app_config: &Config,
+    ) -> Self {
         let (skyline_tex, skyline_view) =
-            create_layer_target(&device, config.width, config.height, format, "skyline");
+            create_layer_target(&device, width, height, format, "skyline");
 
         let skyline_sprites =
             SpriteRenderer::new(&device, format, SPRITE_CAPACITY, BlendMode::Over);
-        skyline_sprites.set_viewport(&queue, config.width as f32, config.height as f32);
+        skyline_sprites.set_viewport(&queue, width as f32, height as f32);
 
         let satellites = app_config.satellites_enabled.then(|| {
             DecayLayer::new(
                 &device,
                 &queue,
                 format,
-                config.width,
-                config.height,
+                width,
+                height,
                 SPRITE_CAPACITY,
                 "satellites",
             )
@@ -226,8 +179,8 @@ impl GpuState {
                 &device,
                 &queue,
                 format,
-                config.width,
-                config.height,
+                width,
+                height,
                 SPRITE_CAPACITY,
                 "shooting",
             )
@@ -236,10 +189,11 @@ impl GpuState {
         let composite = CompositeRenderer::new(&device, format);
 
         Self {
-            surface,
             device,
             queue,
-            config,
+            format,
+            width,
+            height,
             skyline_sprites,
             skyline_tex,
             skyline_view,
@@ -249,76 +203,53 @@ impl GpuState {
         }
     }
 
-    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        if new_size.width == 0 || new_size.height == 0 {
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
+
+    pub fn format(&self) -> wgpu::TextureFormat {
+        self.format
+    }
+
+    /// Reallocate all layer textures at the new resolution. The caller is
+    /// responsible for any surface/swapchain reconfiguration that lives
+    /// outside this struct (the windowed shell does this in `WindowedGpu`).
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
             return;
         }
-        self.config.width = new_size.width;
-        self.config.height = new_size.height;
-        self.surface.configure(&self.device, &self.config);
+        self.width = width;
+        self.height = height;
 
-        self.skyline_sprites.set_viewport(
-            &self.queue,
-            self.config.width as f32,
-            self.config.height as f32,
-        );
+        self.skyline_sprites
+            .set_viewport(&self.queue, width as f32, height as f32);
 
-        let (tex, view) = create_layer_target(
-            &self.device,
-            self.config.width,
-            self.config.height,
-            self.config.format,
-            "skyline",
-        );
+        let (tex, view) = create_layer_target(&self.device, width, height, self.format, "skyline");
         self.skyline_tex = tex;
         self.skyline_view = view;
 
         if let Some(layer) = self.satellites.as_mut() {
-            layer.resize(
-                &self.device,
-                &self.queue,
-                self.config.format,
-                self.config.width,
-                self.config.height,
-                "satellites",
-            );
+            layer.resize(&self.device, &self.queue, self.format, width, height, "satellites");
         }
         if let Some(layer) = self.shooting.as_mut() {
-            layer.resize(
-                &self.device,
-                &self.queue,
-                self.config.format,
-                self.config.width,
-                self.config.height,
-                "shooting",
-            );
+            layer.resize(&self.device, &self.queue, self.format, width, height, "shooting");
         }
     }
 
-    pub fn render(&mut self, frame_output: FrameOutput<'_>) {
-        let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t) => t,
-            wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
-                self.surface.configure(&self.device, &self.config);
-                t
-            }
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&self.device, &self.config);
-                return;
-            }
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                return;
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                log::warn!("surface validation error; skipping frame");
-                return;
-            }
-        };
-
-        let swap_view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
+    /// Encode the full 6-pass per-frame sequence into the caller's target
+    /// texture view and submit. The view must be in `format()` and at
+    /// least `(width, height)` in size; the caller owns acquiring it
+    /// (swapchain `get_current_texture` for windowed, render-attachment
+    /// alloc for offscreen) and presenting/reading it back afterward.
+    pub fn render_to_view(
+        &mut self,
+        target_view: &wgpu::TextureView,
+        frame_output: FrameOutput<'_>,
+    ) {
         // Stage all sprite uploads up front. set_instances writes the buffer
         // via queue.write_buffer (FIFO), so doing them before encoding any
         // render passes guarantees each pipeline sees its own data.
@@ -423,7 +354,7 @@ impl GpuState {
             layer.sprites.draw(&mut pass);
         }
 
-        // ---- 6: Composite all enabled layers onto the swapchain.
+        // ---- 6: Composite all enabled layers onto the target view.
         // Layer order [skyline, satellites, shooting] is the back-to-front
         // Z-order matching Swift's pass order in StarryMetalRenderer.swift.
         let mut layer_views: Vec<&wgpu::TextureView> = Vec::with_capacity(3);
@@ -436,9 +367,9 @@ impl GpuState {
         }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("composite -> swapchain"),
+                label: Some("composite -> target"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &swap_view,
+                    view: target_view,
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
@@ -453,7 +384,6 @@ impl GpuState {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
-        frame.present();
     }
 }
 
