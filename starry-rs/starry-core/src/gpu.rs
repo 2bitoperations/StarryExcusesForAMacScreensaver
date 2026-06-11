@@ -18,23 +18,28 @@
 //!   writes — see `decay.rs`). Optional.
 //!
 //! Per-frame encode order (matches `StarryMetalRenderer.swift` —
-//! base → satellites → shooting → moon; moon arrives in Phase 4):
+//! base → satellites → shooting → moon):
 //!   1. Satellites decay  (read active → write scratch, then swap)
 //!   2. Shooting   decay  (same)
 //!   3. Skyline sprite pass  → `skyline_tex` with conditional Clear
 //!   4. Satellites sprite pass  → active view, additive over decayed result
 //!   5. Shooting   sprite pass  → active view, additive over decayed result
 //!   6. Composite pass: clear the caller's target view to `CLEAR_COLOR`,
-//!      then stack enabled layer views in Z-order [skyline, satellites,
-//!      shooting].
+//!      stack enabled layer views in Z-order [skyline, satellites,
+//!      shooting], then — inside the same render pass — draw the moon
+//!      on top via `MoonRenderer` (premultiplied alpha blend).
 //!
 //! Disabled layers skip steps 1/4 (or 2/5) entirely and are omitted from
-//! the composite layer list — no GPU work, no allocated textures.
+//! the composite layer list — no GPU work, no allocated textures. The
+//! moon is itself optional (gated on `config.moon_enabled`): when
+//! disabled the `MoonRenderer` is never constructed and the draw call
+//! is skipped.
 
 use crate::composite::CompositeRenderer;
 use crate::config::{CLEAR_COLOR, Config, LAYER_WIPE_COLOR, SPRITE_CAPACITY};
 use crate::decay::DecayRenderer;
 use crate::engine::{FrameOutput, LayerFrame};
+use crate::moon_renderer::MoonRenderer;
 use crate::sprite::{BlendMode, SpriteRenderer};
 
 /// Ping-pong texture pair backing one decay-in-place layer. Each frame
@@ -144,6 +149,10 @@ pub struct GpuPipelines {
     satellites: Option<DecayLayer>,
     shooting: Option<DecayLayer>,
     composite: CompositeRenderer,
+    /// Moon renderer. `Some` iff `config.moon_enabled` at construction.
+    /// Drawn inside the composite pass after the layer composite, so it
+    /// sits on top of everything else in the final image.
+    moon: Option<MoonRenderer>,
 }
 
 impl GpuPipelines {
@@ -188,6 +197,16 @@ impl GpuPipelines {
 
         let composite = CompositeRenderer::new(&device, format);
 
+        let moon = app_config.moon_enabled.then(|| {
+            MoonRenderer::new(
+                &device,
+                &queue,
+                format,
+                width,
+                app_config.moon_diameter_percent,
+            )
+        });
+
         Self {
             device,
             queue,
@@ -200,6 +219,7 @@ impl GpuPipelines {
             satellites,
             shooting,
             composite,
+            moon,
         }
     }
 
@@ -237,6 +257,9 @@ impl GpuPipelines {
         }
         if let Some(layer) = self.shooting.as_mut() {
             layer.resize(&self.device, &self.queue, self.format, width, height, "shooting");
+        }
+        if let Some(m) = self.moon.as_mut() {
+            m.resize(&self.device, &self.queue, width);
         }
     }
 
@@ -381,6 +404,10 @@ impl GpuPipelines {
             });
             self.composite
                 .draw_all(&self.device, &mut pass, &layer_views);
+
+            if let (Some(m), Some(p)) = (self.moon.as_ref(), frame_output.moon.as_ref()) {
+                m.draw(&self.queue, &mut pass, p, self.width as f32, self.height as f32);
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

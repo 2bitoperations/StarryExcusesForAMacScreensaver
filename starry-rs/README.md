@@ -17,7 +17,7 @@ Working on the **Rust port roadmap**:
 - [x] **Phase 2** — port `Buildings`, `Skyline`, `SkylineCoreRenderer` (stars, buildings, window lights, flasher) + persistent skyline-layer FBO + composite pass (Swift parity)
 - [x] **Phase 3** — ping-pong textures + decay pipeline + shooting stars + satellites
 - [x] **Phase 3.5** — workspace split into `starry-core` (lib) + `starry-app` (bin)
-- [ ] **Phase 4** — procedural moon texture + moon shader (phase + traversal)
+- [x] **Phase 4** — procedural moon texture + moon shader (phase + traversal)
 - [ ] **Phase 5** — `Planet` + `PlanetTexture` (all 8 planets, Jovian/Saturnian moons) → feature parity with Swift build
 - [ ] **Phase 6** — TOML config, debug overlay, deterministic seed mode → v0.1
 
@@ -90,6 +90,22 @@ Renders one simulated frame to an 8-bit RGBA PNG at the requested size and exits
 | `--satellites-trailing <bool>` | true | If false, decay layer is wiped every frame (no streak) |
 | `--satellites-trail-half-life-s <s>` | 0.40 | Decay half-life (longer than shooting stars → satellites leave a softer, longer trail) |
 
+**Phase 4 (moon):**
+
+| Flag | Default | What |
+|---|---:|---|
+| `--moon-enabled <bool>` | true | Master enable for the moon layer (Option-skips texture + sampler + pipeline + bind-group + UBO allocation if false) |
+| `--moon-diameter-percent <0.001..0.25>` | `80/3000 ≈ 0.02667` | Moon diameter as a fraction of viewport width |
+| `--moon-bright-brightness <0.2..1.2>` | 1.0 | Brightness multiplier for the lit hemisphere |
+| `--moon-dark-brightness <0.0..0.9>` | 0.15 | Brightness multiplier for the unlit hemisphere (earthshine) |
+| `--moon-traversal-seconds <s>` | 3600.0 | Full left→right traversal duration in seconds |
+| `--moon-terminator-mode <0..2>` | 1 | 0=hard step, 1=smooth gradient (default — hard mode produces a strong Mach-band illusion when the moon is large in frame), 2=banded |
+| `--moon-terminator-width <0.01..0.30>` | 0.06 | Terminator half-width (fraction of disc, modes 1+2) |
+| `--moon-terminator-bands <u32>` | 4 | Discrete brightness band count (mode 2 only) |
+| `--moon-phase-override-enabled <bool>` | false | Replace live phase calculation with a slider-driven triangular wave |
+| `--moon-phase-override-value <0..1>` | 0.0 | Override phase value (`p ≤ 0.5` waxes up to full at 0.5; `p > 0.5` wanes back to new at 1.0) |
+| `--debug-moon-colors <bool>` | false | Render the moon as raw albedo only (no lighting, no terminator) |
+
 Defaults mirror [`StarryDefaultsManager.swift`](../StarryExcuseForAMacScreensaver/StarryDefaultsManager.swift) so a fresh-install Rust run looks like a fresh-install Swift run.
 
 ### Logging
@@ -115,22 +131,26 @@ starry-rs/
 ├── starry-core/              library crate — window-agnostic; all simulation + GPU pipeline + WGSL + headless
 │   ├── Cargo.toml
 │   └── src/
-│       ├── lib.rs                13 pub mod declarations (no re-exports)
-│       ├── config.rs             clap Config (27 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR
+│       ├── lib.rs                16 pub mod declarations (no re-exports)
+│       ├── config.rs             clap Config (38 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR
 │       ├── types.rs              Color + Point value types + random_star_color
 │       ├── buildings.rs          6 BuildingStyles + Building + tile-pattern lookup
 │       ├── skyline.rs            Static world: building generation, sky-floor, flasher, periodic-clear timer
 │       ├── skyline_renderer.rs   Per-frame sprite emitter (rate-clocked stars/lights/flasher)
 │       ├── shooting_stars.rs     Shooting-stars layer: Poisson spawn, 18-segment trail, 15% fade-in
 │       ├── satellites.rs         Satellites layer: exponential next-spawn, flasher-constrained band
-│       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers (Option-wrapped) + RNG + dt clock
-│       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong + 6-pass render orchestration; renders into a caller-supplied &TextureView
+│       ├── moon.rs               Phase math (Julian day, synodic month age) + traversal arc + MoonParams GPU-shared struct
+│       ├── moon_texture.rs       Procedural 64×64 albedo (7 maria + hash noise) + CPU nearest upsample
+│       ├── moon_renderer.rs      Moon GPU pipeline: BGL + 64B UBO + linear sampler + R8Unorm texture + resize-on-demand
+│       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers + Option<Moon> + RNG + dt clock (wall_now: SystemTime injected)
+│       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong + Option<MoonRenderer> + 6-pass render orchestration; renders into a caller-supplied &TextureView
 │       ├── sprite.rs             Instanced-quad sprite pipeline w/ BlendMode::{Over, Additive} + grow-on-demand VBO
 │       ├── decay.rs              Fullscreen-quad fragment pass: out = textureLoad(src) * keep_factor
 │       ├── composite.rs          Stateless N-layer compositor: draw_all(device, pass, &[&TextureView])
-│       ├── headless.rs           Offscreen single-frame render to PNG (3-pass direct-to-target, no ping-pong)
+│       ├── headless.rs           Offscreen single-frame render to PNG (4-pass direct-to-target, no ping-pong; HEADLESS_NOW_UNIX_SECS = 2024-01-01 UTC for byte-stable moon phase)
 │       ├── shader.wgsl           Sprite vertex + fragment (pixel→NDC, round-disc, premultiplied output)
 │       ├── decay.wgsl            Fullscreen-tri + textureLoad(src) * keep — per-frame UBO
+│       ├── moon.wgsl             Moon vertex + fragment (NDC quad, r²>1 discard, soft edge, terminator math, 3 modes, debug-colors override)
 │       └── composite.wgsl        Composite vertex (3-vert fullscreen tri) + fragment (textureLoad passthrough)
 │
 └── starry-app/               binary crate — winit shell; owns the surface + main event loop
@@ -143,7 +163,9 @@ starry-rs/
 
 The split keeps `starry-core` free of any winit/Surface entanglement so it can be embedded headlessly (CI tests, future tooling, alternate UI shells). `starry-app` is the thin windowed shell — instance creation, adapter pick, surface format selection, event loop, and CLI dispatch.
 
-Phase 4 will add procedural moon-texture generation + moon shader (phase + traversal arc), both landing in `starry-core`.
+Phase 4 added the procedural moon: `moon.rs` (phase + traversal), `moon_texture.rs` (procedural albedo + upsample), `moon_renderer.rs` (wgpu pipeline + R8Unorm texture), and `moon.wgsl` (vertex + terminator fragment). Wall-clock time is now an injected parameter (`Engine::frame(wall_now: SystemTime)`) — windowed passes `SystemTime::now()`, headless anchors at `2024-01-01 UTC` for byte-stable determinism.
+
+Phase 5 will add `Planet` + `PlanetTexture` for all 8 planets (Mercury → Pluto) + Jovian/Saturnian moon point-sprites — bringing the Rust port to feature parity with the Swift build.
 
 ## License
 

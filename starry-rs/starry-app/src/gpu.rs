@@ -52,11 +52,19 @@ impl WindowedGpu {
             info.device_type
         );
 
+        // Start from the conservative downlevel defaults but bump the texture
+        // dimension caps to whatever the adapter actually supports. Without
+        // this, `max_texture_dimension_2d` stays at 2048 and any window
+        // larger than 2048px on either axis crashes `Surface::configure`
+        // with a validation error. On Apple silicon the adapter limit is
+        // 16384, so this effectively removes the crash for all realistic
+        // displays.
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("starry-rs device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::downlevel_defaults(),
+                required_limits: wgpu::Limits::downlevel_defaults()
+                    .using_resolution(adapter.limits()),
                 ..Default::default()
             })
             .await
@@ -98,15 +106,37 @@ impl WindowedGpu {
         }
     }
 
-    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+    /// Resize the surface and internal FBOs. Returns the size actually used
+    /// after clamping to the device's `max_texture_dimension_2d` (so the
+    /// caller can keep the simulation `Engine` dimensions in sync). On the
+    /// no-op zero-size path, returns the current surface dimensions so the
+    /// caller's engine-rebuild check stays correct.
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) -> PhysicalSize<u32> {
         if new_size.width == 0 || new_size.height == 0 {
-            return;
+            return PhysicalSize::new(self.surface_config.width, self.surface_config.height);
         }
-        self.surface_config.width = new_size.width;
-        self.surface_config.height = new_size.height;
+        // Defense-in-depth: even though we requested the adapter's full
+        // resolution at device creation, clamp here so freakishly large
+        // future displays can't panic the app.
+        let max_dim = self.pipelines.device().limits().max_texture_dimension_2d;
+        let w = new_size.width.min(max_dim);
+        let h = new_size.height.min(max_dim);
+        if w != new_size.width || h != new_size.height {
+            log::warn!(
+                "clamping surface from {}x{} to {}x{} (max_texture_dimension_2d = {})",
+                new_size.width,
+                new_size.height,
+                w,
+                h,
+                max_dim
+            );
+        }
+        self.surface_config.width = w;
+        self.surface_config.height = h;
         self.surface
             .configure(self.pipelines.device(), &self.surface_config);
-        self.pipelines.resize(new_size.width, new_size.height);
+        self.pipelines.resize(w, h);
+        PhysicalSize::new(w, h)
     }
 
     pub fn render(&mut self, frame_output: FrameOutput<'_>) {

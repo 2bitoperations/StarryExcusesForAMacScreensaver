@@ -199,6 +199,71 @@ pub struct Config {
     /// default (`defaultSatellitesTrailHalfLifeSeconds`) is 0.10.
     #[arg(long, default_value_t = 0.10)]
     pub satellites_trail_half_life_s: f32,
+
+    // ---- Phase 4: moon ----
+    /// Enable the moon layer. Swift default (`defaultMoonEnabled`) is true.
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = true)]
+    pub moon_enabled: bool,
+
+    /// Moon diameter as a fraction of the viewport width. Swift default
+    /// (`defaultMoonDiameterScreenWidthPercent`) is `80/3000 ≈ 0.02667`,
+    /// allowed range `0.001..=0.25`.
+    #[arg(long, default_value_t = 80.0 / 3000.0)]
+    pub moon_diameter_percent: f64,
+
+    /// Brightness multiplier for the lit hemisphere. Swift default
+    /// (`defaultMoonBrightBrightness`) is 1.0; slider range `0.2..=1.2`.
+    #[arg(long, default_value_t = 1.0)]
+    pub moon_bright_brightness: f32,
+
+    /// Brightness multiplier for the unlit hemisphere (earthshine).
+    /// Swift default (`defaultMoonDarkBrightness`) is 0.15; range
+    /// `0.0..=0.9`.
+    #[arg(long, default_value_t = 0.15)]
+    pub moon_dark_brightness: f32,
+
+    /// Full left→right traversal duration in seconds. Swift default
+    /// (`defaultMoonTraversalMinutes = 60`) → 3600s; range `60..=43200s`
+    /// (1 minute to 12 hours).
+    #[arg(long, default_value_t = 3600.0)]
+    pub moon_traversal_seconds: f64,
+
+    /// Terminator rendering mode. `0` = hard step, `1` = smooth gradient,
+    /// `2` = banded. Default is `1` (smooth) — the hard step produces a
+    /// strong Mach-band perceptual illusion when the moon is large in the
+    /// frame (sharp brightness contrast → eye perceives a dark stripe at
+    /// the terminator that isn't in the pixels). Swift default
+    /// (`defaultMoonTerminatorMode`) is also `1` for parity.
+    #[arg(long, default_value_t = 1)]
+    pub moon_terminator_mode: u32,
+
+    /// Terminator half-width (fraction of disc, modes 1+2). Swift default
+    /// (`defaultMoonTerminatorWidth`) is 0.06; range `0.01..=0.30`.
+    #[arg(long, default_value_t = 0.06)]
+    pub moon_terminator_width: f32,
+
+    /// Discrete brightness band count (mode 2 only). Swift default
+    /// (`defaultMoonTerminatorBands`) is 4.
+    #[arg(long, default_value_t = 4)]
+    pub moon_terminator_bands: u32,
+
+    /// When true, replace the live phase calculation with a slider-driven
+    /// triangular wave (see `moon_phase_override_value`). Swift default
+    /// (`defaultMoonPhaseOverrideEnabled`) is false.
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = false)]
+    pub moon_phase_override_enabled: bool,
+
+    /// Override phase value in `[0, 1]`. `p ≤ 0.5` waxes up to full at
+    /// 0.5; `p > 0.5` wanes back to new at 1.0. Swift default
+    /// (`defaultMoonPhaseOverrideValue`) is 0.0.
+    #[arg(long, default_value_t = 0.0)]
+    pub moon_phase_override_value: f64,
+
+    /// Debug visualisation: render the moon as its raw albedo texture
+    /// only (no lighting, no terminator). Swift default
+    /// (`defaultDebugMoonColors`) is false.
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = false)]
+    pub debug_moon_colors: bool,
 }
 
 impl Default for Config {

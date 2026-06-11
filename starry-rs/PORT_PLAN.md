@@ -13,8 +13,8 @@ active todos, validation snapshots, and open questions.
 | 1 — sprite pipeline + `--dump-png` | ✅ done | `c4b8e18` | Headless visual verification |
 | 2 — skyline simulation + persistent FBO | ✅ done | `a191364` | Swift-parity clear ops; clap CLI |
 | 3 — decay pipeline (shooting stars, satellites) | ✅ done | `c3a5382` | Plan approved 2026-06-10; cadence **B** (single Phase-3 commit); step ordering "composite-before-renderers"; Option-wrapped renderers for enable flags |
-| 3.5 — workspace split (`starry-core` + `starry-app`) | ✅ done | _(pending)_ | Promoted from "deferred to 4-5" — natural seam emerged once GPU lifecycle (window-agnostic) vs. surface management (winit-bound) split became obvious. Zero-impact refactor proven via headless SHA parity with Phase 3 (`476e74bc...` byte-for-byte) |
-| 4 — procedural moon | ⏳ | — | Texture gen + phase/traversal shader |
+| 3.5 — workspace split (`starry-core` + `starry-app`) | ✅ done | `15d6bfb` | Promoted from "deferred to 4-5" — natural seam emerged once GPU lifecycle (window-agnostic) vs. surface management (winit-bound) split became obvious. Zero-impact refactor proven via headless SHA parity with Phase 3 (`476e74bc...` byte-for-byte) |
+| 4 — procedural moon | ✅ done | `<pending>` | Texture gen + phase/terminator shader + `SystemTime` wall-clock injection. Plan approved 2026-06-11; cadence = single Phase-4 commit; CPU 64×64 base albedo + nearest upsample-to-diameter + GPU linear sample; Moon owned by `Engine` (not Skyline); `MoonRenderer` draws inside composite pass *after* N-layer composite; headless anchored at `2024-01-01 UTC` for byte-stable determinism. Default `terminator-mode = 1` (smooth) in both Rust + Swift — hard mode triggers strong Mach-band illusion at large moon sizes. SHA baseline `986155e2...` (differs from Phase 3.5's `476e74bc...` because the moon is now in frame — expected). |
 | 5 — planets (parity with Swift) | ⏳ | — | All 8 + Jovian/Saturnian moons |
 | 6 — TOML config + debug overlay + v0.1 | ⏳ | — | Determinism mode for golden-image tests |
 
@@ -36,6 +36,57 @@ active todos, validation snapshots, and open questions.
 - [x] Single Phase-3 commit — `c3a5382`
 - [x] Post-commit: patch Phase 3 commit hash into the phase status table above
 - [ ] Future: windowed smoke test (multi-frame decay ping-pong is the one path headless can't exercise)
+
+## Phase 4 Active Todos (closed 2026-06-11)
+
+- [x] `moon.rs` — port `Moon.swift` (Julian-day phase math, synodic-month age, traversal arc position) + `radius_from_percent` helper + public `radius()` getter
+- [x] `moon_texture.rs` — port `MoonTexture.swift` (64×64 base albedo: 7 hardcoded maria w/ Gaussian σ=r·0.5 + per-pixel hash noise → `[25, 240]` u8 range) + CPU nearest-neighbour upsample to target diameter
+- [x] `moon_renderer.rs` (new) — wgpu pipeline + bind-group-layout + 64B `MoonUniformsGpu` UBO + linear-filter sampler + R8Unorm texture + `current_diameter` tracking so resize regenerates the texture on demand
+- [x] `moon.wgsl` (new) — 6-vertex NDC quad + fragment: `r²>1` discard, soft edge `featherLocal = clamp(2/radius, 0.0015, 0.12)`, terminator math `cos_delta = 1 - 2·illum; delta = acos(...); phi = waxing ? PI-delta : delta-PI`, three terminator modes (hard / smooth / banded), bright/dark hemisphere lerp, debug-colors override
+- [x] `engine.rs` — own `Option<Moon>`; thread `wall_now: SystemTime` through `frame(wall_now)` / `frame_with_dt(dt, wall_now)` / `frame_impl(dt, wall_now)`; emit `Option<MoonParams>` in `FrameOutput`
+- [x] `gpu.rs` — `Option<MoonRenderer>` field; construct in `GpuPipelines::new` when `cfg.moon_enabled`; resize on canvas change (`MoonRenderer::resize` no-ops if diameter unchanged); draw inside the existing composite pass *after* the N-layer composite blend (premultiplied alpha)
+- [x] `headless.rs` — hardcoded `HEADLESS_NOW_UNIX_SECS = 1_704_067_200` (2024-01-01 UTC) anchors the wall clock; eager `MoonRenderer` construction when `cfg.moon_enabled`; new Pass 4 (Load + `m.draw`) after the existing 3 sprite passes
+- [x] `app.rs` — pass `SystemTime::now()` into `engine.frame()` at `RedrawRequested`
+- [x] `config.rs` — 11 moon CLI flags mirroring `StarryDefaultsManager.swift` defaults (1 enable bool + diameter % + bright/dark brightness + traversal seconds + 3 terminator knobs + 2 phase-override knobs + debug-colors). Total CLI flag count is now 38 (was 27 after Phase 3)
+- [x] `lib.rs` — register `pub mod moon; pub mod moon_texture; pub mod moon_renderer;` (16 `pub mod` declarations total, up from 13)
+- [x] Bonus fix: `moon_renderer.rs:74` — wgpu 29 split `FilterMode` / `MipmapFilterMode` into separate enums; corrected `mipmap_filter` to use `MipmapFilterMode::Nearest`
+- [x] Validate: `cargo build --workspace` ✅ + `cargo clippy --workspace --all-targets -- -D warnings` ✅ + `cargo test -p starry-core --lib` (10/10) ✅ + headless byte-stable @ seed=42 1280×800 (SHA `986155e2c009a4dbf63227d32c4171d80a43cbb05a5a54852148ac52a752fa34` with smooth-mode terminator default) ✅
+- [x] Doc closeout: `README.md`, `AGENTS.md`, this file
+- [ ] Single Phase-4 commit (pending user approval)
+- [ ] Post-commit: patch Phase 4 commit hash into the phase status table above (rides Phase 5 commit, same pattern as Phase 3.5's `15d6bfb` hash-patch)
+- [ ] Future: windowed eyeball test — `look_at` multimodal agent permanently broken, requires human at the windowed app
+
+## Phase 4 Scoping (executed 2026-06-11)
+
+Source-of-truth Swift files ported:
+- [`Moon.swift`](../StarryExcuseForAMacScreensaver/Moon.swift) — Julian-day phase math, traversal arc geometry, override triangular wave
+- [`MoonTexture.swift`](../StarryExcuseForAMacScreensaver/MoonTexture.swift) — procedural 64×64 albedo (maria + hash noise) + upsample
+- [`Shaders.metal`](../StarryExcuseForAMacScreensaver/Shaders.metal) lines 152-266 — moon vertex + fragment (terminator + soft edge)
+- [`MetalTypes.swift`](../StarryExcuseForAMacScreensaver/MetalTypes.swift) — `MoonParams` GPU-shared struct
+- [`StarryDefaultsManager.swift`](../StarryExcuseForAMacScreensaver/StarryDefaultsManager.swift) lines 27-156 — moon defaults + slider ranges
+- [`MoonLayerRenderer.swift`](../StarryExcuseForAMacScreensaver/MoonLayerRenderer.swift) — CGContext-based reference path, *not* ported (we go straight to GPU)
+
+Architectural decisions (full rationale in the Decisions Log below):
+- **Texture pipeline**: CPU 64×64 base albedo → CPU nearest upsample to `radius·2` → wgpu `R8Unorm` sampled with `linear` filter. Pixel-art look without a giant texture upload.
+- **Clock injection**: `wall_now: SystemTime` is a *parameter* to `Engine::frame`, not a static `SystemTime::now()` call inside the engine. Lets the headless path anchor at a fixed instant for byte-stable determinism.
+- **Ownership**: `Moon` is owned by `Engine` (mutable on resize), *not* `Skyline` (which is the static world). `MoonRenderer` owns the wgpu resource; `Moon` is pure data.
+- **Render slot**: moon draws inside the composite pass *after* the N-layer composite blend (premultiplied alpha). Same pass = no extra encoder overhead; "after" = moon visually sits on top of all layers.
+- **Resize policy**: `MoonRenderer::resize(device, queue, viewport_width)` no-ops if the computed diameter is unchanged; otherwise regenerates the upsampled R8Unorm texture and updates the bind group.
+
+Step plan (executed in a single commit):
+1. `moon.rs` (phase math + traversal + override) + 5 unit tests
+2. `moon_texture.rs` (base gen + upsample) + 5 unit tests
+3. `moon.wgsl` (vertex + fragment with terminator modes)
+4. `moon_renderer.rs` (pipeline + BGL + UBO + sampler + texture + bind_group + new/resize/draw)
+5. `lib.rs` mod registration
+6. `config.rs` 11 moon flags
+7. `engine.rs` Moon ownership + `wall_now` threading + `FrameOutput.moon`
+8. `gpu.rs` `Option<MoonRenderer>` + construct/resize/draw
+9. `headless.rs` `HEADLESS_NOW_UNIX_SECS` + Pass 4
+10. `app.rs` `SystemTime::now()` at RedrawRequested
+11. Validate (build/clippy/tests/headless-SHA)
+12. Doc closeout
+13. Single Phase-4 commit
 
 ## Phase 3.5 Scoping (executed 2026-06-11)
 
@@ -120,13 +171,30 @@ This section captures decisions made between commits.
 - **`default-members` over a top-level `[[bin]]` proxy**: workspace virtual manifest + `default-members = ["starry-app"]` gives `cargo run` from workspace root for free, without needing a fake binary at the root. `cargo run -p starry-app` is the explicit form.
 - **Validation strategy**: headless SHA parity with Phase 3 baseline (`476e74bc...`) is the gold-standard test — it proves the entire simulation pipeline + skyline GPU pass + composite are byte-for-byte unchanged across the refactor. The only path that SHA doesn't cover is the windowed Surface/SwapChain acquisition, which still needs a human eyeball.
 
+### Phase 4 (2026-06-11)
+
+- **Texture pipeline (`R8Unorm` + linear filter)**: Swift renders maria into a 64×64 CGContext and lets `MTKView`'s linear sampler do the upsample. We mirror this exactly: 64×64 CPU base albedo → CPU nearest upsample to `radius·2` → upload as `R8Unorm` → GPU samples with `wgpu::FilterMode::Linear`. Single-channel because the moon's only varying surface property is brightness; colour comes from the bright/dark hemisphere lerp in the shader. **`R8Unorm` has no row-alignment requirement** so `bytes_per_row: Some(diameter)` works even when `diameter < 256` — no padding gymnastics needed.
+- **Clock injection (`wall_now: SystemTime`)**: the moon's phase angle depends on real-world time. Naïve choice = call `SystemTime::now()` inside `Engine::frame()`. Better choice = make wall-clock a *parameter*: `Engine::frame(wall_now)`. Headless can then anchor at a hardcoded `HEADLESS_NOW_UNIX_SECS = 1_704_067_200` (2024-01-01 UTC) for byte-stable determinism; windowed passes `SystemTime::now()` from the redraw handler. Same pattern as `dt` injection in Phase 3.
+- **Moon ownership**: `Engine` owns `Option<Moon>` (mutable so resize can rebuild it), *not* `Skyline` (which is the static-world data and gets snapshotted/cloned for time-skip scenarios). Matches how `engine.rs` already owns the optional layer renderers. `MoonRenderer` owns the wgpu resource separately — `Moon` is pure data, `MoonRenderer` is pure GPU; clean split.
+- **Render slot — inside composite pass, after N-layer composite**: the moon draws *during* the composite pass, after `CompositeRenderer::draw_all` has finished blending the N stacked layers. Premultiplied-alpha blend over the freshly-composited image puts the moon visually on top of everything. Same pass = no extra command encoder, no extra render-target swap. Matches Swift's [`METAL_RENDERER_MAP.md`](../METAL_RENDERER_MAP.md) ordering (moon between composite and debug overlay).
+- **Resize behaviour**: `MoonRenderer::resize(device, queue, viewport_width)` recomputes the target diameter from the stashed `moon_diameter_percent` and *no-ops if unchanged*. Most window resizes that don't change width enough to round the diameter to a different integer skip the texture regeneration entirely. `GpuPipelines::resize(w, h)` signature stays the same — moon resize is internal.
+- **`Option<MoonRenderer>` over runtime-enabled flag**: same pattern as Phase 3's `Option<DecayLayer>` for satellites/shooting. `--moon-enabled false` *fully skips* GPU resource creation (texture, sampler, pipeline, bind group, UBO) — not just the per-frame draw call. Zero overhead when disabled.
+- **`MoonParams` lives in `moon.rs`**: keep the GPU-shared struct next to the simulation type that produces it (`MoonParams::from_frame_state` is a method on the params struct itself). Matches `sprite.rs` where `SpriteInstance` lives alongside `SpriteRenderer`. Considered putting it in `types.rs` — but `types.rs` is for value types shared across many modules, and `MoonParams` is moon-specific.
+- **`MipmapFilterMode` vs `FilterMode` (wgpu 29)**: pre-existing bug from the Step 6 first draft used `FilterMode::Nearest` for the `mipmap_filter` field — wgpu 29 split these into two separate enums. Caught by `cargo check`; fixed in the same Phase 4 commit. **AGENTS.md "Pinned wgpu version" rule is exactly why this kind of break is rare** — it only bit us because Step 6 was written against a fuzzy memory of the wgpu 28 API.
+- **WGSL UBO field order = explicit Rust `MoonUniformsGpu` mirror**: `viewport_size`, `center_px`, `params0 = (radius, illum, bright, dark)`, `params1 = (debug_mask_flag, waxing_sign, _, _)`, `params2 = (terminator_mode, terminator_width, terminator_bands, _)`. `repr(C)` Pod+Zeroable on the Rust side; explicit `vec2<f32>` + `vec4<f32>` on the WGSL side; verified field-by-field against `MetalTypes.swift`'s `MoonParams`. Total UBO size is 64B (matches a single uniform-buffer aligned chunk).
+- **Hardcoded epoch constant `NEW_MOON_EPOCH_UNIX_SECS = 947_182_440.0`**: reference new moon `2000-01-06 18:14:00 UTC` per Swift `Moon.swift`. Hardcoded both sides — no environment dependency, no runtime computation. Pairs with `SYNODIC_MONTH_DAYS = 29.530588853` for the age calculation.
+- **`rem_euclid` over `%` for negatives**: Swift `Foundation` uses `truncatingRemainder` which matches Rust's `%`, but the phase calculation can produce negative `age - epoch_jd` for pre-epoch wall-clock anchors (theoretical). `rem_euclid` matches what Swift's parity *means* (positive remainder), not what `%` does literally. Belt-and-braces correctness.
+- **Edit-tool ergonomics**: parallel edits to the same file with disjoint `oldString`s work safely — the system processes them serially and each subsequent edit sees post-prior-edit state. Used this throughout Phase 4 to batch the 8 `engine.rs` edits + 6 `gpu.rs` edits + 6 `headless.rs` edits per file. Faster than sequential edits, no correctness penalty.
+- **Comment-hook acknowledgement**: applied priority-3 justifications for 5 newly-added comment hooks (gpu.rs module doc + moon field docstring + headless.rs module doc + `HEADLESS_NOW_UNIX_SECS` docstring + `MoonRenderer` eager-construction comment + `Pass 4: moon disc` inline comment). Each documents either a public-API contract, an ownership-boundary invariant, render-order rationale, the byte-stable-determinism contract, or matched an existing comment pattern in the immediate vicinity.
+
 ## Validation History
 
 | Date | Build | Clippy | Headless `--dump-png` | Notes |
 |---|---|---|---|---|
 | 2026-06-10 | ✅ clean | ✅ clean (`--all-targets -- -D warnings`) | ✅ 593 sprites @ seed=42 1280×800 dt=5.0s; 149 yellow building lights in Y∈[530, 799]; 37 red flasher pixels; 449 star pixels; bg pure (0,0,0) on 99.94% of canvas. **Determinism verified**: 2 runs → identical SHA256 `c4fac4d71ed46e1d427edacdec947edeba11bf1d58514eb8689b6719592a6237`. | Post-Phase-2 commit `a191364` |
 | 2026-06-10 | ✅ clean | ✅ clean | ✅ Phase-3 default (sky+sat+shoot) @ seed=42 1280×800 dt=5.0s → 593 skyline / 1 satellite / 0 shooting; SHA `476e74bc...` byte-stable across 2 runs. Option-wrap matrix: `--satellites-enabled false` → 0 sat sprites (SHA differs); `--shooting-stars-enabled false` → same as default (low spawn rate gives 0 shooting at dt=5s anyway); **both disabled → SHA `c4fac4d7...` matches Phase-2 baseline byte-for-byte**, proving the 6-pass refactor preserved skyline parity exactly. | Phase 3 closeout (commit pending) |
-| 2026-06-11 | ✅ clean (`cargo build --workspace`) | ✅ clean (`cargo clippy --workspace --all-targets -- -D warnings`) | ✅ Phase-3.5 default @ seed=42 1280×800 dt=5.0s → SHA `476e74bca9286c4ec046a288e2f567eb4a5109f39544a3c4cf20877439e6c044` — **byte-for-byte identical to Phase 3 baseline**, proving the workspace split is a zero-impact refactor at the simulation + GPU pipeline level. Windowed surface path (the only code not exercised by headless) pending human eyeball. | Phase 3.5 closeout (commit pending) |
+| 2026-06-11 | ✅ clean (`cargo build --workspace`) | ✅ clean (`cargo clippy --workspace --all-targets -- -D warnings`) | ✅ Phase-3.5 default @ seed=42 1280×800 dt=5.0s → SHA `476e74bca9286c4ec046a288e2f567eb4a5109f39544a3c4cf20877439e6c044` — **byte-for-byte identical to Phase 3 baseline**, proving the workspace split is a zero-impact refactor at the simulation + GPU pipeline level. Windowed surface path confirmed via human eyeball test. | Phase 3.5 closeout (commit `15d6bfb`) |
+| 2026-06-11 | ✅ clean (`cargo build --workspace`) | ✅ clean (`cargo clippy --workspace --all-targets -- -D warnings`) | ✅ Phase-4 default @ seed=42 1280×800 dt=5.0s → SHA `986155e2c009a4dbf63227d32c4171d80a43cbb05a5a54852148ac52a752fa34` (after defaulting `terminator-mode = 1` in both Rust + Swift to dodge the Mach-band illusion the user reported in the windowed preview; pre-default-change SHA was `d029f8f2eb8a530aaa431bc8a3627f839751e7aed5f1e8919e06be49b3544dbe`). Log confirms `moon=true` on the headless tick. New SHA *differs* from Phase 3/3.5 baseline (`476e74bc...`) because the moon disc is now in frame — expected. **10/10 unit tests pass** (`cargo test -p starry-core --lib`): `moon::tests` (5) + `moon_texture::tests` (5). Windowed eyeball validation: hard-mode default reproduced the Mach band (pixels confirmed no real valley); user picked smooth-default fix. Resize fix also landed (`Limits::downlevel_defaults().using_resolution(adapter.limits())` + clamp in `WindowedGpu::resize`). | Phase 4 closeout (commit pending) |
 
 ## Open Questions / Parking Lot
 

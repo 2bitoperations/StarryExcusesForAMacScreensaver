@@ -9,20 +9,25 @@
 //!   texture, and the existing pixels are multiplied by `keep_factor`
 //!   each frame so old positions fade exponentially.
 //! - **Shooting-stars layer** (decay-in-place): same shape as satellites.
+//! - **Moon layer** (draw-on-top): a single `MoonParams` snapshot computed
+//!   from the engine's clock (wall time threaded in via `frame(wall_now)`),
+//!   consumed by `moon_renderer::MoonRenderer` inside the composite pass.
 //!
-//! Both decay layers are `Option`-wrapped: when the matching
-//! `*_enabled` config flag is false the renderer is never constructed
+//! All three optional layers (`Option<LayerFrame>` for satellites/shooting,
+//! `Option<MoonParams>` for moon) are gated on their respective
+//! `*_enabled` config flag: when disabled the simulation skips the work
 //! and the corresponding `FrameOutput` field is `None`, so the GPU layer
-//! can skip the decay/sprite/composite passes entirely (no wasted work
-//! for disabled features).
+//! can skip the matching passes entirely (no wasted work for disabled
+//! features).
 //!
 //! Rust counterpart of `StarryEngine.swift`.
 
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use rand::{rngs::StdRng, SeedableRng};
 
 use crate::config::Config;
+use crate::moon::{radius_from_percent, Moon, MoonParams};
 use crate::satellites::SatellitesRenderer;
 use crate::shooting_stars::{ShootingStarDirectionMode, ShootingStarsRenderer};
 use crate::skyline::Skyline;
@@ -52,6 +57,10 @@ pub struct FrameOutput<'a> {
     pub clear_skyline: bool,
     pub satellites: Option<LayerFrame<'a>>,
     pub shooting: Option<LayerFrame<'a>>,
+    /// Moon parameters for this frame. `Some` iff `config.moon_enabled`
+    /// (set at engine construction). Consumed by `MoonRenderer` inside
+    /// the composite pass — see `gpu.rs`.
+    pub moon: Option<MoonParams>,
 }
 
 pub struct Engine {
@@ -59,6 +68,10 @@ pub struct Engine {
     skyline_renderer: SkylineRenderer,
     satellites_renderer: Option<SatellitesRenderer>,
     shooting_renderer: Option<ShootingStarsRenderer>,
+    /// Moon simulation. `Some` iff `config.moon_enabled` at construction.
+    /// Owns its arch geometry but not its GPU resources (those live in
+    /// `MoonRenderer` in the GPU layer — Engine produces pure data).
+    moon: Option<Moon>,
     config: Config,
     rng: StdRng,
     last_frame: Instant,
@@ -117,11 +130,30 @@ impl Engine {
             )
         });
 
+        // Moon construction: derive radius from viewport width + percent
+        // (same formula `MoonRenderer::resize` uses, so engine and GPU
+        // agree on size) and pass the skyline's tallest building down so
+        // the arch baseline never clips the silhouette.
+        let moon = config.moon_enabled.then(|| {
+            let radius = radius_from_percent(config.width as i32, config.moon_diameter_percent);
+            Moon::new(
+                config.width as i32,
+                config.height as i32,
+                skyline.building_max_height,
+                radius,
+                config.moon_traversal_seconds,
+                config.moon_phase_override_enabled,
+                config.moon_phase_override_value,
+                &mut rng,
+            )
+        });
+
         Self {
             skyline,
             skyline_renderer: SkylineRenderer::new(),
             satellites_renderer,
             shooting_renderer,
+            moon,
             config,
             rng,
             last_frame: Instant::now(),
@@ -138,12 +170,17 @@ impl Engine {
 
     /// Advance the simulation by the time elapsed since the previous
     /// `frame()` call and emit this frame's per-layer outputs.
-    pub fn frame(&mut self) -> FrameOutput<'_> {
-        let now = Instant::now();
-        let raw_dt = now.duration_since(self.last_frame).as_secs_f64();
+    ///
+    /// `wall_now` is the wall-clock time used by clock-driven simulations
+    /// (moon position + phase). Threading it in (rather than calling
+    /// `SystemTime::now()` internally) keeps headless rendering
+    /// deterministic — the headless path passes a fixed reference time.
+    pub fn frame(&mut self, wall_now: SystemTime) -> FrameOutput<'_> {
+        let instant_now = Instant::now();
+        let raw_dt = instant_now.duration_since(self.last_frame).as_secs_f64();
         let dt = raw_dt.clamp(0.0, MAX_DT_SECONDS);
-        self.last_frame = now;
-        self.frame_impl(dt)
+        self.last_frame = instant_now;
+        self.frame_impl(dt, wall_now)
     }
 
     /// Render one frame against an explicit `dt` rather than the wall
@@ -152,12 +189,16 @@ impl Engine {
     /// trusted to supply a sensible `dt` — no `MAX_DT_SECONDS` clamp
     /// here (the clamp exists in `frame()` only to defang wall-clock
     /// hiccups like debugger pauses). Negative dt is floored to zero.
-    pub fn frame_with_dt(&mut self, dt_seconds: f64) -> FrameOutput<'_> {
+    ///
+    /// `wall_now` is the wall-clock anchor for clock-driven layers (moon).
+    /// Headless passes a fixed reference time to keep PNG output
+    /// byte-stable across machines.
+    pub fn frame_with_dt(&mut self, dt_seconds: f64, wall_now: SystemTime) -> FrameOutput<'_> {
         self.last_frame = Instant::now();
-        self.frame_impl(dt_seconds.max(0.0))
+        self.frame_impl(dt_seconds.max(0.0), wall_now)
     }
 
-    fn frame_impl(&mut self, dt: f64) -> FrameOutput<'_> {
+    fn frame_impl(&mut self, dt: f64, wall_now: SystemTime) -> FrameOutput<'_> {
         let clear_skyline = self.skyline.should_clear_now();
         if clear_skyline {
             self.skyline.mark_cleared();
@@ -190,11 +231,28 @@ impl Engine {
             }
         });
 
+        // Moon is pure data — no &mut borrow of self.moon needed, just
+        // a snapshot from the wall clock + config-driven appearance knobs.
+        let moon = self.moon.as_ref().map(|m| {
+            let state = m.frame_state(wall_now);
+            MoonParams::from_frame_state(
+                state,
+                m.radius() as f32,
+                self.config.moon_bright_brightness,
+                self.config.moon_dark_brightness,
+                self.config.moon_terminator_mode,
+                self.config.moon_terminator_width,
+                self.config.moon_terminator_bands,
+                self.config.debug_moon_colors,
+            )
+        });
+
         FrameOutput {
             skyline_sprites,
             clear_skyline,
             satellites,
             shooting,
+            moon,
         }
     }
 }

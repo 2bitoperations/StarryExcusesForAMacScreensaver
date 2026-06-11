@@ -13,11 +13,16 @@
 //! Headless skips the windowed shell's ping-pong + persistent-FBO machinery
 //! entirely — there's exactly one frame, so cross-frame state is moot.
 //! Instead we draw all enabled layers directly into the readback target
-//! in Swift's Z-order (skyline → satellites → shooting), each in its own
-//! render pass so the per-layer blend mode is preserved:
+//! in Swift's Z-order (skyline → satellites → shooting → moon), each in
+//! its own render pass so the per-layer blend mode is preserved:
 //!   - Pass 1: clear `CLEAR_COLOR` + skyline sprites (Over)
 //!   - Pass 2: load + satellites sprites (Additive)  [if enabled]
 //!   - Pass 3: load + shooting   sprites (Additive)  [if enabled]
+//!   - Pass 4: load + moon disc  (PremulAlpha)       [if enabled]
+//!
+//! `HEADLESS_NOW_UNIX_SECS` pins the moon's wall-clock anchor to a fixed
+//! reference instant (2024-01-01 UTC) so the moon's screen position and
+//! phase fraction are byte-stable across machines.
 //!
 //! At `dt = HEADLESS_DT_SECONDS = 5.0`, the decay layers' keep_factors
 //! collapse to ~0 (default half-lives are 0.10s and 0.18s, so
@@ -27,11 +32,13 @@
 //! first frame at the same `(seed, w, h, dt)`.
 
 use std::error::Error;
+use std::time::{Duration, UNIX_EPOCH};
 
 use pollster::FutureExt as _;
 
 use crate::config::{CLEAR_COLOR, Config, SPRITE_CAPACITY};
 use crate::engine::Engine;
+use crate::moon_renderer::MoonRenderer;
 use crate::sprite::{BlendMode, SpriteRenderer};
 
 /// Mirror the windowed swapchain choice (wgpu picks an sRGB surface format
@@ -45,6 +52,13 @@ const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 /// where the wall-clock `frame()` clamp would kick in. (`frame_with_dt`
 /// trusts the caller — see engine.rs.)
 const HEADLESS_DT_SECONDS: f64 = 5.0;
+
+/// Wall-clock anchor for clock-driven layers (the moon, currently). Pinned
+/// to 2024-01-01 00:00:00 UTC so the moon's screen position and phase
+/// fraction are byte-stable across machines, regardless of when the dump
+/// is run. Any constant in `[~947182440, +∞)` would work — picked a round
+/// year-boundary value for readability.
+const HEADLESS_NOW_UNIX_SECS: u64 = 1_704_067_200;
 
 pub fn dump_png(config: &Config) -> Result<(), Box<dyn Error>> {
     dump_png_async(config).block_on()
@@ -102,7 +116,8 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
     let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
 
     let mut engine = Engine::new(config.clone());
-    let frame_output = engine.frame_with_dt(HEADLESS_DT_SECONDS);
+    let wall_now = UNIX_EPOCH + Duration::from_secs(HEADLESS_NOW_UNIX_SECS);
+    let frame_output = engine.frame_with_dt(HEADLESS_DT_SECONDS, wall_now);
 
     // Build one SpriteRenderer per layer that actually has data. We construct
     // the optional layer renderers eagerly here (rather than mid-encode)
@@ -129,13 +144,29 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
         s
     });
 
+    // MoonRenderer is constructed eagerly here (rather than mid-encode)
+    // for the same reason satellite/shooting SpriteRenderers are: its
+    // `new()` does `queue.write_texture` for the albedo, and FIFO write
+    // ordering vs. the upcoming render passes is easier to reason about
+    // when all GPU writes are staged before any encoding begins.
+    let moon_renderer = frame_output.moon.as_ref().map(|_| {
+        MoonRenderer::new(
+            &device,
+            &queue,
+            TEXTURE_FORMAT,
+            width,
+            config.moon_diameter_percent,
+        )
+    });
+
     log::info!(
-        "headless engine tick: dt={:.2}s, clear_skyline={}, skyline={}, satellites={}, shooting={}",
+        "headless engine tick: dt={:.2}s, clear_skyline={}, skyline={}, satellites={}, shooting={}, moon={}",
         HEADLESS_DT_SECONDS,
         frame_output.clear_skyline,
         frame_output.skyline_sprites.len(),
         frame_output.satellites.as_ref().map_or(0, |l| l.sprites.len()),
         frame_output.shooting.as_ref().map_or(0, |l| l.sprites.len()),
+        frame_output.moon.is_some(),
     );
 
     let bytes_per_pixel = 4u32;
@@ -207,6 +238,24 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
             ..Default::default()
         });
         s.draw(&mut pass);
+    }
+
+    // Pass 4: moon disc (PremulAlpha) on top of everything else.
+    if let (Some(m), Some(p)) = (&moon_renderer, frame_output.moon.as_ref()) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("headless moon pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        m.draw(&queue, &mut pass, p, width as f32, height as f32);
     }
 
     encoder.copy_texture_to_buffer(

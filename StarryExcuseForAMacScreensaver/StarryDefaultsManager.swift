@@ -104,7 +104,7 @@ class StarryDefaultsManager {
     private let defaultMoonDarkBrightness = 0.15
     private let defaultMoonPhaseOverrideEnabled = false
     private let defaultMoonPhaseOverrideValue = 0.0
-    private let defaultMoonTerminatorMode = 0
+    private let defaultMoonTerminatorMode = 1
     private let defaultMoonTerminatorWidth = 0.06
     private let defaultMoonTerminatorBands = 4
     private let defaultShowLightAreaTextureFillMask = false

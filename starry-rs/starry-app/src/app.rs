@@ -11,6 +11,7 @@
 //! changes to avoid pointless work on no-op `Resized` events.
 
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use starry_core::{config::Config, engine::Engine};
 use winit::{
@@ -98,21 +99,24 @@ impl ApplicationHandler for App {
                 if new_size.width == 0 || new_size.height == 0 {
                     return;
                 }
-                gpu.resize(new_size);
-                if engine.width() != new_size.width || engine.height() != new_size.height {
-                    let rebuilt = config_with_dims(&self.config, new_size.width, new_size.height);
+                // Use the size `gpu.resize` actually applied (after any
+                // max-texture-dimension clamp) so the engine matches the
+                // surface dimensions exactly.
+                let actual = gpu.resize(new_size);
+                if engine.width() != actual.width || engine.height() != actual.height {
+                    let rebuilt = config_with_dims(&self.config, actual.width, actual.height);
                     *engine = Engine::new(rebuilt);
                     log::info!(
                         "engine rebuilt at {}x{} (seed preserved)",
-                        new_size.width,
-                        new_size.height
+                        actual.width,
+                        actual.height
                     );
                 }
                 window.request_redraw();
             }
 
             WindowEvent::RedrawRequested => {
-                let frame_output = engine.frame();
+                let frame_output = engine.frame(SystemTime::now());
                 gpu.render(frame_output);
                 window.request_redraw();
             }
