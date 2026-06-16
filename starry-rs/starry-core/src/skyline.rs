@@ -247,7 +247,17 @@ impl Skyline {
 
     /// Flasher on/off state for this instant. Swift's animation: on for
     /// the first half of `flasher_period`, off for the second half, then
-    /// the period restarts. We emit `Some(pos)` when on, `None` when off.
+    /// the period restarts. We emit `Some(pos)` when on, `None` when off
+    /// (or when the period is zero, i.e. flasher is disabled, or when
+    /// there is no flasher position to flash at).
+    ///
+    /// Consumed by the per-frame flasher sprite emitter in
+    /// `Engine::frame_impl`, NOT by `SkylineRenderer` — the flasher lives
+    /// on its own decay layer (see `gpu.rs::DecayLayer` flasher slot) so
+    /// the OFF half can fade out cleanly. If we baked it into the
+    /// persistent skyline texture (Phase 2 design), the OFF-half `None`
+    /// would leave the previously-drawn red dot sitting there forever,
+    /// making the flasher appear permanently lit.
     pub fn flasher_state(&mut self) -> Option<Point> {
         let pos = self.flasher_pos?;
         if self.flasher_period.is_zero() {

@@ -1,38 +1,51 @@
-//! Owns the wgpu device/queue and orchestrates the three rendering layers
-//! each frame. Window-agnostic: the windowed shell (`starry-app`) wraps
-//! this in a swapchain adapter, but the same pipeline could just as easily
-//! drive an offscreen texture for tests or a future video-capture mode.
+//! Owns the wgpu device/queue and orchestrates the rendering layers each
+//! frame. Window-agnostic: the windowed shell (`starry-app`) wraps this in
+//! a swapchain adapter, but the same pipeline could just as easily drive
+//! an offscreen texture for tests or a future video-capture mode.
 //!
 //! - **Skyline** (persist-and-wipe): one full-size texture (`skyline_tex`)
 //!   that accumulates sprites across frames until the engine fires
 //!   `clear_skyline`, at which point its `LoadOp` becomes `Clear` for a
 //!   one-frame wipe. Single sprite pipeline in `Over` blend mode.
 //!
-//! - **Satellites** (decay-in-place): ping-pong texture pair so each frame
-//!   can fade the previous result and additively draw the new sprites on
-//!   top. Optional — allocated only when `config.satellites_enabled`.
+//! - **Flasher** (decay-in-place, `Over` blend): the warning beacon on
+//!   the tallest building. Sprite-emitted every ON frame at full
+//!   intensity; the decay layer exponentially fades the pixels during
+//!   OFF frames so the OFF half of the blink cycle reads as a warm
+//!   incandescent cooldown rather than an instant snap-off. Optional —
+//!   allocated only when `config.flasher_period_s > 0.0` (period 0
+//!   disables the flasher entirely).
 //!
-//! - **Shooting stars** (decay-in-place): same pattern as satellites,
-//!   independent ping-pong pair and independent `DecayRenderer` (one UBO
-//!   per layer so per-layer half-lives don't collide via FIFO queue
-//!   writes — see `decay.rs`). Optional.
+//! - **Satellites** (decay-in-place, `Additive` blend): ping-pong texture
+//!   pair so each frame can fade the previous result and additively draw
+//!   the new sprites on top. Optional — allocated only when
+//!   `config.satellites_enabled`.
+//!
+//! - **Shooting stars** (decay-in-place, `Additive` blend): same pattern
+//!   as satellites, independent ping-pong pair and independent
+//!   `DecayRenderer` (one UBO per layer so per-layer half-lives don't
+//!   collide via FIFO queue writes — see `decay.rs`). Optional.
 //!
 //! Per-frame encode order (matches `StarryMetalRenderer.swift` —
-//! base → satellites → shooting → moon):
+//! base → flasher → satellites → shooting → planets → moon):
 //!   1. Satellites decay  (read active → write scratch, then swap)
 //!   2. Shooting   decay  (same)
-//!   3. Skyline sprite pass  → `skyline_tex` with conditional Clear
-//!   4. Satellites sprite pass  → active view, additive over decayed result
-//!   5. Shooting   sprite pass  → active view, additive over decayed result
-//!   6. Composite pass: clear the caller's target view to `CLEAR_COLOR`,
-//!      stack enabled layer views in Z-order [skyline, satellites,
-//!      shooting], then — inside the same render pass — draw the moon
-//!      on top via `MoonRenderer` (premultiplied alpha blend).
+//!   3. Flasher    decay  (same)
+//!   4. Skyline sprite pass  → `skyline_tex` with conditional Clear
+//!   5. Satellites sprite pass  → active view, additive over decayed result
+//!   6. Shooting   sprite pass  → active view, additive over decayed result
+//!   7. Flasher    sprite pass  → active view, `Over` blend on decayed result
+//!   8. Composite pass: clear the caller's target view to `CLEAR_COLOR`,
+//!      stack enabled layer views in Z-order [skyline, flasher,
+//!      satellites, shooting], then — inside the same render pass — draw
+//!      any visible planets via `PlanetRenderer`, then the moon on top
+//!      via `MoonRenderer` (both premultiplied alpha blend).
 //!
-//! Disabled layers skip steps 1/4 (or 2/5) entirely and are omitted from
-//! the composite layer list — no GPU work, no allocated textures. The
-//! moon is itself optional (gated on `config.moon_enabled`): when
-//! disabled the `MoonRenderer` is never constructed and the draw call
+//! Disabled layers skip their decay+sprite steps entirely and are omitted
+//! from the composite layer list — no GPU work, no allocated textures.
+//! The moon and planets are themselves optional (gated on
+//! `config.moon_enabled` and `config.planets_enabled` respectively): when
+//! disabled the matching renderer is never constructed and the draw call
 //! is skipped.
 
 use crate::composite::CompositeRenderer;
@@ -40,6 +53,7 @@ use crate::config::{CLEAR_COLOR, Config, LAYER_WIPE_COLOR, SPRITE_CAPACITY};
 use crate::decay::DecayRenderer;
 use crate::engine::{FrameOutput, LayerFrame};
 use crate::moon_renderer::MoonRenderer;
+use crate::planet_renderer::PlanetRenderer;
 use crate::sprite::{BlendMode, SpriteRenderer};
 
 /// Ping-pong texture pair backing one decay-in-place layer. Each frame
@@ -63,6 +77,7 @@ struct DecayLayer {
 }
 
 impl DecayLayer {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -70,13 +85,14 @@ impl DecayLayer {
         width: u32,
         height: u32,
         sprite_capacity: u64,
+        blend_mode: BlendMode,
         label: &str,
     ) -> Self {
         let (tex_a, view_a) =
             create_layer_target(device, width, height, format, &format!("{label} A"));
         let (tex_b, view_b) =
             create_layer_target(device, width, height, format, &format!("{label} B"));
-        let sprites = SpriteRenderer::new(device, format, sprite_capacity, BlendMode::Additive);
+        let sprites = SpriteRenderer::new(device, format, sprite_capacity, blend_mode);
         sprites.set_viewport(queue, width as f32, height as f32);
         let decay = DecayRenderer::new(device, format);
         Self {
@@ -146,6 +162,12 @@ pub struct GpuPipelines {
     skyline_sprites: SpriteRenderer,
     skyline_tex: wgpu::Texture,
     skyline_view: wgpu::TextureView,
+    /// Flasher decay layer. `Some` iff `config.flasher_period_s > 0.0` at
+    /// construction (period 0 disables the flasher; no allocation, no work).
+    /// Uses `BlendMode::Over` (not Additive like satellites/shooting) so the
+    /// beacon snaps to full intensity on ON frames; the decay shader does
+    /// all the fade work on OFF frames.
+    flasher: Option<DecayLayer>,
     satellites: Option<DecayLayer>,
     shooting: Option<DecayLayer>,
     composite: CompositeRenderer,
@@ -153,6 +175,11 @@ pub struct GpuPipelines {
     /// Drawn inside the composite pass after the layer composite, so it
     /// sits on top of everything else in the final image.
     moon: Option<MoonRenderer>,
+    /// Planet renderer. `Some` iff `config.planets_enabled` at construction.
+    /// Drawn inside the composite pass between the N-layer composite and the
+    /// moon — planets sit above skyline/satellite/shooting layers but below
+    /// the moon (Swift draw order: planets → planet-moons → moon).
+    planets: Option<PlanetRenderer>,
 }
 
 impl GpuPipelines {
@@ -179,6 +206,7 @@ impl GpuPipelines {
                 width,
                 height,
                 SPRITE_CAPACITY,
+                BlendMode::Additive,
                 "satellites",
             )
         });
@@ -191,7 +219,21 @@ impl GpuPipelines {
                 width,
                 height,
                 SPRITE_CAPACITY,
+                BlendMode::Additive,
                 "shooting",
+            )
+        });
+
+        let flasher = (app_config.flasher_period_s > 0.0).then(|| {
+            DecayLayer::new(
+                &device,
+                &queue,
+                format,
+                width,
+                height,
+                1,
+                BlendMode::Over,
+                "flasher",
             )
         });
 
@@ -207,6 +249,10 @@ impl GpuPipelines {
             )
         });
 
+        let planets = app_config
+            .planets_enabled
+            .then(|| PlanetRenderer::new(&device, format));
+
         Self {
             device,
             queue,
@@ -216,10 +262,12 @@ impl GpuPipelines {
             skyline_sprites,
             skyline_tex,
             skyline_view,
+            flasher,
             satellites,
             shooting,
             composite,
             moon,
+            planets,
         }
     }
 
@@ -257,6 +305,9 @@ impl GpuPipelines {
         }
         if let Some(layer) = self.shooting.as_mut() {
             layer.resize(&self.device, &self.queue, self.format, width, height, "shooting");
+        }
+        if let Some(layer) = self.flasher.as_mut() {
+            layer.resize(&self.device, &self.queue, self.format, width, height, "flasher");
         }
         if let Some(m) = self.moon.as_mut() {
             m.resize(&self.device, &self.queue, width);
@@ -296,6 +347,24 @@ impl GpuPipelines {
                 .sprites
                 .set_instances(&self.device, &self.queue, frame.sprites);
         }
+        if let (Some(layer), Some(frame)) =
+            (self.flasher.as_mut(), frame_output.flasher.as_ref())
+        {
+            layer
+                .sprites
+                .set_instances(&self.device, &self.queue, frame.sprites);
+        }
+
+        // Pre-stage planet GPU resources: ensure_planet rebuilds the per-slot
+        // texture + mip chain when the diameter changes (engine init, window
+        // resize). Done before encoder creation so all queue.write_texture
+        // calls are staged linearly, mirroring the sprite-buffer staging.
+        if let Some(pr) = self.planets.as_mut() {
+            for (identity, params) in frame_output.planets {
+                let diameter = ((params.radius_px as u32) * 2).max(1);
+                pr.ensure_planet(&self.device, &self.queue, *identity, diameter);
+            }
+        }
 
         let mut encoder = self
             .device
@@ -303,8 +372,8 @@ impl GpuPipelines {
                 label: Some("starry-rs frame encoder"),
             });
 
-        // ---- 1+2: Decay passes (run-then-swap so active_view() returns the
-        //          freshly faded texture, ready for additive sprite draws).
+        // ---- 1-3: Decay passes (run-then-swap so active_view() returns the
+        //          freshly faded texture, ready for the matching sprite pass).
         if let (Some(layer), Some(frame)) =
             (self.satellites.as_mut(), frame_output.satellites.as_ref())
         {
@@ -315,8 +384,13 @@ impl GpuPipelines {
         {
             run_decay_layer(layer, &self.device, &self.queue, &mut encoder, frame);
         }
+        if let (Some(layer), Some(frame)) =
+            (self.flasher.as_mut(), frame_output.flasher.as_ref())
+        {
+            run_decay_layer(layer, &self.device, &self.queue, &mut encoder, frame);
+        }
 
-        // ---- 3: Skyline sprite pass (persist-and-wipe).
+        // ---- 4: Skyline sprite pass (persist-and-wipe).
         let skyline_load = if frame_output.clear_skyline {
             wgpu::LoadOp::Clear(LAYER_WIPE_COLOR)
         } else {
@@ -339,7 +413,7 @@ impl GpuPipelines {
             self.skyline_sprites.draw(&mut pass);
         }
 
-        // ---- 4: Satellites sprite pass (additive on top of decayed result).
+        // ---- 5: Satellites sprite pass (additive on top of decayed result).
         if let Some(layer) = self.satellites.as_ref() {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("satellites sprite pass"),
@@ -359,7 +433,7 @@ impl GpuPipelines {
             layer.sprites.draw(&mut pass);
         }
 
-        // ---- 5: Shooting sprite pass (same shape as satellites).
+        // ---- 6: Shooting sprite pass (same shape as satellites).
         if let Some(layer) = self.shooting.as_ref() {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shooting sprite pass"),
@@ -377,11 +451,33 @@ impl GpuPipelines {
             layer.sprites.draw(&mut pass);
         }
 
-        // ---- 6: Composite all enabled layers onto the target view.
-        // Layer order [skyline, satellites, shooting] is the back-to-front
+        // ---- 7: Flasher sprite pass (Over on top of decayed result; empty
+        //          sprite buffer during OFF frames leaves the fading disc alone).
+        if let Some(layer) = self.flasher.as_ref() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("flasher sprite pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: layer.active_view(),
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            layer.sprites.draw(&mut pass);
+        }
+
+        // ---- 8: Composite all enabled layers onto the target view.
+        // Layer order [skyline, flasher, satellites, shooting] is the back-to-front
         // Z-order matching Swift's pass order in StarryMetalRenderer.swift.
-        let mut layer_views: Vec<&wgpu::TextureView> = Vec::with_capacity(3);
+        let mut layer_views: Vec<&wgpu::TextureView> = Vec::with_capacity(4);
         layer_views.push(&self.skyline_view);
+        if let Some(layer) = self.flasher.as_ref() {
+            layer_views.push(layer.active_view());
+        }
         if let Some(layer) = self.satellites.as_ref() {
             layer_views.push(layer.active_view());
         }
@@ -404,6 +500,18 @@ impl GpuPipelines {
             });
             self.composite
                 .draw_all(&self.device, &mut pass, &layer_views);
+
+            if let Some(pr) = self.planets.as_ref()
+                && !frame_output.planets.is_empty()
+            {
+                pr.draw(
+                    &self.queue,
+                    &mut pass,
+                    frame_output.planets,
+                    self.width as f32,
+                    self.height as f32,
+                );
+            }
 
             if let (Some(m), Some(p)) = (self.moon.as_ref(), frame_output.moon.as_ref()) {
                 m.draw(&self.queue, &mut pass, p, self.width as f32, self.height as f32);

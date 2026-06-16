@@ -24,10 +24,14 @@
 
 use std::time::{Instant, SystemTime};
 
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use crate::config::Config;
+use crate::config::{
+    Config, PlanetPhaseMode, PLANET_BRIGHT_BRIGHTNESS, PLANET_DARK_BRIGHTNESS,
+    PLANET_TERMINATOR_BANDS, PLANET_TERMINATOR_WIDTH,
+};
 use crate::moon::{radius_from_percent, Moon, MoonParams};
+use crate::planet::{Planet, PlanetIdentity, PlanetParams};
 use crate::satellites::SatellitesRenderer;
 use crate::shooting_stars::{ShootingStarDirectionMode, ShootingStarsRenderer};
 use crate::skyline::Skyline;
@@ -50,17 +54,29 @@ pub struct LayerFrame<'a> {
 
 /// Everything the GPU layer needs to render one frame. Skyline is the
 /// persist-and-wipe layer (single sprite stream + boolean wipe trigger);
-/// satellites and shooting are `Option`-wrapped decay-in-place layers
-/// (renderer presence ⇔ the layer's `*_enabled` config flag).
+/// flasher, satellites, and shooting are `Option`-wrapped decay-in-place
+/// layers (presence ⇔ the layer's `*_enabled` / non-zero-period config flag).
 pub struct FrameOutput<'a> {
     pub skyline_sprites: &'a [SpriteInstance],
     pub clear_skyline: bool,
+    /// Flasher (warning beacon on the tallest building) sprites for this
+    /// frame. `Some` iff `config.flasher_period_s > 0`. At most one sprite
+    /// (the beacon disc) when ON, zero sprites when OFF — the OFF half is
+    /// rendered by the decay layer fading the previous ON frame's pixels.
+    /// See `gpu.rs` flasher slot for the rendering pipeline.
+    pub flasher: Option<LayerFrame<'a>>,
     pub satellites: Option<LayerFrame<'a>>,
     pub shooting: Option<LayerFrame<'a>>,
     /// Moon parameters for this frame. `Some` iff `config.moon_enabled`
     /// (set at engine construction). Consumed by `MoonRenderer` inside
     /// the composite pass — see `gpu.rs`.
     pub moon: Option<MoonParams>,
+    /// Planet draw list for this frame: one `(identity, params)` tuple per
+    /// visible planet. Empty when `config.planets_enabled = false`, or when
+    /// every planet is hidden by Hide-mode below-horizon filtering. The
+    /// identity is needed by `PlanetRenderer::ensure_planet` for texture
+    /// cache lookup (Phase 5a Step 7).
+    pub planets: &'a [(PlanetIdentity, PlanetParams)],
 }
 
 pub struct Engine {
@@ -72,6 +88,18 @@ pub struct Engine {
     /// Owns its arch geometry but not its GPU resources (those live in
     /// `MoonRenderer` in the GPU layer — Engine produces pure data).
     moon: Option<Moon>,
+    /// Planet simulations. Empty when `config.planets_enabled` was false at
+    /// construction; otherwise holds all 8 planets in `PlanetIdentity::ALL`
+    /// order. Each `Planet` is pure-data (orbital math + spawn-box state); GPU
+    /// resources live in `PlanetRenderer` (Phase 5a Step 7).
+    planets: Vec<Planet>,
+    /// Per-frame scratch buffer for `FrameOutput.planets`. Reused across
+    /// frames so we don't reallocate; cleared and refilled in `frame_impl`.
+    planet_params_buf: Vec<(PlanetIdentity, PlanetParams)>,
+    /// Per-frame scratch buffer for `FrameOutput.flasher.sprites`. Capacity
+    /// 1 because the flasher emits exactly one sprite per ON frame (zero
+    /// per OFF frame). Reused across frames so we don't reallocate.
+    flasher_sprite_buf: Vec<SpriteInstance>,
     config: Config,
     rng: StdRng,
     last_frame: Instant,
@@ -148,12 +176,42 @@ impl Engine {
             )
         });
 
+        // Planet construction lives at the END of the RNG-consuming chain so
+        // `--planets-enabled false` produces byte-identical output to a build
+        // without the planet feature at all: zero RNG drift for the existing
+        // skyline / shooting / satellites / moon layers, zero new draws.
+        let planets: Vec<Planet> = if config.planets_enabled {
+            let nonce: u64 = rng.r#gen();
+            PlanetIdentity::ALL
+                .iter()
+                .map(|&identity| {
+                    let size_fraction = planet_size_fraction(identity, &config);
+                    let radius =
+                        ((config.width as f64 * size_fraction / 2.0) as i32).max(1);
+                    Planet::new(
+                        identity,
+                        config.width as i32,
+                        config.height as i32,
+                        skyline.building_max_height,
+                        radius,
+                        config.planet_below_horizon_behavior,
+                        nonce,
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         Self {
             skyline,
             skyline_renderer: SkylineRenderer::new(),
             satellites_renderer,
             shooting_renderer,
             moon,
+            planets,
+            planet_params_buf: Vec::with_capacity(8),
+            flasher_sprite_buf: Vec::with_capacity(1),
             config,
             rng,
             last_frame: Instant::now(),
@@ -231,6 +289,33 @@ impl Engine {
             }
         });
 
+        let flasher = if self.config.flasher_period_s > 0.0 {
+            self.flasher_sprite_buf.clear();
+            let flasher_radius = self.skyline.flasher_radius;
+            if let Some(p) = self.skyline.flasher_state() {
+                let diameter = (flasher_radius * 2).max(1) as f32;
+                let cx = p.x as f32 + 0.5;
+                let cy = p.y as f32 + 0.5;
+                self.flasher_sprite_buf.push(SpriteInstance::new(
+                    [cx, cy],
+                    diameter,
+                    p.color.premul_rgba(1.0),
+                ));
+            }
+            let half_life = self.config.flasher_decay_half_life_s;
+            let keep_factor = if half_life > 0.0 {
+                (0.5_f64.powf(dt / half_life as f64) as f32).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            Some(LayerFrame {
+                sprites: &self.flasher_sprite_buf,
+                keep_factor,
+            })
+        } else {
+            None
+        };
+
         // Moon is pure data — no &mut borrow of self.moon needed, just
         // a snapshot from the wall clock + config-driven appearance knobs.
         let moon = self.moon.as_ref().map(|m| {
@@ -247,12 +332,58 @@ impl Engine {
             )
         });
 
+        self.planet_params_buf.clear();
+        for planet in &self.planets {
+            let state = planet.frame_state(wall_now);
+            if state.brightness <= 0.0 {
+                continue;
+            }
+            let phase_fraction = match self.config.planet_phase_mode {
+                PlanetPhaseMode::ForcedFull => 1.0,
+                PlanetPhaseMode::ForcedHalf => 0.5,
+                PlanetPhaseMode::Computed => state.phase_fraction as f32,
+            };
+            self.planet_params_buf.push((
+                planet.identity,
+                PlanetParams {
+                    center_px: [state.center_px.0 as f32, state.center_px.1 as f32],
+                    radius_px: planet.radius as f32,
+                    phase_fraction,
+                    bright_brightness: PLANET_BRIGHT_BRIGHTNESS,
+                    dark_brightness: PLANET_DARK_BRIGHTNESS,
+                    waxing_sign: state.waxing_sign as f32,
+                    terminator_mode: self.config.planet_terminator_mode as i32,
+                    terminator_width: PLANET_TERMINATOR_WIDTH,
+                    terminator_bands: PLANET_TERMINATOR_BANDS as i32,
+                    texture_aspect: 1.0,
+                    ring_tilt_deg: state.ring_tilt_deg as f32,
+                    ring_rotation_deg: state.ring_rotation_deg as f32,
+                    ring_style: 0,
+                },
+            ));
+        }
+
         FrameOutput {
             skyline_sprites,
             clear_skyline,
+            flasher,
             satellites,
             shooting,
             moon,
+            planets: &self.planet_params_buf,
         }
+    }
+}
+
+fn planet_size_fraction(identity: PlanetIdentity, config: &Config) -> f64 {
+    match identity {
+        PlanetIdentity::Mercury => config.mercury_size,
+        PlanetIdentity::Venus => config.venus_size,
+        PlanetIdentity::Mars => config.mars_size,
+        PlanetIdentity::Jupiter => config.jupiter_size,
+        PlanetIdentity::Saturn => config.saturn_size,
+        PlanetIdentity::Uranus => config.uranus_size,
+        PlanetIdentity::Neptune => config.neptune_size,
+        PlanetIdentity::Pluto => config.pluto_size,
     }
 }

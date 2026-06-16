@@ -13,20 +13,22 @@
 //! Headless skips the windowed shell's ping-pong + persistent-FBO machinery
 //! entirely — there's exactly one frame, so cross-frame state is moot.
 //! Instead we draw all enabled layers directly into the readback target
-//! in Swift's Z-order (skyline → satellites → shooting → moon), each in
-//! its own render pass so the per-layer blend mode is preserved:
+//! in Swift's Z-order (skyline → flasher → satellites → shooting → planets → moon),
+//! each in its own render pass so the per-layer blend mode is preserved:
 //!   - Pass 1: clear `CLEAR_COLOR` + skyline sprites (Over)
-//!   - Pass 2: load + satellites sprites (Additive)  [if enabled]
-//!   - Pass 3: load + shooting   sprites (Additive)  [if enabled]
-//!   - Pass 4: load + moon disc  (PremulAlpha)       [if enabled]
+//!   - Pass 2: load + flasher    sprites (Over)      [if enabled]
+//!   - Pass 3: load + satellites sprites (Additive)  [if enabled]
+//!   - Pass 4: load + shooting   sprites (Additive)  [if enabled]
+//!   - Pass 5: load + planet discs (PremulAlpha)     [if any visible]
+//!   - Pass 6: load + moon disc  (PremulAlpha)       [if enabled]
 //!
 //! `HEADLESS_NOW_UNIX_SECS` pins the moon's wall-clock anchor to a fixed
 //! reference instant (2024-01-01 UTC) so the moon's screen position and
 //! phase fraction are byte-stable across machines.
 //!
 //! At `dt = HEADLESS_DT_SECONDS = 5.0`, the decay layers' keep_factors
-//! collapse to ~0 (default half-lives are 0.10s and 0.18s, so
-//! `0.5^(5/0.10) ≈ 0`), which means the windowed shell would also draw
+//! collapse to ~0 (default half-lives are 0.10s, 0.18s, and 0.20s, so
+//! `0.5^(5/0.20) ≈ 0`), which means the windowed shell would also draw
 //! essentially just this frame's sprites on a single tick. So even though
 //! we skip the decay pass, the pixel output matches the windowed shell's
 //! first frame at the same `(seed, w, h, dt)`.
@@ -39,6 +41,7 @@ use pollster::FutureExt as _;
 use crate::config::{CLEAR_COLOR, Config, SPRITE_CAPACITY};
 use crate::engine::Engine;
 use crate::moon_renderer::MoonRenderer;
+use crate::planet_renderer::PlanetRenderer;
 use crate::sprite::{BlendMode, SpriteRenderer};
 
 /// Mirror the windowed swapchain choice (wgpu picks an sRGB surface format
@@ -128,6 +131,13 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
     skyline_sprites.set_viewport(&queue, width as f32, height as f32);
     skyline_sprites.set_instances(&device, &queue, frame_output.skyline_sprites);
 
+    let flasher_sprites = frame_output.flasher.as_ref().map(|layer| {
+        let mut s = SpriteRenderer::new(&device, TEXTURE_FORMAT, 1, BlendMode::Over);
+        s.set_viewport(&queue, width as f32, height as f32);
+        s.set_instances(&device, &queue, layer.sprites);
+        s
+    });
+
     let satellites_sprites = frame_output.satellites.as_ref().map(|layer| {
         let mut s =
             SpriteRenderer::new(&device, TEXTURE_FORMAT, SPRITE_CAPACITY, BlendMode::Additive);
@@ -144,11 +154,15 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
         s
     });
 
-    // MoonRenderer is constructed eagerly here (rather than mid-encode)
-    // for the same reason satellite/shooting SpriteRenderers are: its
-    // `new()` does `queue.write_texture` for the albedo, and FIFO write
-    // ordering vs. the upcoming render passes is easier to reason about
-    // when all GPU writes are staged before any encoding begins.
+    let mut planet_renderer = (!frame_output.planets.is_empty())
+        .then(|| PlanetRenderer::new(&device, TEXTURE_FORMAT));
+    if let Some(pr) = planet_renderer.as_mut() {
+        for (identity, params) in frame_output.planets {
+            let diameter = ((params.radius_px as u32) * 2).max(1);
+            pr.ensure_planet(&device, &queue, *identity, diameter);
+        }
+    }
+
     let moon_renderer = frame_output.moon.as_ref().map(|_| {
         MoonRenderer::new(
             &device,
@@ -160,12 +174,14 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
     });
 
     log::info!(
-        "headless engine tick: dt={:.2}s, clear_skyline={}, skyline={}, satellites={}, shooting={}, moon={}",
+        "headless engine tick: dt={:.2}s, clear_skyline={}, skyline={}, flasher={}, satellites={}, shooting={}, planets={}, moon={}",
         HEADLESS_DT_SECONDS,
         frame_output.clear_skyline,
         frame_output.skyline_sprites.len(),
+        frame_output.flasher.as_ref().map_or(0, |l| l.sprites.len()),
         frame_output.satellites.as_ref().map_or(0, |l| l.sprites.len()),
         frame_output.shooting.as_ref().map_or(0, |l| l.sprites.len()),
+        frame_output.planets.len(),
         frame_output.moon.is_some(),
     );
 
@@ -204,7 +220,25 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
         skyline_sprites.draw(&mut pass);
     }
 
-    // Pass 2: satellites (Additive) layered on top.
+    // Pass 2: flasher (Over) layered on top.
+    if let Some(s) = &flasher_sprites {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("headless flasher pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        s.draw(&mut pass);
+    }
+
+    // Pass 3: satellites (Additive) layered on top.
     if let Some(s) = &satellites_sprites {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("headless satellites pass"),
@@ -222,7 +256,7 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
         s.draw(&mut pass);
     }
 
-    // Pass 3: shooting stars (Additive) layered on top.
+    // Pass 4: shooting stars (Additive) layered on top.
     if let Some(s) = &shooting_sprites {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("headless shooting pass"),
@@ -240,7 +274,31 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
         s.draw(&mut pass);
     }
 
-    // Pass 4: moon disc (PremulAlpha) on top of everything else.
+    // Pass 5: planet discs (PremulAlpha) layered on top.
+    if let Some(pr) = planet_renderer.as_ref() {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("headless planets pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        pr.draw(
+            &queue,
+            &mut pass,
+            frame_output.planets,
+            width as f32,
+            height as f32,
+        );
+    }
+
+    // Pass 6: moon disc (PremulAlpha) on top of everything else.
     if let (Some(m), Some(p)) = (&moon_renderer, frame_output.moon.as_ref()) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("headless moon pass"),

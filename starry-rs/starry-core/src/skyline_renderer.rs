@@ -6,6 +6,14 @@
 //! Time-accumulator pattern mirrors `SkylineCoreRenderer.swift:142-148` —
 //! `acc += rate * dt; n = floor(acc); acc -= n` keeps fractional emission
 //! debt across frames so the long-run rate stays exact even at variable dt.
+//!
+//! NOTE: the flasher (warning beacon) is intentionally NOT emitted here.
+//! It lives on its own decay-in-place layer (see `gpu.rs` flasher slot)
+//! so the OFF half of its blink cycle can fade out cleanly via the decay
+//! shader. Baking it into the persistent skyline texture (the pre-fix
+//! design) would leave a permanently-lit red dot during every OFF half.
+//! The flasher sprite is emitted by `Engine::frame_impl` directly into
+//! `FrameOutput.flasher`.
 
 use rand::Rng;
 
@@ -67,11 +75,6 @@ impl SkylineRenderer {
             if let Some(p) = skyline.sample_building_light(rng) {
                 self.sprites.push(point_to_sprite(p, POINT_SPRITE_SIZE));
             }
-        }
-
-        if let Some(p) = skyline.flasher_state() {
-            let diameter = (skyline.flasher_radius * 2).max(1) as f32;
-            self.sprites.push(point_to_sprite(p, diameter));
         }
 
         &self.sprites

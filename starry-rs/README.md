@@ -62,7 +62,8 @@ Renders one simulated frame to an 8-bit RGBA PNG at the requested size and exits
 | `--clear-interval-s <s>` | 120.0 | Seconds between full-canvas wipes |
 | `--building-height-pct-max <0..1>` | 0.35 | Tallest building as a fraction of canvas height |
 | `--flasher-radius <px>` | 4 | Beacon-light radius on the tallest building |
-| `--flasher-period-s <s>` | 2.0 | Beacon on/off period |
+| `--flasher-period-s <s>` | 2.0 | Beacon on/off period (set to 0 to disable the flasher entirely — no GPU layer allocated, no per-frame emission) |
+| `--flasher-decay-half-life-s <s>` | 0.08 | Off-half fade-out half-life: every N seconds the OFF-half intensity halves. 0.08 ≈ snappy LED (90→10% ≈0.25s); ~0.20 ≈ thermal/incandescent (~0.63s). Set to 0 to wipe every frame (square wave) |
 | `--building-frequency <0..1>` | 0.033 | Building density along the horizon |
 
 **Phase 3 (shooting stars):**

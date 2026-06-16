@@ -48,6 +48,59 @@ const MAX_LIGHTS_PER_SEC_AT_REF: f64 = 600.0;
 /// large, plus runway for the multi-layer phases.
 pub const SPRITE_CAPACITY: u64 = 131_072;
 
+/// Brightness multiplier for a planet's lit hemisphere. Mirrors Swift's
+/// hardcoded `brightBrightness: 1.0` at `StarryEngine.swift:996`.
+pub const PLANET_BRIGHT_BRIGHTNESS: f32 = 1.0;
+
+/// Brightness multiplier for a planet's dark hemisphere. Mirrors Swift's
+/// hardcoded `darkBrightness: 0.15` at `StarryEngine.swift:997`. At the
+/// small radii planets typically occupy, a totally-dark side reads as
+/// "missing" rather than "in shadow", so 15% keeps the full disc visible.
+pub const PLANET_DARK_BRIGHTNESS: f32 = 0.15;
+
+/// Terminator half-width fraction (only consulted by shader terminator
+/// modes 1 + 2). Mirrors Swift's hardcoded `terminatorWidth: 0.1` at
+/// `StarryEngine.swift:1000`.
+pub const PLANET_TERMINATOR_WIDTH: f32 = 0.1;
+
+/// Discrete brightness band count (only consulted by shader terminator
+/// mode 2). Mirrors Swift's hardcoded `terminatorBands: 3` at
+/// `StarryEngine.swift:1001`.
+pub const PLANET_TERMINATOR_BANDS: u32 = 3;
+
+/// Selects how `phaseFraction` is computed for planets before being passed
+/// to the shader. This does NOT control the shader's terminator render
+/// mode — that's the separate `planet_terminator_mode` CLI flag. Mirrors
+/// the consumer at `StarryEngine.swift:995`:
+/// ```text
+/// phaseFraction: config.planetTerminatorMode == "forcedFull" ? 1.0
+///              : config.planetTerminatorMode == "forcedHalf" ? 0.5
+///              : Float(state.phaseFraction)
+/// ```
+#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum PlanetPhaseMode {
+    /// `phaseFraction = 1.0`. Planet renders fully lit; terminator is
+    /// invisible regardless of shader mode. Swift default.
+    ForcedFull,
+    /// `phaseFraction = 0.5`. Planet renders exactly half-illuminated.
+    ForcedHalf,
+    /// `phaseFraction = real astronomical phase from `Planet::phase_fraction`.
+    Computed,
+}
+
+/// `Display` delegates to clap's own `ValueEnum` name mapping so
+/// `default_value_t = ...` produces exactly the string clap will accept
+/// back on the command line. Single source of truth — no drift risk.
+impl std::fmt::Display for PlanetPhaseMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use clap::ValueEnum;
+        self.to_possible_value()
+            .expect("PlanetPhaseMode variants are not #[value(skip)]")
+            .get_name()
+            .fmt(f)
+    }
+}
+
 #[derive(Debug, Clone, Parser)]
 #[command(
     version,
@@ -104,9 +157,20 @@ pub struct Config {
     pub flasher_radius: i32,
 
     /// Flasher animation period in seconds. On for the first half of the
-    /// period, off for the second half. Set to 0 to leave it always on.
+    /// period, off for the second half. Set to 0 to disable the flasher
+    /// entirely (no GPU layer allocated, no per-frame sprite emission).
     #[arg(long, default_value_t = 2.0)]
     pub flasher_period_s: f64,
+
+    /// Flasher fade-out half-life in seconds — every `flasher_decay_half_life_s`
+    /// seconds the OFF-half intensity halves. Picked at 0.08s to give a snappy
+    /// LED-style decay (~0.25s for 90%→10% fall): bright pop on the ON edge,
+    /// quick fade-out on the OFF edge, with just enough afterglow to read as
+    /// a real flashing beacon rather than a hard square wave. Set to 0 to wipe
+    /// the layer every frame (still gives a square wave; ON frames snap to
+    /// full brightness because the sprite blends `Over`).
+    #[arg(long, default_value_t = 0.08)]
+    pub flasher_decay_half_life_s: f32,
 
     /// RNG seed for deterministic building/star layout. Defaults to a
     /// fixed value so headless dumps are reproducible across runs.
@@ -264,6 +328,84 @@ pub struct Config {
     /// (`defaultDebugMoonColors`) is false.
     #[arg(long, action = clap::ArgAction::Set, default_value_t = false)]
     pub debug_moon_colors: bool,
+
+    // ---- Phase 5a: planets ----
+
+    /// Enable the planet layer. Disabling skips both engine work and GPU
+    /// resource allocation. No Swift counterpart — added for symmetry
+    /// with the moon/satellites/shooting-stars master toggles in the
+    /// Rust port (every major layer has a one-line off switch).
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = true)]
+    pub planets_enabled: bool,
+
+    /// Mercury body diameter as a fraction of viewport width. Swift
+    /// default (`defaultMercurySize`) is 0.00056; allowed range
+    /// `0.0..=0.2`.
+    #[arg(long, default_value_t = 0.000_56)]
+    pub mercury_size: f64,
+
+    /// Venus body diameter as a fraction of viewport width. Swift
+    /// default (`defaultVenusSize`) is 0.00139; range `0.0..=0.2`.
+    #[arg(long, default_value_t = 0.001_39)]
+    pub venus_size: f64,
+
+    /// Mars body diameter as a fraction of viewport width. Swift
+    /// default (`defaultMarsSize`) is 0.000784; range `0.0..=0.2`.
+    #[arg(long, default_value_t = 0.000_784)]
+    pub mars_size: f64,
+
+    /// Jupiter body diameter as a fraction of viewport width. Swift
+    /// default (`defaultJupiterSize`) is 0.016; range `0.0..=0.2`.
+    #[arg(long, default_value_t = 0.016)]
+    pub jupiter_size: f64,
+
+    /// Saturn body diameter as a fraction of viewport width. The Saturn
+    /// quad is 2× wider than tall to host the rings (`textureAspect=2.0`);
+    /// this value sizes the body, the rings extend outside. Swift
+    /// default (`defaultSaturnSize`) is 0.01349; range `0.0..=0.2`.
+    #[arg(long, default_value_t = 0.013_49)]
+    pub saturn_size: f64,
+
+    /// Uranus body diameter as a fraction of viewport width. Swift
+    /// default (`defaultUranusSize`) is 0.00584; range `0.0..=0.2`.
+    #[arg(long, default_value_t = 0.005_84)]
+    pub uranus_size: f64,
+
+    /// Neptune body diameter as a fraction of viewport width. Swift
+    /// default (`defaultNeptuneSize`) is 0.00566; range `0.0..=0.2`.
+    #[arg(long, default_value_t = 0.005_66)]
+    pub neptune_size: f64,
+
+    /// Pluto body diameter as a fraction of viewport width. Swift
+    /// default (`defaultPlutoSize`) is 0.000272; range `0.0..=0.2`.
+    #[arg(long, default_value_t = 0.000_272)]
+    pub pluto_size: f64,
+
+    /// What to do when a planet is geometrically below the observer's
+    /// horizon. Swift default (`defaultPlanetBelowHorizonBehavior`) is
+    /// `random-when-below`.
+    #[arg(long, value_enum, default_value_t = crate::planet::BelowHorizonBehavior::RandomWhenBelow)]
+    pub planet_below_horizon_behavior: crate::planet::BelowHorizonBehavior,
+
+    /// Selects how `phaseFraction` is computed for planets. See the
+    /// [`PlanetPhaseMode`] enum docs for the mapping. NOTE: This is NOT
+    /// the shader terminator render mode — that's the separate
+    /// `planet_terminator_mode` flag below. Swift default
+    /// (`defaultPlanetTerminatorMode`) is `forced-full`.
+    #[arg(long, value_enum, default_value_t = PlanetPhaseMode::ForcedFull)]
+    pub planet_phase_mode: PlanetPhaseMode,
+
+    /// Shader terminator rendering mode for planets. `0` = hard step,
+    /// `1` = smooth gradient, `2` = banded — same shape as
+    /// `moon_terminator_mode`. Swift hardcodes this to `0` at
+    /// `StarryEngine.swift:999` and never wires the smooth/banded paths;
+    /// the Rust port exposes the flag because the full shader machinery
+    /// is wired up in `planet.wgsl` and benefits from being exercised.
+    /// Default `0` for Swift parity. The width and band-count knobs
+    /// remain hardcoded (`PLANET_TERMINATOR_WIDTH`,
+    /// `PLANET_TERMINATOR_BANDS`).
+    #[arg(long, default_value_t = 0)]
+    pub planet_terminator_mode: u32,
 }
 
 impl Default for Config {
