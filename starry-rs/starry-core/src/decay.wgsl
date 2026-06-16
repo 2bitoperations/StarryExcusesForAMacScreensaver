@@ -37,7 +37,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // to the source texture since src and dst are always the same size.
     // Premultiplied-alpha sprites are preserved correctly: scaling rgba by
     // `keep` uniformly keeps the perceived color and just fades visibility.
+    //
+    // The `- vec4f(1.0/2048.0)` subtract is a tiny linear-space epsilon
+    // that escapes the 8-bit sRGB quantization fixed point: without it,
+    // round(N * keep) can equal N for small N (e.g. shoot keep=0.938
+    // hangs at sRGB-8 ≈ 3% gray, leaving permanent shooting-star
+    // residue trails). Eps subtract pulls the residue past zero in ~4
+    // frames; the outer max(..., 0) clamps the negative tail so we
+    // never write subzero values. Imperceptible at brighter values
+    // (verified: at sRGB-50 the eps changes the output by ~2 bins).
     let p = vec2<i32>(in.clip_position.xy);
     let s = textureLoad(src_tex, p, 0);
-    return s * u.keep;
+    return max(s * u.keep - vec4f(1.0 / 2048.0), vec4f(0.0));
 }
