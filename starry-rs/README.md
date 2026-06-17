@@ -18,7 +18,10 @@ Working on the **Rust port roadmap**:
 - [x] **Phase 3** — ping-pong textures + decay pipeline + shooting stars + satellites
 - [x] **Phase 3.5** — workspace split into `starry-core` (lib) + `starry-app` (bin)
 - [x] **Phase 4** — procedural moon texture + moon shader (phase + traversal)
-- [ ] **Phase 5** — `Planet` + `PlanetTexture` (all 8 planets, Jovian/Saturnian moons) → feature parity with Swift build
+- [x] **Phase 5a** — round planets + Keplerian ephemeris (7 of 8 planets — Mercury, Venus, Mars, Jupiter, Uranus, Neptune, Pluto) + procedural textures with mipmaps + planet pipeline (single shader, per-planet UBO)
+- [x] **Phase 5a (follow-up)** — subtractive eps in decay shader to escape sRGB-8 quantization fixed point (shooting-star residue fix)
+- [ ] **Phase 5b** — Saturn body + geometric ring rendering (Schlyter ring-tilt math, 7-zone shader branch)
+- [ ] **Phase 5c** — planet moon-dots (Galilean: Io / Europa / Ganymede / Callisto + Saturn's Titan) → feature parity with Swift build
 - [ ] **Phase 6** — TOML config, debug overlay, deterministic seed mode → v0.1
 
 Platform packaging (`.saver` bundle on macOS, `.scr` on Windows, xscreensaver hack on Linux) and a settings UI are explicitly out of scope until the renderer is at feature parity.
@@ -107,6 +110,23 @@ Renders one simulated frame to an 8-bit RGBA PNG at the requested size and exits
 | `--moon-phase-override-value <0..1>` | 0.0 | Override phase value (`p ≤ 0.5` waxes up to full at 0.5; `p > 0.5` wanes back to new at 1.0) |
 | `--debug-moon-colors <bool>` | false | Render the moon as raw albedo only (no lighting, no terminator) |
 
+**Phase 5a (planets):**
+
+| Flag | Default | What |
+|---|---:|---|
+| `--planets-enabled <bool>` | true | Master enable for the planet layer (Option-skips pipeline + per-planet texture allocation if false) |
+| `--mercury-size <0..0.1>` | 0.000_56 | Mercury diameter as a fraction of viewport width |
+| `--venus-size <0..0.1>` | 0.001_39 | Venus diameter (fraction of viewport width) |
+| `--mars-size <0..0.1>` | 0.000_784 | Mars diameter |
+| `--jupiter-size <0..0.1>` | 0.016 | Jupiter diameter (largest non-Sun body) |
+| `--saturn-size <0..0.1>` | 0.013_49 | Saturn body diameter (rings render in Phase 5b) |
+| `--uranus-size <0..0.1>` | 0.005_84 | Uranus diameter |
+| `--neptune-size <0..0.1>` | 0.005_66 | Neptune diameter |
+| `--pluto-size <0..0.1>` | 0.000_272 | Pluto diameter (the runt of the litter) |
+| `--planet-below-horizon-behavior <hide\|random\|random-when-below>` | random-when-below | What to do with planets below the horizon at `wall_now`: `hide` = fully cull, `random` = always randomize across canvas, `random-when-below` = use Keplerian ephemeris when above horizon, randomize when below |
+| `--planet-phase-mode <forced-full\|forced-half\|computed>` | forced-full | Phase override: `forced-full` = fully lit (default, retro look), `forced-half` = always half-lit, `computed` = real astronomical phase from observer-Sun-planet geometry |
+| `--planet-terminator-mode <0..2>` | 0 | Terminator style: 0 = hard step, 1 = smooth gradient, 2 = banded (same modes as `--moon-terminator-mode`) |
+
 Defaults mirror [`StarryDefaultsManager.swift`](../StarryExcuseForAMacScreensaver/StarryDefaultsManager.swift) so a fresh-install Rust run looks like a fresh-install Swift run.
 
 ### Logging
@@ -132,8 +152,8 @@ starry-rs/
 ├── starry-core/              library crate — window-agnostic; all simulation + GPU pipeline + WGSL + headless
 │   ├── Cargo.toml
 │   └── src/
-│       ├── lib.rs                16 pub mod declarations (no re-exports)
-│       ├── config.rs             clap Config (38 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR
+│       ├── lib.rs                19 pub mod declarations (no re-exports)
+│       ├── config.rs             clap Config (50 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR
 │       ├── types.rs              Color + Point value types + random_star_color
 │       ├── buildings.rs          6 BuildingStyles + Building + tile-pattern lookup
 │       ├── skyline.rs            Static world: building generation, sky-floor, flasher, periodic-clear timer
@@ -143,15 +163,19 @@ starry-rs/
 │       ├── moon.rs               Phase math (Julian day, synodic month age) + traversal arc + MoonParams GPU-shared struct
 │       ├── moon_texture.rs       Procedural 64×64 albedo (7 maria + hash noise) + CPU nearest upsample
 │       ├── moon_renderer.rs      Moon GPU pipeline: BGL + 64B UBO + linear sampler + R8Unorm texture + resize-on-demand
-│       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers + Option<Moon> + RNG + dt clock (wall_now: SystemTime injected)
-│       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong + Option<MoonRenderer> + 6-pass render orchestration; renders into a caller-supplied &TextureView
+│       ├── planet.rs             Keplerian J2000 ephemeris (7 planets), Austin TX observer, alt/az → screen mapping, nonce-driven random fallback, PlanetParams GPU-shared struct
+│       ├── planet_texture.rs     7 procedural albedo generators (Mercury/Venus/Mars/Jupiter/Uranus/Neptune/Pluto) → 64×64 base → CPU nearest upsample to per-planet diameter
+│       ├── planet_renderer.rs    Planet GPU pipeline: single shader for all 7 planets, per-frame per-planet UBO write, texture cache (HashMap<PlanetIdentity, Texture>), mipmap chain on upload (Swift parity)
+│       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers + Option<Moon> + planets HashMap + RNG + dt clock (wall_now: SystemTime injected)
+│       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong (3) + Option<MoonRenderer> + Option<PlanetRenderer> + 8-pass render orchestration; renders into a caller-supplied &TextureView
 │       ├── sprite.rs             Instanced-quad sprite pipeline w/ BlendMode::{Over, Additive} + grow-on-demand VBO
-│       ├── decay.rs              Fullscreen-quad fragment pass: out = textureLoad(src) * keep_factor
+│       ├── decay.rs              Fullscreen-quad fragment pass: out = max(textureLoad(src) * keep_factor − eps, 0) — eps subtracted in linear space to escape sRGB-8 quantization fixed point
 │       ├── composite.rs          Stateless N-layer compositor: draw_all(device, pass, &[&TextureView])
-│       ├── headless.rs           Offscreen single-frame render to PNG (4-pass direct-to-target, no ping-pong; HEADLESS_NOW_UNIX_SECS = 2024-01-01 UTC for byte-stable moon phase)
+│       ├── headless.rs           Offscreen single-frame render to PNG (6-pass direct-to-target, no ping-pong; HEADLESS_NOW_UNIX_SECS = 2024-01-01 UTC for byte-stable moon phase + planet ephemerides)
 │       ├── shader.wgsl           Sprite vertex + fragment (pixel→NDC, round-disc, premultiplied output)
-│       ├── decay.wgsl            Fullscreen-tri + textureLoad(src) * keep — per-frame UBO
+│       ├── decay.wgsl            Fullscreen-tri + max(textureLoad(src) * keep − 1/2048, 0) — per-frame UBO; subtractive eps escapes sRGB-8 quantization residue (~0.000488 linear, imperceptible)
 │       ├── moon.wgsl             Moon vertex + fragment (NDC quad, r²>1 discard, soft edge, terminator math, 3 modes, debug-colors override)
+│       ├── planet.wgsl           Planet vertex + fragment (NDC quad sized from radiusPx + textureAspect stretch, cos_delta terminator math, 3 modes, soft-edge feather identical to moon shader, nearest-filter sampler for retro pixel-art look)
 │       └── composite.wgsl        Composite vertex (3-vert fullscreen tri) + fragment (textureLoad passthrough)
 │
 └── starry-app/               binary crate — winit shell; owns the surface + main event loop
@@ -166,7 +190,9 @@ The split keeps `starry-core` free of any winit/Surface entanglement so it can b
 
 Phase 4 added the procedural moon: `moon.rs` (phase + traversal), `moon_texture.rs` (procedural albedo + upsample), `moon_renderer.rs` (wgpu pipeline + R8Unorm texture), and `moon.wgsl` (vertex + terminator fragment). Wall-clock time is now an injected parameter (`Engine::frame(wall_now: SystemTime)`) — windowed passes `SystemTime::now()`, headless anchors at `2024-01-01 UTC` for byte-stable determinism.
 
-Phase 5 will add `Planet` + `PlanetTexture` for all 8 planets (Mercury → Pluto) + Jovian/Saturnian moon point-sprites — bringing the Rust port to feature parity with the Swift build.
+Phase 5a added 7 of the 8 planets (Mercury, Venus, Mars, Jupiter, Uranus, Neptune, Pluto — Saturn lands in 5b along with the rings): `planet.rs` (Keplerian J2000 ephemeris + alt/az → screen mapping with a hardcoded Austin TX observer, plus a per-engine `nonce: u64` rooted in `Config::seed` for deterministic random fallback positions), `planet_texture.rs` (7 procedural generators ported from `PlanetTexture.swift`), `planet_renderer.rs` (single shader handles all 7 planets via per-frame per-planet UBO writes, mipmap chain on upload for Swift parity, nearest-filter sampler for the intentional retro pixel-art look), and `planet.wgsl` (vertex + non-Saturn fragment branch with the same 3-mode terminator math as the moon). A follow-up commit added a 1-line subtractive-eps fix in `decay.wgsl` to escape the sRGB-8 quantization fixed point that was leaving permanent shooting-star trail residue (`max(s * keep − 1/2048, 0)`; eps ≈ 0.000488 linear; imperceptible at brighter values).
+
+Phase 5b will add Saturn body + geometric ring rendering (Schlyter ring-tilt math + 7-zone shader branch). Phase 5c will add planet moon-dots (Galilean + Titan) — bringing the Rust port to feature parity with the Swift build.
 
 ## License
 
