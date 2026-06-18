@@ -101,6 +101,48 @@ impl std::fmt::Display for PlanetPhaseMode {
     }
 }
 
+/// Saturn ring rendering style. Routed into `PlanetParams.ring_style` (and
+/// from there into the `planet.wgsl` Saturn branch) as a small integer the
+/// shader switches on. Mirrors Swift's `defaultSaturnRingStyle` enum
+/// (`StarryDefaultsManager.swift`) where 0 = smooth gradient, 1 = flat
+/// retro (Bayer 2×2 dither + 4-color earthy palette), 2 = chunky pixel
+/// (radial 16-step quantize + checker dither). Default is `FlatRetro`
+/// for Swift parity.
+#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RingStyle {
+    /// Continuous brightness gradient — physically reasonable, but lacks
+    /// the AfterDark-era look the project is going for.
+    Smooth,
+    /// 2×2 Bayer-dithered, 4-color earthy palette. Default.
+    FlatRetro,
+    /// Radial 16-step quantization + checker dither. Beefier pixels for
+    /// smaller-diameter renders.
+    ChunkyPixel,
+}
+
+impl std::fmt::Display for RingStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use clap::ValueEnum;
+        self.to_possible_value()
+            .expect("RingStyle variants are not #[value(skip)]")
+            .get_name()
+            .fmt(f)
+    }
+}
+
+/// Integer code the shader switches on. Single source of truth for the
+/// 0/1/2 mapping — call sites like `engine.rs` use `cfg.saturn_ring_style
+/// as i32` via this conversion rather than open-coding the integer.
+impl From<RingStyle> for i32 {
+    fn from(s: RingStyle) -> i32 {
+        match s {
+            RingStyle::Smooth => 0,
+            RingStyle::FlatRetro => 1,
+            RingStyle::ChunkyPixel => 2,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Parser)]
 #[command(
     version,
@@ -406,6 +448,35 @@ pub struct Config {
     /// `PLANET_TERMINATOR_BANDS`).
     #[arg(long, default_value_t = 0)]
     pub planet_terminator_mode: u32,
+
+    // ---- Phase 5b: Saturn rings ----
+
+    /// Saturn ring tilt angle in degrees, range `−27..=+27`. When
+    /// omitted, the engine computes the tilt automatically from the
+    /// Schlyter formula against the current wall-clock time. When set,
+    /// the value is used verbatim and no astronomical computation runs.
+    /// Mirrors the Swift mode+angle pair (`saturnRingTiltMode` +
+    /// `saturnRingTiltAngle`) collapsed into one optional flag — `None`
+    /// is "automatic", `Some(x)` is "manual=x". Swift default is
+    /// automatic.
+    #[arg(long)]
+    pub saturn_ring_tilt_angle: Option<f64>,
+
+    /// Saturn ring rotation (position-angle) in degrees, range
+    /// `0..=360`. When omitted, computed automatically from the
+    /// celestial-pole position-angle math against the current
+    /// wall-clock time. When set, used verbatim. Same `None`=automatic
+    /// / `Some`=manual collapse as the tilt flag. Mirrors Swift's
+    /// `saturnRingRotationMode` + `saturnRingRotationAngle`. Swift
+    /// default is automatic.
+    #[arg(long)]
+    pub saturn_ring_rotation_angle: Option<f64>,
+
+    /// Saturn ring style — selects the in-shader rendering technique.
+    /// Default is `flat-retro` for Swift parity
+    /// (`defaultSaturnRingStyle = 1`).
+    #[arg(long, value_enum, default_value_t = RingStyle::FlatRetro)]
+    pub saturn_ring_style: RingStyle,
 }
 
 impl Default for Config {

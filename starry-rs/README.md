@@ -20,7 +20,7 @@ Working on the **Rust port roadmap**:
 - [x] **Phase 4** — procedural moon texture + moon shader (phase + traversal)
 - [x] **Phase 5a** — round planets + Keplerian ephemeris (7 of 8 planets — Mercury, Venus, Mars, Jupiter, Uranus, Neptune, Pluto) + procedural textures with mipmaps + planet pipeline (single shader, per-planet UBO)
 - [x] **Phase 5a (follow-up)** — subtractive eps in decay shader to escape sRGB-8 quantization fixed point (shooting-star residue fix)
-- [ ] **Phase 5b** — Saturn body + geometric ring rendering (Schlyter ring-tilt math, 7-zone shader branch)
+- [x] **Phase 5b** — Saturn body + geometric ring rendering (Schlyter ring-tilt math, 7-zone shader branch in shared `planet.wgsl`, 3 ring styles)
 - [ ] **Phase 5c** — planet moon-dots (Galilean: Io / Europa / Ganymede / Callisto + Saturn's Titan) → feature parity with Swift build
 - [ ] **Phase 6** — TOML config, debug overlay, deterministic seed mode → v0.1
 
@@ -119,13 +119,21 @@ Renders one simulated frame to an 8-bit RGBA PNG at the requested size and exits
 | `--venus-size <0..0.1>` | 0.001_39 | Venus diameter (fraction of viewport width) |
 | `--mars-size <0..0.1>` | 0.000_784 | Mars diameter |
 | `--jupiter-size <0..0.1>` | 0.016 | Jupiter diameter (largest non-Sun body) |
-| `--saturn-size <0..0.1>` | 0.013_49 | Saturn body diameter (rings render in Phase 5b) |
+| `--saturn-size <0..0.1>` | 0.013_49 | Saturn body diameter (rings render geometrically — see Phase 5b flags below) |
 | `--uranus-size <0..0.1>` | 0.005_84 | Uranus diameter |
 | `--neptune-size <0..0.1>` | 0.005_66 | Neptune diameter |
 | `--pluto-size <0..0.1>` | 0.000_272 | Pluto diameter (the runt of the litter) |
 | `--planet-below-horizon-behavior <hide\|random\|random-when-below>` | random-when-below | What to do with planets below the horizon at `wall_now`: `hide` = fully cull, `random` = always randomize across canvas, `random-when-below` = use Keplerian ephemeris when above horizon, randomize when below |
 | `--planet-phase-mode <forced-full\|forced-half\|computed>` | forced-full | Phase override: `forced-full` = fully lit (default, retro look), `forced-half` = always half-lit, `computed` = real astronomical phase from observer-Sun-planet geometry |
 | `--planet-terminator-mode <0..2>` | 0 | Terminator style: 0 = hard step, 1 = smooth gradient, 2 = banded (same modes as `--moon-terminator-mode`) |
+
+**Phase 5b (Saturn rings):**
+
+| Flag | Default | What |
+|---|---:|---|
+| `--saturn-ring-style <smooth\|flat-retro\|chunky-pixel>` | flat-retro | Ring rendering style: `smooth` = continuous brightness across zones, `flat-retro` = 4-color luminance quantization with 2×2 Bayer alpha dither (default — pixel-art screensaver aesthetic), `chunky-pixel` = 16-step radial quantization with checker-pattern alpha dither (chunkiest look) |
+| `--saturn-ring-tilt-angle <-27..27>` | (automatic) | Manual override for Saturn's ring-plane tilt in degrees (Schlyter B-formula). Omit (or pass nothing) for the automatic real-world tilt computed from `wall_now`. Pass an explicit value to lock the tilt for cinematic effect — note `0.0` is *edge-on* (rings hidden), not "automatic". |
+| `--saturn-ring-rotation-angle <0..360>` | (automatic) | Manual override for Saturn's ring-plane rotation in degrees (celestial-pole position angle). Omit for the automatic value computed from Saturn's RA/Dec; pass an explicit value to fix the orientation. |
 
 Defaults mirror [`StarryDefaultsManager.swift`](../StarryExcuseForAMacScreensaver/StarryDefaultsManager.swift) so a fresh-install Rust run looks like a fresh-install Swift run.
 
@@ -153,7 +161,7 @@ starry-rs/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs                19 pub mod declarations (no re-exports)
-│       ├── config.rs             clap Config (50 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR
+│       ├── config.rs             clap Config (53 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR + RingStyle enum
 │       ├── types.rs              Color + Point value types + random_star_color
 │       ├── buildings.rs          6 BuildingStyles + Building + tile-pattern lookup
 │       ├── skyline.rs            Static world: building generation, sky-floor, flasher, periodic-clear timer
@@ -163,9 +171,9 @@ starry-rs/
 │       ├── moon.rs               Phase math (Julian day, synodic month age) + traversal arc + MoonParams GPU-shared struct
 │       ├── moon_texture.rs       Procedural 64×64 albedo (7 maria + hash noise) + CPU nearest upsample
 │       ├── moon_renderer.rs      Moon GPU pipeline: BGL + 64B UBO + linear sampler + R8Unorm texture + resize-on-demand
-│       ├── planet.rs             Keplerian J2000 ephemeris (7 planets), Austin TX observer, alt/az → screen mapping, nonce-driven random fallback, PlanetParams GPU-shared struct
-│       ├── planet_texture.rs     7 procedural albedo generators (Mercury/Venus/Mars/Jupiter/Uranus/Neptune/Pluto) → 64×64 base → CPU nearest upsample to per-planet diameter
-│       ├── planet_renderer.rs    Planet GPU pipeline: single shader for all 7 planets, per-frame per-planet UBO write, texture cache (HashMap<PlanetIdentity, Texture>), mipmap chain on upload (Swift parity)
+│       ├── planet.rs             Keplerian J2000 ephemeris (8 planets), Austin TX observer, alt/az → screen mapping, nonce-driven random fallback, Saturn ring-tilt (Schlyter B) + ring-position-angle math, PlanetParams GPU-shared struct
+│       ├── planet_texture.rs     8 procedural albedo generators (Mercury/Venus/Mars/Jupiter/Saturn/Uranus/Neptune/Pluto) → 64×64 base → CPU nearest upsample to per-planet diameter; Saturn = pale-gold banded body-only (rings drawn geometrically in shader)
+│       ├── planet_renderer.rs    Planet GPU pipeline: single shader for all 8 planets, per-frame per-planet UBO write, texture cache (HashMap<PlanetIdentity, Texture>), mipmap chain on upload (Swift parity), Saturn-aware quad-aspect 2.0 stretch
 │       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers + Option<Moon> + planets HashMap + RNG + dt clock (wall_now: SystemTime injected)
 │       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong (3) + Option<MoonRenderer> + Option<PlanetRenderer> + 8-pass render orchestration; renders into a caller-supplied &TextureView
 │       ├── sprite.rs             Instanced-quad sprite pipeline w/ BlendMode::{Over, Additive} + grow-on-demand VBO
@@ -175,7 +183,7 @@ starry-rs/
 │       ├── shader.wgsl           Sprite vertex + fragment (pixel→NDC, round-disc, premultiplied output)
 │       ├── decay.wgsl            Fullscreen-tri + max(textureLoad(src) * keep − 1/2048, 0) — per-frame UBO; subtractive eps escapes sRGB-8 quantization residue (~0.000488 linear, imperceptible)
 │       ├── moon.wgsl             Moon vertex + fragment (NDC quad, r²>1 discard, soft edge, terminator math, 3 modes, debug-colors override)
-│       ├── planet.wgsl           Planet vertex + fragment (NDC quad sized from radiusPx + textureAspect stretch, cos_delta terminator math, 3 modes, soft-edge feather identical to moon shader, nearest-filter sampler for retro pixel-art look)
+│       ├── planet.wgsl           Planet vertex + fragment (NDC quad sized from radiusPx + textureAspect stretch, cos_delta terminator math, 3 modes, soft-edge feather identical to moon shader, nearest-filter sampler for retro pixel-art look). Saturn fragment branch (`is_saturn = aspect > 1.0`) renders pale-gold banded body inside r ≤ 0.846 + geometric rings across r ∈ [0.93, 1.95] with 7-zone band selection (C / B-inner / B-outer / Cassini gap / A-inner / Encke gap / A-outer), edge-on guard `|sin_tilt| ≥ 0.01`, and 3 ring styles (smooth / flat-retro 4-color quant + 2×2 Bayer dither / chunky-pixel 16-step radial quant + checker dither)
 │       └── composite.wgsl        Composite vertex (3-vert fullscreen tri) + fragment (textureLoad passthrough)
 │
 └── starry-app/               binary crate — winit shell; owns the surface + main event loop
@@ -192,7 +200,9 @@ Phase 4 added the procedural moon: `moon.rs` (phase + traversal), `moon_texture.
 
 Phase 5a added 7 of the 8 planets (Mercury, Venus, Mars, Jupiter, Uranus, Neptune, Pluto — Saturn lands in 5b along with the rings): `planet.rs` (Keplerian J2000 ephemeris + alt/az → screen mapping with a hardcoded Austin TX observer, plus a per-engine `nonce: u64` rooted in `Config::seed` for deterministic random fallback positions), `planet_texture.rs` (7 procedural generators ported from `PlanetTexture.swift`), `planet_renderer.rs` (single shader handles all 7 planets via per-frame per-planet UBO writes, mipmap chain on upload for Swift parity, nearest-filter sampler for the intentional retro pixel-art look), and `planet.wgsl` (vertex + non-Saturn fragment branch with the same 3-mode terminator math as the moon). A follow-up commit added a 1-line subtractive-eps fix in `decay.wgsl` to escape the sRGB-8 quantization fixed point that was leaving permanent shooting-star trail residue (`max(s * keep − 1/2048, 0)`; eps ≈ 0.000488 linear; imperceptible at brighter values).
 
-Phase 5b will add Saturn body + geometric ring rendering (Schlyter ring-tilt math + 7-zone shader branch). Phase 5c will add planet moon-dots (Galilean + Titan) — bringing the Rust port to feature parity with the Swift build.
+Phase 5b filled in Saturn (now all 8 planets are alive): `planet.rs` gained `saturn_ring_state(now)` (Schlyter B-formula tilt + celestial-pole position-angle rotation), `planet_texture.rs` gained a pale-gold banded body-only generator (no rings baked into the albedo — they're geometric), `planet.wgsl` gained a Saturn fragment branch with a 7-zone radial ring band selector (C / B-inner / B-outer / Cassini gap / A-inner / Encke gap / A-outer), an edge-on guard, and 3 user-pickable ring styles (`smooth` / `flat-retro` / `chunky-pixel`). Three new CLI flags (`--saturn-ring-style`, `--saturn-ring-tilt-angle`, `--saturn-ring-rotation-angle`) — the two angle flags are `Option<f64>` so absent = automatic, present = manual override.
+
+Phase 5c will add planet moon-dots (Galilean + Titan) as a 4th `SpriteRenderer` instance — bringing the Rust port to feature parity with the Swift build.
 
 ## License
 

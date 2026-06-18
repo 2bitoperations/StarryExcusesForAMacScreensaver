@@ -36,7 +36,7 @@ pub fn create_planet_texture(identity: PlanetIdentity, diameter: u32) -> Vec<u8>
         PlanetIdentity::Venus => generate_venus_albedo_map(BASE_SIZE),
         PlanetIdentity::Mars => generate_mars_albedo_map(BASE_SIZE),
         PlanetIdentity::Jupiter => generate_jupiter_albedo_map(BASE_SIZE),
-        PlanetIdentity::Saturn => generate_saturn_placeholder(BASE_SIZE),
+        PlanetIdentity::Saturn => generate_saturn_albedo_map(BASE_SIZE),
         PlanetIdentity::Uranus => generate_uranus_albedo_map(BASE_SIZE),
         PlanetIdentity::Neptune => generate_neptune_albedo_map(BASE_SIZE),
         PlanetIdentity::Pluto => generate_pluto_albedo_map(BASE_SIZE),
@@ -221,20 +221,49 @@ fn generate_jupiter_albedo_map(size: u32) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// Saturn (placeholder — full impl in Phase 5b)
+// Saturn (pale-gold banded body — rings rendered geometrically in shader)
 // ---------------------------------------------------------------------------
 
-/// Flat pale-gold placeholder for Saturn body. Replaced by the full banded
-/// body generator + Schlyter ring tilt math in Phase 5b so that the visual
-/// gap stays obvious until the proper texture lands.
-fn generate_saturn_placeholder(size: u32) -> Vec<u8> {
+fn generate_saturn_albedo_map(size: u32) -> Vec<u8> {
     let mut buf = vec![0u8; (size * size * 4) as usize];
+    let inv = 1.0 / f64::from(size - 1);
     for y in 0..size as i32 {
         for x in 0..size as i32 {
-            write_pixel(&mut buf, size, x, y, 0.88, 0.77, 0.46);
+            let nx = f64::from(x) * inv;
+            let ny = f64::from(y) * inv;
+            let (rr, gg, bb) = saturn_body_color(nx * 2.0 - 1.0, ny * 2.0 - 1.0);
+            let limb = limb_darkening_factor(nx, ny);
+            write_pixel(&mut buf, size, x, y, rr * limb, gg * limb, bb * limb);
         }
     }
     buf
+}
+
+fn saturn_body_color(u: f64, v: f64) -> (f64, f64, f64) {
+    let ny = v * 0.5 + 0.5;
+    let band_noise = pseudo_noise(
+        ((u * 100.0) as i32).wrapping_mul(2),
+        ((v * 100.0) as i32).wrapping_mul(7).wrapping_add(3),
+    );
+    let band = 0.5 + 0.5 * (ny * std::f64::consts::PI * 9.0 + band_noise * 0.8).sin();
+    let mut r = 0.88 + band * 0.08;
+    let mut g = 0.76 + band * 0.06;
+    let mut b = 0.46 + band * 0.02;
+    let n = (pseudo_noise(
+        ((u * 1000.0) as i32).wrapping_add(500),
+        ((v * 1000.0) as i32).wrapping_add(300),
+    ) - 0.5)
+        * 0.06;
+    r = clamp01(r + n);
+    g = clamp01(g + n * 0.9);
+    b = clamp01(b + n * 0.5);
+    let disc_r = (u * u + v * v).sqrt();
+    let inner_limb = 1.0 - 0.20 * disc_r * disc_r;
+    (
+        clamp01(r * inner_limb),
+        clamp01(g * inner_limb),
+        clamp01(b * inner_limb),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -496,14 +525,32 @@ mod tests {
     }
 
     #[test]
-    fn saturn_placeholder_is_flat_gold() {
-        let tex = create_planet_texture(PlanetIdentity::Saturn, 8);
+    fn saturn_texture_is_banded_not_flat() {
+        let tex = create_planet_texture(PlanetIdentity::Saturn, 32);
+        let unique: std::collections::HashSet<[u8; 3]> = tex
+            .chunks_exact(4)
+            .map(|c| [c[0], c[1], c[2]])
+            .collect();
+        assert!(
+            unique.len() > 50,
+            "saturn body should have band/noise variation, got {} unique RGB values",
+            unique.len()
+        );
         for chunk in tex.chunks_exact(4) {
-            // 0.88 * 255 = 224.4 → 224, 0.77 * 255 = 196.35 → 196, 0.46 * 255 = 117.3 → 117.
-            assert_eq!(chunk[0], 224);
-            assert_eq!(chunk[1], 196);
-            assert_eq!(chunk[2], 117);
-            assert_eq!(chunk[3], 255);
+            assert_eq!(chunk[3], 255, "saturn body alpha must be opaque");
         }
+    }
+
+    #[test]
+    fn saturn_texture_has_pale_gold_palette_centre() {
+        let size: u32 = 32;
+        let tex = create_planet_texture(PlanetIdentity::Saturn, size);
+        let cx = (size / 2) as usize;
+        let cy = (size / 2) as usize;
+        let i = (cy * size as usize + cx) * 4;
+        let (r, g, b) = (tex[i], tex[i + 1], tex[i + 2]);
+        assert!(r > g && g > b, "expected pale-gold ordering R > G > B at centre, got ({r}, {g}, {b})");
+        assert!(r > 180, "expected bright centre red, got {r}");
+        assert!(b < 200, "expected muted centre blue, got {b}");
     }
 }

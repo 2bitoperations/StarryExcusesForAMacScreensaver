@@ -1,17 +1,17 @@
 //! Solar-system planet positioning, phase, and per-frame state.
 //!
 //! Ported from `StarryExcuseForAMacScreensaver/Planet.swift`. Phase 5a Step 1
-//! covers the simulation surface: identity, Keplerian ephemeris, alt/az from a
+//! covered the simulation surface: identity, Keplerian ephemeris, alt/az from a
 //! hardcoded Austin TX observer, screen mapping, per-day deterministic
 //! off-horizon fallback, and the `PlanetParams` engine-side struct that later
-//! feeds the GPU UBO. Texture generation (Step 2), shader (Step 3), and the
-//! `PlanetRenderer` GPU pipeline (Step 4) live in sibling modules.
+//! feeds the GPU UBO. Texture generation, shader, and the `PlanetRenderer` GPU
+//! pipeline live in sibling modules.
 //!
-//! Saturn-specific ring math (`saturn_ring_tilt`, `saturn_ring_position_angle`)
-//! and the Galilean / Titan moon-dot ephemerides are intentionally deferred:
-//! Saturn rings land in Phase 5b, planet-moons in Phase 5c. Until then,
-//! `frame_state` returns `0.0` for the ring fields and the engine treats Saturn
-//! identically to the other planets.
+//! Phase 5b adds Saturn-specific ring math: `saturn_ring_state` computes the
+//! ring tilt B (simplified Schlyter) and position angle (celestial-pole
+//! formula) for the current wall-clock time, and `frame_state` routes those
+//! into `PlanetFrameState` for Saturn only. The Galilean / Titan moon-dot
+//! ephemerides land in Phase 5c.
 //!
 //! ## Astronomy pipeline (per frame)
 //! 1. Look up J2000.0 Keplerian elements for the requested planet.
@@ -197,8 +197,8 @@ pub struct PlanetParams {
     pub terminator_width: f32,
     pub terminator_bands: i32,
     /// 1.0 for round-disc planets, 2.0 for Saturn (wide quad covers ring
-    /// extent). Phase 5a sets 1.0 everywhere; Phase 5b activates 2.0 for
-    /// Saturn.
+    /// extent). The engine sets 2.0 only for Saturn; everything else gets
+    /// 1.0 and skips the ring-bearing code path in the shader.
     pub texture_aspect: f32,
     pub ring_tilt_deg: f32,
     pub ring_rotation_deg: f32,
@@ -259,9 +259,11 @@ impl Planet {
         let above_horizon = alt_deg > 0.0;
         let (phase_fraction, waxing_sign) = phase_state(self.identity, now);
 
-        // Saturn ring math deferred to Phase 5b.
-        let ring_tilt_deg = 0.0;
-        let ring_rotation_deg = 0.0;
+        let (ring_tilt_deg, ring_rotation_deg) = if self.identity == PlanetIdentity::Saturn {
+            saturn_ring_state(now)
+        } else {
+            (0.0, 0.0)
+        };
 
         // "Random" mode short-circuits orbital position entirely.
         if self.below_horizon_behavior == BelowHorizonBehavior::Random {
@@ -587,6 +589,62 @@ fn phase_state(identity: PlanetIdentity, now: SystemTime) -> (f64, f64) {
     (fraction.clamp(0.0, 1.0), waxing_sign)
 }
 
+/// Saturn ring tilt + position-angle in degrees, computed from the current
+/// wall-clock time. Returns `(tilt_deg, position_angle_deg)`. Tilt comes
+/// from the simplified Schlyter formula
+/// `B = arcsin(sin β · cos 28.06° − cos β · sin 28.06° · sin(λ − Nr))`
+/// where `Nr = 169.51° + 3.82e-5° · d` and `d` is days since J2000;
+/// position angle from the celestial-pole formula
+/// `p = atan2(cos δp · sin Δα, sin δp · cos δ − cos δp · sin δ · cos Δα)`
+/// with `αp = 40.589°, δp = 83.537°`. Mirrors Swift `Planet.swift:603-622`.
+fn saturn_ring_state(now: SystemTime) -> (f64, f64) {
+    let t = julian_century(now);
+    let (planet_lon, planet_lat, planet_r) =
+        heliocentric_ecliptic(orbital_elements(PlanetIdentity::Saturn), t);
+    let (earth_lon, earth_lat, earth_r) = heliocentric_ecliptic(earth_orbital_elements(), t);
+
+    let (px, py, pz) = heliocentric_cartesian(planet_lon, planet_lat, planet_r);
+    let (ex, ey, ez) = heliocentric_cartesian(earth_lon, earth_lat, earth_r);
+
+    let dx = px - ex;
+    let dy = py - ey;
+    let dz = pz - ez;
+
+    let geo_dist = (dx * dx + dy * dy + dz * dz).sqrt();
+    if geo_dist < 1e-12 {
+        return (0.0, 0.0);
+    }
+
+    let geo_lon_deg = dy.atan2(dx).to_degrees();
+    let geo_lat_deg = (dz / geo_dist).asin().to_degrees();
+
+    let days_since_j2000 = julian_day(now) - J2000_JD;
+    let nr_rad = normalise(169.51 + 3.82e-5 * days_since_j2000).to_radians();
+    let lambda = geo_lon_deg.to_radians();
+    let beta = geo_lat_deg.to_radians();
+    let saturn_axial_tilt = (28.06_f64).to_radians();
+    let sin_b = beta.sin() * saturn_axial_tilt.cos()
+        - beta.cos() * saturn_axial_tilt.sin() * (lambda - nr_rad).sin();
+    let tilt_deg = sin_b.clamp(-1.0, 1.0).asin().to_degrees();
+
+    let eps = J2000_OBLIQUITY_DEG.to_radians();
+    let x_eq = dx;
+    let y_eq = eps.cos() * dy - eps.sin() * dz;
+    let z_eq = eps.sin() * dy + eps.cos() * dz;
+    let ra_rad = y_eq.atan2(x_eq);
+    let dec_rad = (z_eq / geo_dist).clamp(-1.0, 1.0).asin();
+
+    let alpha_pole = (40.589_f64).to_radians();
+    let delta_pole = (83.537_f64).to_radians();
+    let delta_alpha = alpha_pole - ra_rad;
+    let numerator = delta_pole.cos() * delta_alpha.sin();
+    let denominator = delta_pole.sin() * dec_rad.cos()
+        - delta_pole.cos() * dec_rad.sin() * delta_alpha.cos();
+    let pa_deg = normalise_signed(numerator.atan2(denominator).to_degrees());
+
+    (tilt_deg, pa_deg)
+}
+
 /// Heliocentric ecliptic coordinates (longitude°, latitude°, radius AU) from
 /// orbital elements propagated to Julian century `t`.
 fn heliocentric_ecliptic(elements: OrbitalElements, t: f64) -> (f64, f64, f64) {
@@ -664,6 +722,20 @@ fn local_sidereal_time_rad(jd: f64, lon_deg: f64) -> f64 {
 fn normalise(deg: f64) -> f64 {
     let mut d = deg % 360.0;
     if d < 0.0 {
+        d += 360.0;
+    }
+    d
+}
+
+/// Normalise an angle in degrees to the half-open interval [-180, 180).
+/// Mirrors Swift `Planet.swift:714` (`normaliseSigned`); used only by the
+/// Saturn ring position-angle path to wrap `atan2` output cleanly.
+fn normalise_signed(deg: f64) -> f64 {
+    let mut d = deg % 360.0;
+    if d >= 180.0 {
+        d -= 360.0;
+    }
+    if d < -180.0 {
         d += 360.0;
     }
     d
@@ -850,5 +922,52 @@ mod tests {
         assert_eq!(s_a1.brightness, 1.0, "random mode renders at full brightness");
         // Different nonce → different position (overwhelmingly likely).
         assert_ne!(s_a1.center_px, s_b.center_px, "nonce should shuffle position");
+    }
+
+    #[test]
+    fn saturn_ring_state_within_physical_bounds_and_only_saturn() {
+        // Sample a year's worth of dates roughly every 30 days. Tilt B must
+        // physically stay within ±28.06° (Saturn's axial tilt); position
+        // angle wraps to (-180, 180]. These are the only invariants we can
+        // assert without an external ephemeris source.
+        let start_unix: f64 = 1_704_067_200.0; // 2024-01-01 UTC
+        for step in 0..13 {
+            let t = time_at_unix(start_unix + (step as f64) * 30.0 * 86_400.0);
+            let (tilt, pa) = saturn_ring_state(t);
+            assert!(
+                tilt.abs() <= 28.06,
+                "saturn ring tilt out of physical bounds: {tilt}° at step {step}"
+            );
+            assert!(
+                (-180.0..=180.0).contains(&pa),
+                "saturn ring position angle out of normalised range: {pa}° at step {step}"
+            );
+        }
+
+        // Non-Saturn planets must always report (0.0, 0.0) for ring fields
+        // — the Saturn-specific path is gated by identity.
+        let t = time_at_unix(1_704_067_200.0);
+        for id in PlanetIdentity::ALL {
+            if id == PlanetIdentity::Saturn {
+                continue;
+            }
+            let p = Planet::new(id, 1280, 800, 200, 16, BelowHorizonBehavior::Hide, 42);
+            let s = p.frame_state(t);
+            assert_eq!(
+                (s.ring_tilt_deg, s.ring_rotation_deg),
+                (0.0, 0.0),
+                "{id:?} must have zero ring fields"
+            );
+        }
+    }
+
+    #[test]
+    fn normalise_signed_wraps_to_minus180_to_180() {
+        assert!((normalise_signed(0.0)).abs() < 1e-9);
+        assert!((normalise_signed(180.0) - (-180.0)).abs() < 1e-9);
+        assert!((normalise_signed(-180.0) - (-180.0)).abs() < 1e-9);
+        assert!((normalise_signed(190.0) - (-170.0)).abs() < 1e-9);
+        assert!((normalise_signed(-190.0) - 170.0).abs() < 1e-9);
+        assert!((normalise_signed(540.0) - (-180.0)).abs() < 1e-9);
     }
 }

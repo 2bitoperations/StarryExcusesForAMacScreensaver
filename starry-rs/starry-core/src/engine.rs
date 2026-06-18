@@ -27,7 +27,7 @@ use std::time::{Instant, SystemTime};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use crate::config::{
-    Config, PlanetPhaseMode, PLANET_BRIGHT_BRIGHTNESS, PLANET_DARK_BRIGHTNESS,
+    Config, PlanetPhaseMode, RingStyle, PLANET_BRIGHT_BRIGHTNESS, PLANET_DARK_BRIGHTNESS,
     PLANET_TERMINATOR_BANDS, PLANET_TERMINATOR_WIDTH,
 };
 use crate::moon::{radius_from_percent, Moon, MoonParams};
@@ -343,6 +343,27 @@ impl Engine {
                 PlanetPhaseMode::ForcedHalf => 0.5,
                 PlanetPhaseMode::Computed => state.phase_fraction as f32,
             };
+            let is_saturn = planet.identity == PlanetIdentity::Saturn;
+            let texture_aspect = if is_saturn { 2.0 } else { 1.0 };
+            let ring_style = if is_saturn {
+                i32::from(self.config.saturn_ring_style)
+            } else {
+                i32::from(RingStyle::Smooth)
+            };
+            let ring_tilt_deg = if is_saturn {
+                self.config
+                    .saturn_ring_tilt_angle
+                    .unwrap_or(state.ring_tilt_deg) as f32
+            } else {
+                state.ring_tilt_deg as f32
+            };
+            let ring_rotation_deg = if is_saturn {
+                self.config
+                    .saturn_ring_rotation_angle
+                    .unwrap_or(state.ring_rotation_deg) as f32
+            } else {
+                state.ring_rotation_deg as f32
+            };
             self.planet_params_buf.push((
                 planet.identity,
                 PlanetParams {
@@ -355,10 +376,10 @@ impl Engine {
                     terminator_mode: self.config.planet_terminator_mode as i32,
                     terminator_width: PLANET_TERMINATOR_WIDTH,
                     terminator_bands: PLANET_TERMINATOR_BANDS as i32,
-                    texture_aspect: 1.0,
-                    ring_tilt_deg: state.ring_tilt_deg as f32,
-                    ring_rotation_deg: state.ring_rotation_deg as f32,
-                    ring_style: 0,
+                    texture_aspect,
+                    ring_tilt_deg,
+                    ring_rotation_deg,
+                    ring_style,
                 },
             ));
         }
