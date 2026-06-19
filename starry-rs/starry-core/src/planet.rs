@@ -33,6 +33,8 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::types::Color;
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -786,6 +788,214 @@ impl SeededRng {
 }
 
 // ---------------------------------------------------------------------------
+// Moon sprite states (Galilean / Titan)
+// ---------------------------------------------------------------------------
+//
+// Per-frame screen positions for the small bright dots representing Jupiter's
+// four Galilean moons (Io / Europa / Ganymede / Callisto) and Saturn's
+// largest moon (Titan). All other planets emit no moon sprites.
+//
+// The orbit math is intentionally simple — circular orbits in the planet's
+// equatorial plane (Jupiter axial tilt approximated as 3°, Saturn matches the
+// already-computed ring tilt). Foreshortening + ring-aligned rotation makes
+// the dots appear to swing in a plane consistent with the planet's body.
+// Mirrors Swift `Planet.swift:179-240` (`moonSpriteStates`) and Swift
+// `Planet.swift:397-451` (`MoonOrbitDefinition` + `moonOrbitDefinitions`).
+
+/// Anchor epoch for the Galilean / Titan orbital phase math:
+/// 2000-01-12 00:00:00 UTC (`947_678_400` seconds since the Unix epoch).
+/// Distinct from the lunar new-moon epoch in `moon.rs` — that one anchors
+/// lunar-phase math, this one anchors planet-moon orbital phases. Mirrors
+/// Swift `Planet.swift:453` (`Date(timeIntervalSince1970: 947678400)`).
+const J2000_MOON_EPOCH_UNIX_SECS: f64 = 947_678_400.0;
+
+/// Per-moon orbital + visual definition. Mirrors Swift `Planet.swift:397-404`.
+/// Private — the orbit table is consumed only via [`moon_sprite_states`].
+struct MoonOrbitDefinition {
+    /// Lowercase ASCII identifier used for debug-color routing in
+    /// [`crate::types`] and rendering bookkeeping in [`crate::engine`].
+    name: &'static str,
+    /// Sidereal orbital period in days.
+    period_days: f64,
+    /// Semi-major axis expressed as a multiple of the parent planet's body
+    /// radius. The screen mapping multiplies by the parent's per-frame
+    /// `parent_radius_px` to produce final screen offsets.
+    semi_major_axis_planet_radii: f64,
+    /// Phase offset at [`J2000_MOON_EPOCH_UNIX_SECS`] (radians).
+    initial_phase_rad: f64,
+    /// Linear (non-premultiplied) RGB tint of the moon dot.
+    color: Color,
+    /// Reference sprite size in pixels at the parent's "standard" radius
+    /// (Jupiter 24 px, Saturn 20.3 px). Scaled per-frame by the parent's
+    /// actual radius and clamped to `[1, 3]` after multiplier application.
+    base_size_px: f64,
+}
+
+/// Galilean moons of Jupiter, in increasing orbital radius. Mirrors Swift
+/// `Planet.swift:407-440`. The `initial_phase_rad` values reproduce Swift's
+/// `toRad(<degrees>)` literals at compile time.
+const JUPITER_MOONS: &[MoonOrbitDefinition] = &[
+    MoonOrbitDefinition {
+        name: "io",
+        period_days: 1.769138,
+        semi_major_axis_planet_radii: 5.91,
+        initial_phase_rad: 106.1 * std::f64::consts::PI / 180.0,
+        color: Color::new(1.0, 0.95, 0.6),
+        base_size_px: 2.0,
+    },
+    MoonOrbitDefinition {
+        name: "europa",
+        period_days: 3.551181,
+        semi_major_axis_planet_radii: 9.40,
+        initial_phase_rad: 175.8 * std::f64::consts::PI / 180.0,
+        color: Color::new(0.9, 0.9, 1.0),
+        base_size_px: 1.5,
+    },
+    MoonOrbitDefinition {
+        name: "ganymede",
+        period_days: 7.154553,
+        semi_major_axis_planet_radii: 14.97,
+        initial_phase_rad: 121.0 * std::f64::consts::PI / 180.0,
+        color: Color::new(0.85, 0.8, 0.7),
+        base_size_px: 2.5,
+    },
+    MoonOrbitDefinition {
+        name: "callisto",
+        period_days: 16.689018,
+        semi_major_axis_planet_radii: 26.33,
+        initial_phase_rad: 85.0 * std::f64::consts::PI / 180.0,
+        color: Color::new(0.5, 0.5, 0.5),
+        base_size_px: 2.0,
+    },
+];
+
+/// Saturn's only modelled moon, Titan. Mirrors Swift `Planet.swift:441-450`.
+const SATURN_MOONS: &[MoonOrbitDefinition] = &[MoonOrbitDefinition {
+    name: "titan",
+    period_days: 15.945421,
+    semi_major_axis_planet_radii: 20.27,
+    initial_phase_rad: 15.0 * std::f64::consts::PI / 180.0,
+    color: Color::new(0.9, 0.7, 0.3),
+    base_size_px: 2.0,
+}];
+
+/// Per-frame screen-space sprite for a single planet-moon dot. Mirrors Swift
+/// `Planet.swift:38-44` (`MoonSpriteState`). Consumed by [`crate::engine`] to
+/// build the additive sprite stream for the planet-moons GPU layer.
+#[derive(Copy, Clone, Debug)]
+pub struct MoonSpriteState {
+    /// Lowercase moon name — keys into `debug_moon_color_premul()` in
+    /// [`crate::types`] when the debug-colors flag is enabled.
+    pub name: &'static str,
+    /// Screen position in pixels, origin bottom-left (matches the rest of
+    /// the simulation's coordinate convention).
+    pub center_px: (f64, f64),
+    /// Sprite diameter in pixels, clamped to `[1.0, 3.0]`.
+    pub size_px: f32,
+    /// Linear (non-premultiplied) RGB tint.
+    pub color: Color,
+    /// Constant alpha matching Swift's hardcoded `0.78`. The engine
+    /// premultiplies by this when packing sprite instances.
+    pub alpha: f32,
+}
+
+/// Compute per-frame screen-space positions of a planet's moon dots.
+///
+/// Returns an empty `Vec` for non-Jupiter / non-Saturn parents, when
+/// `parent_radius_px ≤ 0`, or when the parent has no defined moons.
+/// Z-culls moons whose unrotated `y > 0` AND whose screen distance to the
+/// parent centre is less than `parent_radius_px` — this hides moons "behind"
+/// the planet body rather than rendering them through it.
+///
+/// `moon_scale` multiplies each moon's `base_size_px` BEFORE the global
+/// `[1, 3]` clamp, so values >1 enlarge the dots and <1 shrink them while
+/// still respecting the visual cap. Pass `1.0` for byte-stable Swift parity.
+///
+/// Mirrors Swift
+/// `Planet.moonSpriteStates(for:now:parentCenter:parentRadiusPx:ringTiltDeg:rotationDeg:)`
+/// at `Planet.swift:179-240`.
+pub fn moon_sprite_states(
+    parent: PlanetIdentity,
+    now: SystemTime,
+    parent_center_px: (f64, f64),
+    parent_radius_px: f64,
+    ring_tilt_deg: f64,
+    rotation_deg: f64,
+    moon_scale: f64,
+) -> Vec<MoonSpriteState> {
+    if parent_radius_px <= 0.0 {
+        return Vec::new();
+    }
+    let defs: &[MoonOrbitDefinition] = match parent {
+        PlanetIdentity::Jupiter => JUPITER_MOONS,
+        PlanetIdentity::Saturn => SATURN_MOONS,
+        _ => return Vec::new(),
+    };
+    if defs.is_empty() {
+        return Vec::new();
+    }
+
+    let secs_since_epoch = now
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    let days_since_epoch = (secs_since_epoch - J2000_MOON_EPOCH_UNIX_SECS) / 86_400.0;
+
+    let base_reference_radius_px = if matches!(parent, PlanetIdentity::Jupiter) {
+        24.0
+    } else {
+        20.3
+    };
+    let size_scale = (parent_radius_px / base_reference_radius_px).clamp(0.6, 1.8);
+
+    // Foreshorten Y first (matches the shader's R(theta) * S convention).
+    // Jupiter has its own hardcoded 3° axial tilt; Saturn picks up the live
+    // ring tilt so its moon sweeps in the same plane as the rings.
+    let vertical_foreshorten = if matches!(parent, PlanetIdentity::Jupiter) {
+        3.0_f64.to_radians().sin()
+    } else {
+        ring_tilt_deg.to_radians().sin()
+    };
+
+    let theta = rotation_deg.to_radians();
+    let cos_theta = theta.cos();
+    let sin_theta = theta.sin();
+    let (cx, cy) = parent_center_px;
+
+    let mut states: Vec<MoonSpriteState> = Vec::with_capacity(defs.len());
+    for moon in defs {
+        let angle = (2.0 * std::f64::consts::PI * days_since_epoch / moon.period_days)
+            + moon.initial_phase_rad;
+        let x = moon.semi_major_axis_planet_radii * angle.cos();
+        let y = moon.semi_major_axis_planet_radii * angle.sin();
+
+        let yp = y * vertical_foreshorten;
+        let xr = x * cos_theta - yp * sin_theta;
+        let yr = x * sin_theta + yp * cos_theta;
+
+        let screen_x = cx + xr * parent_radius_px;
+        let screen_y = cy + yr * parent_radius_px;
+
+        // Z-cull: positive y in the unrotated frame == "behind" the planet
+        // from the viewer's perspective. Hide if also inside the screen disc.
+        let dist = (screen_x - cx).hypot(screen_y - cy);
+        if y > 0.0 && dist < parent_radius_px {
+            continue;
+        }
+
+        let size_px = (moon.base_size_px * moon_scale * size_scale).clamp(1.0, 3.0) as f32;
+        states.push(MoonSpriteState {
+            name: moon.name,
+            center_px: (screen_x, screen_y),
+            size_px,
+            color: moon.color,
+            alpha: 0.78,
+        });
+    }
+    states
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -969,5 +1179,141 @@ mod tests {
         assert!((normalise_signed(190.0) - (-170.0)).abs() < 1e-9);
         assert!((normalise_signed(-190.0) - 170.0).abs() < 1e-9);
         assert!((normalise_signed(540.0) - (-180.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn moon_sprite_states_zero_radius_returns_empty() {
+        let now = time_at_unix(1_704_067_200.0);
+        for parent in PlanetIdentity::ALL {
+            let states = moon_sprite_states(parent, now, (640.0, 400.0), 0.0, 0.0, 0.0, 1.0);
+            assert!(
+                states.is_empty(),
+                "{parent:?} with parent_radius_px=0 must return empty, got {} moons",
+                states.len()
+            );
+        }
+    }
+
+    #[test]
+    fn moon_sprite_states_only_jupiter_and_saturn_have_moons() {
+        let now = time_at_unix(1_704_067_200.0);
+        for parent in PlanetIdentity::ALL {
+            let states = moon_sprite_states(parent, now, (640.0, 400.0), 30.0, 5.0, 12.0, 1.0);
+            match parent {
+                PlanetIdentity::Jupiter => assert!(
+                    states.len() <= 4,
+                    "Jupiter has at most 4 Galilean moons, got {}",
+                    states.len()
+                ),
+                PlanetIdentity::Saturn => assert!(
+                    states.len() <= 1,
+                    "Saturn has at most 1 (Titan), got {}",
+                    states.len()
+                ),
+                _ => assert!(
+                    states.is_empty(),
+                    "{parent:?} should have no moons in our model, got {}",
+                    states.len()
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn moon_sprite_states_jupiter_names_alpha_and_size_within_bounds() {
+        let now = time_at_unix(1_704_067_200.0);
+        let states = moon_sprite_states(
+            PlanetIdentity::Jupiter,
+            now,
+            (640.0, 400.0),
+            30.0,
+            5.0,
+            12.0,
+            1.0,
+        );
+        let known = ["io", "europa", "ganymede", "callisto"];
+        let mut seen = std::collections::HashSet::new();
+        for s in &states {
+            assert!(
+                known.contains(&s.name),
+                "unexpected moon name {:?} for Jupiter",
+                s.name
+            );
+            assert!(
+                seen.insert(s.name),
+                "duplicate moon name {:?} in same call",
+                s.name
+            );
+            assert_eq!(s.alpha, 0.78, "alpha must be exactly 0.78");
+            assert!(
+                (1.0..=3.0).contains(&s.size_px),
+                "size_px {} not in [1, 3]",
+                s.size_px
+            );
+        }
+    }
+
+    #[test]
+    fn moon_sprite_states_saturn_only_emits_titan() {
+        let now = time_at_unix(1_704_067_200.0);
+        let states = moon_sprite_states(
+            PlanetIdentity::Saturn,
+            now,
+            (640.0, 400.0),
+            30.0,
+            15.0,
+            45.0,
+            1.0,
+        );
+        for s in &states {
+            assert_eq!(s.name, "titan", "Saturn only emits Titan");
+            assert_eq!(s.alpha, 0.78);
+            assert!((1.0..=3.0).contains(&s.size_px));
+        }
+    }
+
+    #[test]
+    fn moon_sprite_states_scale_multiplier_drives_size_to_clamp_bounds() {
+        // scale=4.0 with parent_radius_px=30 (size_scale=1.25) drives every
+        // moon size to >=10 px, so all visible ones saturate at the upper
+        // clamp 3.0. scale=0.5 with parent_radius_px=1.0 (size_scale clamped
+        // to 0.6) drives every moon to <=0.75 px, saturating at the lower
+        // clamp 1.0. Callisto is structurally never z-culled (a > 1) so the
+        // result vec is guaranteed non-empty in both cases.
+        let now = time_at_unix(1_704_067_200.0);
+        let big = moon_sprite_states(
+            PlanetIdentity::Jupiter,
+            now,
+            (640.0, 400.0),
+            30.0,
+            0.0,
+            0.0,
+            4.0,
+        );
+        assert!(!big.is_empty(), "scale=4 should produce visible moons");
+        for s in &big {
+            assert_eq!(
+                s.size_px, 3.0,
+                "scale=4.0 should saturate at clamp upper bound, got {}",
+                s.size_px
+            );
+        }
+        let tiny = moon_sprite_states(
+            PlanetIdentity::Jupiter,
+            now,
+            (640.0, 400.0),
+            1.0,
+            0.0,
+            0.0,
+            0.5,
+        );
+        assert!(!tiny.is_empty(), "scale=0.5 should produce visible moons");
+        for s in &tiny {
+            assert_eq!(
+                s.size_px, 1.0,
+                "scale=0.5 should saturate at clamp lower bound, got {}",
+                s.size_px
+            );
+        }
     }
 }

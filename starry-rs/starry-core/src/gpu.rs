@@ -27,7 +27,7 @@
 //!   collide via FIFO queue writes — see `decay.rs`). Optional.
 //!
 //! Per-frame encode order (matches `StarryMetalRenderer.swift` —
-//! base → flasher → satellites → shooting → planets → moon):
+//! base → flasher → satellites → shooting → planets → planet-moons → moon):
 //!   1. Satellites decay  (read active → write scratch, then swap)
 //!   2. Shooting   decay  (same)
 //!   3. Flasher    decay  (same)
@@ -38,15 +38,18 @@
 //!   8. Composite pass: clear the caller's target view to `CLEAR_COLOR`,
 //!      stack enabled layer views in Z-order [skyline, flasher,
 //!      satellites, shooting], then — inside the same render pass — draw
-//!      any visible planets via `PlanetRenderer`, then the moon on top
-//!      via `MoonRenderer` (both premultiplied alpha blend).
+//!      any visible planets via `PlanetRenderer`, then any planet-moon
+//!      sprites via the dedicated planet-moons `SpriteRenderer` (Galilean
+//!      moons + Titan, `Over` blend), then the moon on top via
+//!      `MoonRenderer` (premultiplied alpha throughout).
 //!
 //! Disabled layers skip their decay+sprite steps entirely and are omitted
 //! from the composite layer list — no GPU work, no allocated textures.
 //! The moon and planets are themselves optional (gated on
 //! `config.moon_enabled` and `config.planets_enabled` respectively): when
 //! disabled the matching renderer is never constructed and the draw call
-//! is skipped.
+//! is skipped. Planet-moons share a single `SpriteRenderer` gated on
+//! `config.planet_moons_enabled`.
 
 use crate::composite::CompositeRenderer;
 use crate::config::{CLEAR_COLOR, Config, LAYER_WIPE_COLOR, SPRITE_CAPACITY};
@@ -180,6 +183,13 @@ pub struct GpuPipelines {
     /// moon — planets sit above skyline/satellite/shooting layers but below
     /// the moon (Swift draw order: planets → planet-moons → moon).
     planets: Option<PlanetRenderer>,
+    /// Planet-moon sprite renderer (Galilean moons + Titan). `Some` iff
+    /// `config.planet_moons_enabled` at construction. Drawn inside the
+    /// composite pass between `planets` and `moon` — Swift parity. Capacity
+    /// 5: max concurrent sprites = 4 Galileans + Titan when both Jupiter and
+    /// Saturn are visible above the horizon. `BlendMode::Over` matches
+    /// Swift's `spriteOver` pipeline.
+    planet_moons: Option<SpriteRenderer>,
 }
 
 impl GpuPipelines {
@@ -253,6 +263,12 @@ impl GpuPipelines {
             .planets_enabled
             .then(|| PlanetRenderer::new(&device, format));
 
+        let planet_moons = app_config.planet_moons_enabled.then(|| {
+            let r = SpriteRenderer::new(&device, format, 5, BlendMode::Over);
+            r.set_viewport(&queue, width as f32, height as f32);
+            r
+        });
+
         Self {
             device,
             queue,
@@ -268,6 +284,7 @@ impl GpuPipelines {
             composite,
             moon,
             planets,
+            planet_moons,
         }
     }
 
@@ -312,6 +329,9 @@ impl GpuPipelines {
         if let Some(m) = self.moon.as_mut() {
             m.resize(&self.device, &self.queue, width);
         }
+        if let Some(r) = self.planet_moons.as_ref() {
+            r.set_viewport(&self.queue, width as f32, height as f32);
+        }
     }
 
     /// Encode the full 6-pass per-frame sequence into the caller's target
@@ -353,6 +373,10 @@ impl GpuPipelines {
             layer
                 .sprites
                 .set_instances(&self.device, &self.queue, frame.sprites);
+        }
+
+        if let Some(r) = self.planet_moons.as_mut() {
+            r.set_instances(&self.device, &self.queue, frame_output.planet_moons);
         }
 
         // Pre-stage planet GPU resources: ensure_planet rebuilds the per-slot
@@ -511,6 +535,10 @@ impl GpuPipelines {
                     self.width as f32,
                     self.height as f32,
                 );
+            }
+
+            if let Some(r) = self.planet_moons.as_ref() {
+                r.draw(&mut pass);
             }
 
             if let (Some(m), Some(p)) = (self.moon.as_ref(), frame_output.moon.as_ref()) {

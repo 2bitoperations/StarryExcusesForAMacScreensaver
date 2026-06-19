@@ -21,7 +21,7 @@ Working on the **Rust port roadmap**:
 - [x] **Phase 5a** — round planets + Keplerian ephemeris (7 of 8 planets — Mercury, Venus, Mars, Jupiter, Uranus, Neptune, Pluto) + procedural textures with mipmaps + planet pipeline (single shader, per-planet UBO)
 - [x] **Phase 5a (follow-up)** — subtractive eps in decay shader to escape sRGB-8 quantization fixed point (shooting-star residue fix)
 - [x] **Phase 5b** — Saturn body + geometric ring rendering (Schlyter ring-tilt math, 7-zone shader branch in shared `planet.wgsl`, 3 ring styles)
-- [ ] **Phase 5c** — planet moon-dots (Galilean: Io / Europa / Ganymede / Callisto + Saturn's Titan) → feature parity with Swift build
+- [x] **Phase 5c** — planet moon-dots (Galilean: Io / Europa / Ganymede / Callisto + Saturn's Titan) → **feature parity with Swift build achieved**
 - [ ] **Phase 6** — TOML config, debug overlay, deterministic seed mode → v0.1
 
 Platform packaging (`.saver` bundle on macOS, `.scr` on Windows, xscreensaver hack on Linux) and a settings UI are explicitly out of scope until the renderer is at feature parity.
@@ -135,6 +135,15 @@ Renders one simulated frame to an 8-bit RGBA PNG at the requested size and exits
 | `--saturn-ring-tilt-angle <-27..27>` | (automatic) | Manual override for Saturn's ring-plane tilt in degrees (Schlyter B-formula). Omit (or pass nothing) for the automatic real-world tilt computed from `wall_now`. Pass an explicit value to lock the tilt for cinematic effect — note `0.0` is *edge-on* (rings hidden), not "automatic". |
 | `--saturn-ring-rotation-angle <0..360>` | (automatic) | Manual override for Saturn's ring-plane rotation in degrees (celestial-pole position angle). Omit for the automatic value computed from Saturn's RA/Dec; pass an explicit value to fix the orientation. |
 
+**Phase 5c (planet moons — Galilean + Titan):**
+
+| Flag | Default | What |
+|---|---:|---|
+| `--planet-moons-enabled <bool>` | true | Enable automatic point-sprite emission for the 4 Galilean moons (Io / Europa / Ganymede / Callisto orbiting Jupiter) and Saturn's Titan. Disable to skip engine emission AND the GPU sprite pass entirely (saves a `SpriteRenderer` allocation). |
+| `--debug-moon-colors <bool>` | false | Debug-visualisation override (shared with the lunar moon's raw-albedo mode from Phase 4). When `true`: per-moon hue distinction at α = 1.0 — Io = red, Europa = green, Ganymede = blue, Callisto = cyan, Titan = yellow — handy for verifying which dot is which. When `false`: white at α = 0.78 (default Swift look). |
+| `--jupiter-moon-scale <f64>` | 1.0 | Per-group multiplier on the Galilean moon sprite size before the `[1.0, 3.0]` clamp. Reasonable range `0.5..=4.0`; outside that it's mostly useful for stress tests. No Swift counterpart — Rust-only knob. |
+| `--saturn-moon-scale <f64>` | 1.0 | Per-group multiplier on Titan's sprite size before the `[1.0, 3.0]` clamp. Same defaults / range as `--jupiter-moon-scale`. No Swift counterpart — Rust-only knob. |
+
 Defaults mirror [`StarryDefaultsManager.swift`](../StarryExcuseForAMacScreensaver/StarryDefaultsManager.swift) so a fresh-install Rust run looks like a fresh-install Swift run.
 
 ### Logging
@@ -161,8 +170,8 @@ starry-rs/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs                19 pub mod declarations (no re-exports)
-│       ├── config.rs             clap Config (53 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR + RingStyle enum
-│       ├── types.rs              Color + Point value types + random_star_color
+│       ├── config.rs             clap Config (56 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR + RingStyle enum
+│       ├── types.rs              Color + Point value types + random_star_color + debug_moon_color_premul (per-Galilean/Titan hue for --debug-moon-colors mode)
 │       ├── buildings.rs          6 BuildingStyles + Building + tile-pattern lookup
 │       ├── skyline.rs            Static world: building generation, sky-floor, flasher, periodic-clear timer
 │       ├── skyline_renderer.rs   Per-frame sprite emitter (rate-clocked stars/lights/flasher)
@@ -171,15 +180,15 @@ starry-rs/
 │       ├── moon.rs               Phase math (Julian day, synodic month age) + traversal arc + MoonParams GPU-shared struct
 │       ├── moon_texture.rs       Procedural 64×64 albedo (7 maria + hash noise) + CPU nearest upsample
 │       ├── moon_renderer.rs      Moon GPU pipeline: BGL + 64B UBO + linear sampler + R8Unorm texture + resize-on-demand
-│       ├── planet.rs             Keplerian J2000 ephemeris (8 planets), Austin TX observer, alt/az → screen mapping, nonce-driven random fallback, Saturn ring-tilt (Schlyter B) + ring-position-angle math, PlanetParams GPU-shared struct
+│       ├── planet.rs             Keplerian J2000 ephemeris (8 planets), Austin TX observer, alt/az → screen mapping, nonce-driven random fallback, Saturn ring-tilt (Schlyter B) + ring-position-angle math, PlanetParams GPU-shared struct + MoonSpriteState struct + moon_sprite_states() (per-moon Keplerian orbital ephemeris for Galilean moons + Titan)
 │       ├── planet_texture.rs     8 procedural albedo generators (Mercury/Venus/Mars/Jupiter/Saturn/Uranus/Neptune/Pluto) → 64×64 base → CPU nearest upsample to per-planet diameter; Saturn = pale-gold banded body-only (rings drawn geometrically in shader)
 │       ├── planet_renderer.rs    Planet GPU pipeline: single shader for all 8 planets, per-frame per-planet UBO write, texture cache (HashMap<PlanetIdentity, Texture>), mipmap chain on upload (Swift parity), Saturn-aware quad-aspect 2.0 stretch
 │       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers + Option<Moon> + planets HashMap + RNG + dt clock (wall_now: SystemTime injected)
-│       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong (3) + Option<MoonRenderer> + Option<PlanetRenderer> + 8-pass render orchestration; renders into a caller-supplied &TextureView
+│       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong (3) + Option<MoonRenderer> + Option<PlanetRenderer> + Option<SpriteRenderer> for planet-moons (capacity 5, BlendMode::Over) + 8-pass render orchestration; renders into a caller-supplied &TextureView
 │       ├── sprite.rs             Instanced-quad sprite pipeline w/ BlendMode::{Over, Additive} + grow-on-demand VBO
 │       ├── decay.rs              Fullscreen-quad fragment pass: out = max(textureLoad(src) * keep_factor − eps, 0) — eps subtracted in linear space to escape sRGB-8 quantization fixed point
 │       ├── composite.rs          Stateless N-layer compositor: draw_all(device, pass, &[&TextureView])
-│       ├── headless.rs           Offscreen single-frame render to PNG (6-pass direct-to-target, no ping-pong; HEADLESS_NOW_UNIX_SECS = 2024-01-01 UTC for byte-stable moon phase + planet ephemerides)
+│       ├── headless.rs           Offscreen single-frame render to PNG (up to 7 passes direct-to-target, no ping-pong; HEADLESS_NOW_UNIX_SECS = 2024-01-01 UTC for byte-stable moon phase + planet ephemerides)
 │       ├── shader.wgsl           Sprite vertex + fragment (pixel→NDC, round-disc, premultiplied output)
 │       ├── decay.wgsl            Fullscreen-tri + max(textureLoad(src) * keep − 1/2048, 0) — per-frame UBO; subtractive eps escapes sRGB-8 quantization residue (~0.000488 linear, imperceptible)
 │       ├── moon.wgsl             Moon vertex + fragment (NDC quad, r²>1 discard, soft edge, terminator math, 3 modes, debug-colors override)
@@ -202,7 +211,7 @@ Phase 5a added 7 of the 8 planets (Mercury, Venus, Mars, Jupiter, Uranus, Neptun
 
 Phase 5b filled in Saturn (now all 8 planets are alive): `planet.rs` gained `saturn_ring_state(now)` (Schlyter B-formula tilt + celestial-pole position-angle rotation), `planet_texture.rs` gained a pale-gold banded body-only generator (no rings baked into the albedo — they're geometric), `planet.wgsl` gained a Saturn fragment branch with a 7-zone radial ring band selector (C / B-inner / B-outer / Cassini gap / A-inner / Encke gap / A-outer), an edge-on guard, and 3 user-pickable ring styles (`smooth` / `flat-retro` / `chunky-pixel`). Three new CLI flags (`--saturn-ring-style`, `--saturn-ring-tilt-angle`, `--saturn-ring-rotation-angle`) — the two angle flags are `Option<f64>` so absent = automatic, present = manual override.
 
-Phase 5c will add planet moon-dots (Galilean + Titan) as a 4th `SpriteRenderer` instance — bringing the Rust port to feature parity with the Swift build.
+Phase 5c brought the Rust port to **feature parity with the shipping Swift macOS build** by adding automatic point-sprite emission for the four Galilean moons (Io, Europa, Ganymede, Callisto) and Saturn's Titan. `planet.rs` gained a `MoonSpriteState` struct + `moon_sprite_states(parent, wall_now, parent_radius_px, parent_center_px, ring_tilt_deg, ring_rotation_deg, scale)` standalone function: per-moon orbital constants (semi-major axis in parent-radii, sidereal period in days, initial phase) → 2π·days/period angle → ecliptic XY → foreshorten Y by `sin(ring_tilt_deg)` (3° hardcoded for Jupiter; Saturn uses live ring-tilt) → 2D rotate by ring-rotation → scale by parent radius → near/far-side z-cull. `types.rs` gained `debug_moon_color_premul(name)` returning premultiplied-alpha RGBA per moon for `--debug-moon-colors` mode (Io = red, Europa = green, Ganymede = blue, Callisto = cyan, Titan = yellow at α = 1.0). The `Engine::FrameOutput` grew an 8th field (`planet_moons: &[SpriteInstance]`) populated by an inline single-pass emission loop in `frame_impl`. The `gpu.rs::GpuPipelines` gained an `Option<SpriteRenderer>` field for planet-moons (capacity 5, `BlendMode::Over`) — gated on `--planet-moons-enabled` so disabling fully Option-skips pipeline + VBO + viewport-UBO allocation. The new draw call slots into the existing composite pass between `planets.draw_all()` and `moon.draw()` (3 sub-draws inside the same composite pass — encode-pass count stays at 8). The headless plan grew from 6 passes to 7 (planet-moons inserted between Pass 5 planets and the now-renamed Pass 7 moon, gated lazily on `!frame_output.planet_moons.is_empty()`). Three new CLI flags (`--planet-moons-enabled`, `--jupiter-moon-scale`, `--saturn-moon-scale`); the existing `--debug-moon-colors` flag does double duty toggling both lunar-moon raw-albedo and per-planet-moon hue-distinction modes.
 
 ## License
 

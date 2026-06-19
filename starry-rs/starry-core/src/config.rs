@@ -477,6 +477,29 @@ pub struct Config {
     /// (`defaultSaturnRingStyle = 1`).
     #[arg(long, value_enum, default_value_t = RingStyle::FlatRetro)]
     pub saturn_ring_style: RingStyle,
+
+    // ---- Phase 5c: planet moons (Galilean + Titan) ----
+
+    /// Enable the planet-moon layer (Io, Europa, Ganymede, Callisto
+    /// orbiting Jupiter; Titan orbiting Saturn). Disabling skips engine
+    /// emission and the GPU sprite pass entirely. No Swift counterpart —
+    /// added for symmetry with the other layer master toggles in the
+    /// Rust port (every major layer has a one-line off switch).
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = true)]
+    pub planet_moons_enabled: bool,
+
+    /// Per-group multiplier on the Galilean moon sprite size before the
+    /// `[1.0, 3.0]` clamp. Default `1.0` preserves byte-stable Swift
+    /// parity. Reasonable range `0.5..=4.0`; outside that it's mostly
+    /// useful for stress tests. No Swift counterpart — Rust-only knob.
+    #[arg(long, default_value_t = 1.0)]
+    pub jupiter_moon_scale: f64,
+
+    /// Per-group multiplier on Titan's sprite size before the `[1.0,
+    /// 3.0]` clamp. Same defaults / range as `--jupiter-moon-scale`.
+    /// No Swift counterpart — Rust-only knob.
+    #[arg(long, default_value_t = 1.0)]
+    pub saturn_moon_scale: f64,
 }
 
 impl Default for Config {

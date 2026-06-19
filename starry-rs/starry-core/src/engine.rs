@@ -31,12 +31,13 @@ use crate::config::{
     PLANET_TERMINATOR_BANDS, PLANET_TERMINATOR_WIDTH,
 };
 use crate::moon::{radius_from_percent, Moon, MoonParams};
-use crate::planet::{Planet, PlanetIdentity, PlanetParams};
+use crate::planet::{moon_sprite_states, Planet, PlanetIdentity, PlanetParams};
 use crate::satellites::SatellitesRenderer;
 use crate::shooting_stars::{ShootingStarDirectionMode, ShootingStarsRenderer};
 use crate::skyline::Skyline;
 use crate::skyline_renderer::SkylineRenderer;
 use crate::sprite::SpriteInstance;
+use crate::types::debug_moon_color_premul;
 
 /// Maximum dt clamp (seconds). Long pauses (debugger break, system sleep)
 /// would otherwise burst-emit thousands of sprites in one frame; clamping
@@ -77,6 +78,13 @@ pub struct FrameOutput<'a> {
     /// identity is needed by `PlanetRenderer::ensure_planet` for texture
     /// cache lookup (Phase 5a Step 7).
     pub planets: &'a [(PlanetIdentity, PlanetParams)],
+    /// Planet-moon point sprites (Galilean moons orbiting Jupiter; Titan
+    /// orbiting Saturn). Empty when `config.planet_moons_enabled = false`,
+    /// when no Jupiter/Saturn parent is visible, or when every moon is
+    /// z-culled behind its parent body. Rendered with `BlendMode::Over`
+    /// after the planets pass and before the moon pass — see `gpu.rs` /
+    /// `headless.rs` for the per-frame draw order.
+    pub planet_moons: &'a [SpriteInstance],
 }
 
 pub struct Engine {
@@ -100,6 +108,10 @@ pub struct Engine {
     /// 1 because the flasher emits exactly one sprite per ON frame (zero
     /// per OFF frame). Reused across frames so we don't reallocate.
     flasher_sprite_buf: Vec<SpriteInstance>,
+    /// Per-frame scratch buffer for `FrameOutput.planet_moons`. Capacity 5
+    /// because the planet-moons set is exactly Io + Europa + Ganymede +
+    /// Callisto + Titan when both parents are visible. Reused across frames.
+    planet_moons_sprite_buf: Vec<SpriteInstance>,
     config: Config,
     rng: StdRng,
     last_frame: Instant,
@@ -212,6 +224,7 @@ impl Engine {
             planets,
             planet_params_buf: Vec::with_capacity(8),
             flasher_sprite_buf: Vec::with_capacity(1),
+            planet_moons_sprite_buf: Vec::with_capacity(5),
             config,
             rng,
             last_frame: Instant::now(),
@@ -333,6 +346,7 @@ impl Engine {
         });
 
         self.planet_params_buf.clear();
+        self.planet_moons_sprite_buf.clear();
         for planet in &self.planets {
             let state = planet.frame_state(wall_now);
             if state.brightness <= 0.0 {
@@ -382,6 +396,42 @@ impl Engine {
                     ring_style,
                 },
             ));
+
+            if !self.config.planet_moons_enabled {
+                continue;
+            }
+            let moon_scale = match planet.identity {
+                PlanetIdentity::Jupiter => self.config.jupiter_moon_scale,
+                PlanetIdentity::Saturn => self.config.saturn_moon_scale,
+                _ => continue,
+            };
+            let body_radius_px = if is_saturn {
+                planet.radius as f64 * 0.846
+            } else {
+                planet.radius as f64
+            };
+            let moons = moon_sprite_states(
+                planet.identity,
+                wall_now,
+                state.center_px,
+                body_radius_px,
+                ring_tilt_deg as f64,
+                ring_rotation_deg as f64,
+                moon_scale,
+            );
+            for m in moons {
+                let color = if self.config.debug_moon_colors {
+                    debug_moon_color_premul(m.name)
+                        .unwrap_or_else(|| m.color.premul_rgba(m.alpha))
+                } else {
+                    m.color.premul_rgba(m.alpha)
+                };
+                self.planet_moons_sprite_buf.push(SpriteInstance::new(
+                    [m.center_px.0 as f32, m.center_px.1 as f32],
+                    m.size_px,
+                    color,
+                ));
+            }
         }
 
         FrameOutput {
@@ -392,6 +442,7 @@ impl Engine {
             shooting,
             moon,
             planets: &self.planet_params_buf,
+            planet_moons: &self.planet_moons_sprite_buf,
         }
     }
 }
