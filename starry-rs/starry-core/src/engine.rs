@@ -255,15 +255,22 @@ impl Engine {
     }
 
     /// Render one frame against an explicit `dt` rather than the wall
-    /// clock. Used by the headless PNG dump path so the output is
-    /// deterministic across machines, and for tests. The caller is
-    /// trusted to supply a sensible `dt` — no `MAX_DT_SECONDS` clamp
-    /// here (the clamp exists in `frame()` only to defang wall-clock
-    /// hiccups like debugger pauses). Negative dt is floored to zero.
+    /// clock. Used by:
+    ///   * The headless PNG dump path, so output is deterministic across
+    ///     machines (anchored to `HEADLESS_NOW_UNIX_SECS` + fixed dt).
+    ///   * The Phase 6c windowed `deterministic` / `frozen` time modes,
+    ///     where `app.rs` computes `wall_now = anchor + frame × fixed_dt`
+    ///     (deterministic) or `wall_now = anchor`, `dt = 0` (frozen).
+    ///   * Unit tests that want a repeatable simulation step.
     ///
-    /// `wall_now` is the wall-clock anchor for clock-driven layers (moon).
-    /// Headless passes a fixed reference time to keep PNG output
-    /// byte-stable across machines.
+    /// The caller is trusted to supply a sensible `dt` — no
+    /// `MAX_DT_SECONDS` clamp here (the clamp exists in `frame()` only to
+    /// defang wall-clock hiccups like debugger pauses). Negative dt is
+    /// floored to zero.
+    ///
+    /// `wall_now` is the wall-clock anchor for clock-driven layers (moon,
+    /// planets). Headless passes a fixed reference time to keep PNG
+    /// output byte-stable across machines.
     pub fn frame_with_dt(&mut self, dt_seconds: f64, wall_now: SystemTime) -> FrameOutput<'_> {
         self.last_frame = Instant::now();
         self.frame_impl(dt_seconds.max(0.0), wall_now)

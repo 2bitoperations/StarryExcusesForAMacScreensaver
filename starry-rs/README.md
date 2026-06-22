@@ -23,7 +23,7 @@ Working on the **Rust port roadmap**:
 - [x] **Phase 5b** — Saturn body + geometric ring rendering (Schlyter ring-tilt math, 7-zone shader branch in shared `planet.wgsl`, 3 ring styles)
 - [x] **Phase 5c** — planet moon-dots (Galilean: Io / Europa / Ganymede / Callisto + Saturn's Titan) → **feature parity with Swift build achieved**
 - [x] **Phase 6a** — TOML config loader (defaults < TOML < explicit CLI; `--config <path>`, auto-discovery, `deny_unknown_fields`)
-- [ ] **Phase 6c** — deterministic seed mode (fixed-dt + golden-image diff via `cargo test`)
+- [x] **Phase 6c** — deterministic seed mode (`--time-mode {realtime|deterministic|frozen}` + `--fixed-dt` + `--time-anchor`; `frame_count`-driven wall clock, MAX_DT clamp skipped in det mode)
 - [ ] **Phase 6b** — debug overlay (FPS counter + CPU usage via procedural bitmap font) → v0.1
 
 Platform packaging (`.saver` bundle on macOS, `.scr` on Windows, xscreensaver hack on Linux) and a settings UI are explicitly out of scope until the renderer is at feature parity.
@@ -167,6 +167,14 @@ Path discovery:
 | `--jupiter-moon-scale <f64>` | 1.0 | Per-group multiplier on the Galilean moon sprite size before the `[1.0, 3.0]` clamp. Reasonable range `0.5..=4.0`; outside that it's mostly useful for stress tests. No Swift counterpart — Rust-only knob. |
 | `--saturn-moon-scale <f64>` | 1.0 | Per-group multiplier on Titan's sprite size before the `[1.0, 3.0]` clamp. Same defaults / range as `--jupiter-moon-scale`. No Swift counterpart — Rust-only knob. |
 
+**Phase 6c (time mode):**
+
+| Flag | Default | What |
+|---|---:|---|
+| `--time-mode <realtime\|deterministic\|frozen>` | realtime | Clock source for `wall_now` (drives moon phase, planet ephemerides, satellite/shooting decay). `realtime` = `SystemTime::now()`, frame `dt` from actual frame pacing (clamped to `MAX_DT_SECONDS = 0.25` to absorb pacing hitches); `deterministic` = `wall_now = anchor + frame_count × fixed_dt`, frame `dt = fixed_dt` (clamp skipped — caller is trusted); `frozen` = `wall_now = anchor`, frame `dt = 0` (decay layers neither accumulate nor decay; great for cinematic stills). Headless `--dump-png` ignores this flag entirely — it has its own fixed dt + anchor schedule. |
+| `--fixed-dt <f64>` | 0.016_666_666 | Simulated seconds per frame in `deterministic` mode (default = 1/60s, matching 60 Hz). Ignored in `realtime` and `frozen`. Negative values defensively clamped to 0 to avoid panicking `Duration::from_secs_f64`. |
+| `--time-anchor <u64>` | 1_704_067_200 | Unix epoch seconds anchoring `wall_now` in `deterministic` and `frozen` modes (default = 2024-01-01 UTC, byte-identical to headless `HEADLESS_NOW_UNIX_SECS`). Promoted from `headless.rs` to a `pub const` in `config.rs` so both windowed and headless paths share the literal. Ignored in `realtime`. |
+
 Defaults mirror [`StarryDefaultsManager.swift`](../StarryExcuseForAMacScreensaver/StarryDefaultsManager.swift) so a fresh-install Rust run looks like a fresh-install Swift run.
 
 ### Logging
@@ -193,8 +201,8 @@ starry-rs/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs                20 pub mod declarations (no re-exports)
-│       ├── config.rs             clap Config (59 flags incl. `--config <path>`) + CLEAR_COLOR, LAYER_WIPE_COLOR + RingStyle enum (3 enums grew serde derives in 6a for TOML deser)
-│       ├── toml_config.rs        Phase 6a TOML loader: PartialConfig (mirrors Config minus `--config`, all Option<T>) + apply_over + cli_partial_from_matches (uses ValueSource::CommandLine) + path discovery (`$XDG_CONFIG_HOME/starry/config.toml`, `./starry.toml`) + load_config_from_env(). `#[serde(deny_unknown_fields, rename_all = "kebab-case")]`
+│       ├── config.rs             clap Config (62 flags incl. `--config <path>` + Phase 6c `--time-mode` / `--fixed-dt` / `--time-anchor`) + CLEAR_COLOR, LAYER_WIPE_COLOR + `HEADLESS_NOW_UNIX_SECS` pub const (shared by windowed Phase 6c det-mode default + headless) + RingStyle enum + Phase 6c TimeMode enum (`Realtime` / `Deterministic` / `Frozen`, serde-derived for TOML)
+│       ├── toml_config.rs        Phase 6a TOML loader: PartialConfig (mirrors Config minus `--config`, all Option<T>) + apply_over + cli_partial_from_matches (uses ValueSource::CommandLine) + path discovery (`$XDG_CONFIG_HOME/starry/config.toml`, `./starry.toml`) + load_config_from_env(). `#[serde(deny_unknown_fields, rename_all = "kebab-case")]`. Phase 6c bumped EXPECTED field-count guard 58 → 61 (Config 59 → 62, PartialConfig 58 → 61).
 │       ├── types.rs              Color + Point value types + random_star_color + debug_moon_color_premul (per-Galilean/Titan hue for --debug-moon-colors mode)
 │       ├── buildings.rs          6 BuildingStyles + Building + tile-pattern lookup
 │       ├── skyline.rs            Static world: building generation, sky-floor, flasher, periodic-clear timer
@@ -207,12 +215,12 @@ starry-rs/
 │       ├── planet.rs             Keplerian J2000 ephemeris (8 planets), Austin TX observer, alt/az → screen mapping, nonce-driven random fallback, Saturn ring-tilt (Schlyter B) + ring-position-angle math, PlanetParams GPU-shared struct + MoonSpriteState struct + moon_sprite_states() (per-moon Keplerian orbital ephemeris for Galilean moons + Titan)
 │       ├── planet_texture.rs     8 procedural albedo generators (Mercury/Venus/Mars/Jupiter/Saturn/Uranus/Neptune/Pluto) → 64×64 base → CPU nearest upsample to per-planet diameter; Saturn = pale-gold banded body-only (rings drawn geometrically in shader)
 │       ├── planet_renderer.rs    Planet GPU pipeline: single shader for all 8 planets, per-frame per-planet UBO write, texture cache (HashMap<PlanetIdentity, Texture>), mipmap chain on upload (Swift parity), Saturn-aware quad-aspect 2.0 stretch
-│       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers + Option<Moon> + planets HashMap + RNG + dt clock (wall_now: SystemTime injected)
+│       ├── engine.rs             Simulation orchestrator: Skyline + 3 layer renderers + Option<Moon> + planets HashMap + RNG + dt clock (wall_now: SystemTime injected). Phase 6c: `frame_with_dt(dt, wall_now)` doc now lists 3 callers (headless, Phase 6c det+frozen modes, unit tests) — no API change.
 │       ├── gpu.rs                GpuPipelines — window-agnostic wgpu pipelines: DecayLayer ping-pong (3) + Option<MoonRenderer> + Option<PlanetRenderer> + Option<SpriteRenderer> for planet-moons (capacity 5, BlendMode::Over) + 8-pass render orchestration; renders into a caller-supplied &TextureView
 │       ├── sprite.rs             Instanced-quad sprite pipeline w/ BlendMode::{Over, Additive} + grow-on-demand VBO
 │       ├── decay.rs              Fullscreen-quad fragment pass: out = max(textureLoad(src) * keep_factor − eps, 0) — eps subtracted in linear space to escape sRGB-8 quantization fixed point
 │       ├── composite.rs          Stateless N-layer compositor: draw_all(device, pass, &[&TextureView])
-│       ├── headless.rs           Offscreen single-frame render to PNG (up to 7 passes direct-to-target, no ping-pong; HEADLESS_NOW_UNIX_SECS = 2024-01-01 UTC for byte-stable moon phase + planet ephemerides)
+│       ├── headless.rs           Offscreen single-frame render to PNG (up to 7 passes direct-to-target, no ping-pong; imports `HEADLESS_NOW_UNIX_SECS` from `crate::config` for byte-stable moon phase + planet ephemerides — Phase 6c promoted the const out of headless.rs so windowed det-mode shares the literal)
 │       ├── shader.wgsl           Sprite vertex + fragment (pixel→NDC, round-disc, premultiplied output)
 │       ├── decay.wgsl            Fullscreen-tri + max(textureLoad(src) * keep − 1/2048, 0) — per-frame UBO; subtractive eps escapes sRGB-8 quantization residue (~0.000488 linear, imperceptible)
 │       ├── moon.wgsl             Moon vertex + fragment (NDC quad, r²>1 discard, soft edge, terminator math, 3 modes, debug-colors override)
@@ -223,7 +231,7 @@ starry-rs/
     ├── Cargo.toml
     └── src/
         ├── main.rs               entry point + CLI dispatch (windowed vs --dump-png)
-        ├── app.rs                winit ApplicationHandler — owns Window + WindowedGpu + Engine
+        ├── app.rs                winit ApplicationHandler — owns Window + WindowedGpu + Engine + Phase 6c `frame_count: u64` (reset on Resized to keep moon from teleporting after resize). Per-frame `match self.config.time_mode` dispatch: realtime → `Engine::frame(now)` (clamps dt); deterministic → `Engine::frame_with_dt(fixed_dt, anchor + frame_count × fixed_dt)`; frozen → `Engine::frame_with_dt(0.0, anchor)`. `deterministic_wall_now` helper with defensive `.max(0.0)` on negative fixed_dt.
         └── gpu.rs                WindowedGpu — surface + swap-chain wrapper around GpuPipelines
 ```
 

@@ -48,6 +48,18 @@ const MAX_LIGHTS_PER_SEC_AT_REF: f64 = 600.0;
 /// large, plus runway for the multi-layer phases.
 pub const SPRITE_CAPACITY: u64 = 131_072;
 
+/// Reference wall-clock anchor (Unix seconds, UTC) used in two places:
+///   * The hardcoded `wall_now` for the `--dump-png` headless renderer,
+///     so PNG output stays byte-stable across machines + over time
+///     (independent of the wall clock when the dump runs).
+///   * The default value for `--time-anchor` in Phase 6c deterministic
+///     mode, so `--time-mode deterministic` Just Works with no other
+///     flags supplied and produces output anchored to the same moment
+///     headless does.
+///
+/// Value = 2024-01-01 00:00:00 UTC = 1_704_067_200 seconds since epoch.
+pub const HEADLESS_NOW_UNIX_SECS: u64 = 1_704_067_200;
+
 /// Brightness multiplier for a planet's lit hemisphere. Mirrors Swift's
 /// hardcoded `brightBrightness: 1.0` at `StarryEngine.swift:996`.
 pub const PLANET_BRIGHT_BRIGHTNESS: f32 = 1.0;
@@ -142,6 +154,43 @@ impl From<RingStyle> for i32 {
             RingStyle::FlatRetro => 1,
             RingStyle::ChunkyPixel => 2,
         }
+    }
+}
+
+/// Selects how the windowed renderer sources its per-frame `wall_now` +
+/// `dt`. Consumed only by `app.rs`; headless (`--dump-png`) always uses
+/// its own hardcoded anchor + dt for byte-stable PNG output regardless
+/// of this flag. Phase 6c.
+#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TimeMode {
+    /// Default. `wall_now = SystemTime::now()`, `dt = Instant-derived
+    /// frame time` (clamped to `MAX_DT_SECONDS = 0.25s` to defang
+    /// debugger pauses). Ignores `--fixed-dt` and `--time-anchor`.
+    Realtime,
+    /// Reproducible mode. `wall_now = anchor + frame_count × fixed_dt`,
+    /// `dt = fixed_dt`. Skips the MAX_DT clamp (the user has signed off
+    /// on the timestep). Same `(seed, w, h, fixed_dt, time_anchor)`
+    /// produces byte-identical frame sequences across runs and machines.
+    Deterministic,
+    /// Single frozen frame. `wall_now = anchor`, `dt = 0`. Decay layers
+    /// neither accumulate nor decay; clock-driven layers (moon, planets)
+    /// render the celestial state at exactly `time_anchor`. Useful for
+    /// staring at a specific moment in the window without it animating.
+    Frozen,
+}
+
+/// `Display` delegates to clap's own `ValueEnum` name mapping so
+/// `default_value_t = ...` produces exactly the string clap will accept
+/// back on the command line. Single source of truth, no drift risk.
+/// Same pattern as `PlanetPhaseMode` above.
+impl std::fmt::Display for TimeMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use clap::ValueEnum;
+        self.to_possible_value()
+            .expect("TimeMode variants are not #[value(skip)]")
+            .get_name()
+            .fmt(f)
     }
 }
 
@@ -514,6 +563,35 @@ pub struct Config {
     /// No Swift counterpart — Rust-only knob.
     #[arg(long, default_value_t = 1.0)]
     pub saturn_moon_scale: f64,
+
+    // ---- Phase 6c: deterministic seed mode ----
+
+    /// Source of wall-clock + dt for the windowed renderer. `realtime`
+    /// (default) uses `SystemTime::now()` and Instant-derived dt with a
+    /// MAX_DT clamp; `deterministic` advances `wall_now` by `fixed_dt`
+    /// each frame from `time_anchor` (skips the clamp); `frozen` pins
+    /// the simulation to `time_anchor` with dt=0. No effect on
+    /// `--dump-png` headless renders (always deterministic with its own
+    /// hardcoded constants).
+    #[arg(long, value_enum, default_value_t = TimeMode::Realtime)]
+    pub time_mode: TimeMode,
+
+    /// Fixed timestep in seconds. Only consulted when `--time-mode
+    /// deterministic`. Default `1/60` ≈ 0.01666 targets the typical
+    /// display refresh rate; lower values produce more decay/spawn
+    /// updates per second of simulation time. Ignored by `realtime` and
+    /// `frozen` modes.
+    #[arg(long, default_value_t = 1.0 / 60.0)]
+    pub fixed_dt: f64,
+
+    /// Wall-clock anchor in Unix seconds (UTC). Used by `deterministic`
+    /// and `frozen` time modes as the celestial-time reference (moon
+    /// phase, planet ephemerides). Defaults to `HEADLESS_NOW_UNIX_SECS`
+    /// = 2024-01-01 00:00:00 UTC so deterministic mode matches the
+    /// headless renderer's anchor by default. Ignored by `realtime`
+    /// mode.
+    #[arg(long, default_value_t = HEADLESS_NOW_UNIX_SECS)]
+    pub time_anchor: u64,
 }
 
 impl Default for Config {

@@ -40,7 +40,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use pollster::FutureExt as _;
 
-use crate::config::{CLEAR_COLOR, Config, SPRITE_CAPACITY};
+use crate::config::{CLEAR_COLOR, Config, HEADLESS_NOW_UNIX_SECS, SPRITE_CAPACITY};
 use crate::engine::Engine;
 use crate::moon_renderer::MoonRenderer;
 use crate::planet_renderer::PlanetRenderer;
@@ -57,13 +57,6 @@ const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 /// where the wall-clock `frame()` clamp would kick in. (`frame_with_dt`
 /// trusts the caller — see engine.rs.)
 const HEADLESS_DT_SECONDS: f64 = 5.0;
-
-/// Wall-clock anchor for clock-driven layers (the moon, currently). Pinned
-/// to 2024-01-01 00:00:00 UTC so the moon's screen position and phase
-/// fraction are byte-stable across machines, regardless of when the dump
-/// is run. Any constant in `[~947182440, +∞)` would work — picked a round
-/// year-boundary value for readability.
-const HEADLESS_NOW_UNIX_SECS: u64 = 1_704_067_200;
 
 pub fn dump_png(config: &Config) -> Result<(), Box<dyn Error>> {
     dump_png_async(config).block_on()

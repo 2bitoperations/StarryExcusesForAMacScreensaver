@@ -1,6 +1,9 @@
 //! winit `ApplicationHandler` for the windowed shell. Owns the window, the
 //! GPU state, and the simulation `Engine`. Each redraw advances the engine
-//! by wall-clock dt and hands the resulting `FrameOutput` to the GPU.
+//! using the configured `TimeMode`: `realtime` derives dt from `Instant`
+//! and `wall_now` from `SystemTime::now()`; `deterministic` advances
+//! `wall_now` by `fixed_dt` per frame from `time_anchor` and skips the
+//! dt clamp; `frozen` pins both to `time_anchor` with dt=0.
 //!
 //! Resize policy: rebuilds the `Engine` from scratch (preserving `seed`)
 //! whenever the surface dimensions change. The skyline geometry is
@@ -11,9 +14,12 @@
 //! changes to avoid pointless work on no-op `Resized` events.
 
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use starry_core::{config::Config, engine::Engine};
+use starry_core::{
+    config::{Config, TimeMode},
+    engine::Engine,
+};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -29,6 +35,12 @@ pub struct App {
     window: Option<Arc<Window>>,
     gpu: Option<WindowedGpu>,
     engine: Option<Engine>,
+    /// Monotonic counter advanced once per redraw in `TimeMode::Deterministic`
+    /// to compute `wall_now = anchor + frame_count × fixed_dt`. Unread by
+    /// other time modes. Reset to 0 on engine rebuild (resize) so the
+    /// deterministic timeline restarts from the anchor instead of
+    /// teleporting the simulation forward by accumulated frames.
+    frame_count: u64,
 }
 
 impl App {
@@ -38,6 +50,7 @@ impl App {
             window: None,
             gpu: None,
             engine: None,
+            frame_count: 0,
         }
     }
 }
@@ -106,6 +119,7 @@ impl ApplicationHandler for App {
                 if engine.width() != actual.width || engine.height() != actual.height {
                     let rebuilt = config_with_dims(&self.config, actual.width, actual.height);
                     *engine = Engine::new(rebuilt);
+                    self.frame_count = 0;
                     log::info!(
                         "engine rebuilt at {}x{} (seed preserved)",
                         actual.width,
@@ -116,7 +130,18 @@ impl ApplicationHandler for App {
             }
 
             WindowEvent::RedrawRequested => {
-                let frame_output = engine.frame(SystemTime::now());
+                let frame_output = match self.config.time_mode {
+                    TimeMode::Realtime => engine.frame(SystemTime::now()),
+                    TimeMode::Deterministic => {
+                        let wall_now = deterministic_wall_now(&self.config, self.frame_count);
+                        self.frame_count = self.frame_count.saturating_add(1);
+                        engine.frame_with_dt(self.config.fixed_dt, wall_now)
+                    }
+                    TimeMode::Frozen => {
+                        let anchor = UNIX_EPOCH + Duration::from_secs(self.config.time_anchor);
+                        engine.frame_with_dt(0.0, anchor)
+                    }
+                };
                 gpu.render(frame_output);
                 window.request_redraw();
             }
@@ -131,4 +156,14 @@ fn config_with_dims(base: &Config, width: u32, height: u32) -> Config {
     c.width = width;
     c.height = height;
     c
+}
+
+/// Compute `wall_now` for `TimeMode::Deterministic`. Negative or non-finite
+/// `fixed_dt` is clamped to zero so `Duration::from_secs_f64` never
+/// panics; in practice clap rejects non-numeric values, so this is just
+/// belt-and-suspenders.
+fn deterministic_wall_now(cfg: &Config, frame_count: u64) -> SystemTime {
+    let anchor = UNIX_EPOCH + Duration::from_secs(cfg.time_anchor);
+    let elapsed = (cfg.fixed_dt * frame_count as f64).max(0.0);
+    anchor + Duration::from_secs_f64(elapsed)
 }

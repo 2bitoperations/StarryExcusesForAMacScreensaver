@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use clap::{CommandFactory, parser::ValueSource};
 use serde::Deserialize;
 
-use crate::config::{Config, PlanetPhaseMode, RingStyle};
+use crate::config::{Config, PlanetPhaseMode, RingStyle, TimeMode};
 use crate::planet::BelowHorizonBehavior;
 
 /// Mirrors `Config` 1:1 with every field wrapped in `Option<T>`.
@@ -106,6 +106,9 @@ pub struct PartialConfig {
     pub planet_moons_enabled: Option<bool>,
     pub jupiter_moon_scale: Option<f64>,
     pub saturn_moon_scale: Option<f64>,
+    pub time_mode: Option<TimeMode>,
+    pub fixed_dt: Option<f64>,
+    pub time_anchor: Option<u64>,
 }
 
 impl PartialConfig {
@@ -287,6 +290,15 @@ impl PartialConfig {
         if let Some(v) = self.saturn_moon_scale {
             dst.saturn_moon_scale = v;
         }
+        if let Some(v) = self.time_mode {
+            dst.time_mode = v;
+        }
+        if let Some(v) = self.fixed_dt {
+            dst.fixed_dt = v;
+        }
+        if let Some(v) = self.time_anchor {
+            dst.time_anchor = v;
+        }
     }
 }
 
@@ -370,6 +382,9 @@ fn cli_partial_from_matches(matches: &clap::ArgMatches) -> PartialConfig {
         planet_moons_enabled: pick(matches, "planet_moons_enabled"),
         jupiter_moon_scale: pick(matches, "jupiter_moon_scale"),
         saturn_moon_scale: pick(matches, "saturn_moon_scale"),
+        time_mode: pick(matches, "time_mode"),
+        fixed_dt: pick(matches, "fixed_dt"),
+        time_anchor: pick(matches, "time_anchor"),
     }
 }
 
@@ -588,12 +603,13 @@ mod tests {
     /// in stable Rust. Update both numbers when adding a flag.
     #[test]
     fn partial_field_count_matches_config() {
-        // `Config` has 59 user-facing fields per
-        // `grep -c "^    pub [a-z_]" config.rs` at Phase 6a; `PartialConfig`
-        // mirrors 58 of them — the 59th (`config: Option<PathBuf>` for the
+        // `Config` has 62 user-facing fields per
+        // `grep -c "^    pub [a-z_]" config.rs` at Phase 6c (was 59 at 6a;
+        // 6c added `time_mode`, `fixed_dt`, `time_anchor`); `PartialConfig`
+        // mirrors 61 of them — the 62nd (`config: Option<PathBuf>` for the
         // `--config <path>` flag) is intentionally omitted because a TOML
         // file shouldn't be allowed to specify the path to itself.
-        const EXPECTED: usize = 58;
+        const EXPECTED: usize = 61;
 
         // Touching every `Config` field forces the compiler to fail
         // here if a field is renamed/removed — and forces the
@@ -667,7 +683,8 @@ mod tests {
             c.jupiter_moon_scale,
             c.saturn_moon_scale,
         );
-        assert_eq!(EXPECTED, 58, "phase-6a anchor");
+        let _ = (c.time_mode, c.fixed_dt, c.time_anchor);
+        assert_eq!(EXPECTED, 61, "phase-6c anchor");
     }
 
     // ----- Lightweight tempdir helper. tempfile crate is overkill for
