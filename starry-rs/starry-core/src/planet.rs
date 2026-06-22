@@ -109,7 +109,8 @@ impl PlanetIdentity {
 // BelowHorizonBehavior
 // ---------------------------------------------------------------------------
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, clap::ValueEnum, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BelowHorizonBehavior {
     /// Planet is hidden (brightness 0.0) whenever it is geometrically below the
     /// horizon for the observer.

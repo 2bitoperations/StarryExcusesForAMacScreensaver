@@ -31,4 +31,5 @@ pub mod shooting_stars;
 pub mod skyline;
 pub mod skyline_renderer;
 pub mod sprite;
+pub mod toml_config;
 pub mod types;

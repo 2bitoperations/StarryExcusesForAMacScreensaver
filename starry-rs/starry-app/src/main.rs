@@ -6,8 +6,7 @@
 mod app;
 mod gpu;
 
-use clap::Parser;
-use starry_core::config::Config;
+use starry_core::toml_config::load_config_from_env;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use crate::app::App;
@@ -15,8 +14,10 @@ use crate::app::App;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let config = Config::parse();
-    log::info!("starry-rs phase 3.5 starting — homage to the homage to the homage");
+    // Phase 6a: layered config — clap defaults < TOML file < explicit CLI.
+    // See `starry_core::toml_config` for precedence + path-discovery rules.
+    let config = load_config_from_env()?;
+    log::info!("starry-rs phase 6a starting — homage to the homage to the homage");
 
     if config.dump_png.is_some() {
         return starry_core::headless::dump_png(&config);

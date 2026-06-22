@@ -22,7 +22,9 @@ Working on the **Rust port roadmap**:
 - [x] **Phase 5a (follow-up)** — subtractive eps in decay shader to escape sRGB-8 quantization fixed point (shooting-star residue fix)
 - [x] **Phase 5b** — Saturn body + geometric ring rendering (Schlyter ring-tilt math, 7-zone shader branch in shared `planet.wgsl`, 3 ring styles)
 - [x] **Phase 5c** — planet moon-dots (Galilean: Io / Europa / Ganymede / Callisto + Saturn's Titan) → **feature parity with Swift build achieved**
-- [ ] **Phase 6** — TOML config, debug overlay, deterministic seed mode → v0.1
+- [x] **Phase 6a** — TOML config loader (defaults < TOML < explicit CLI; `--config <path>`, auto-discovery, `deny_unknown_fields`)
+- [ ] **Phase 6c** — deterministic seed mode (fixed-dt + golden-image diff via `cargo test`)
+- [ ] **Phase 6b** — debug overlay (FPS counter + CPU usage via procedural bitmap font) → v0.1
 
 Platform packaging (`.saver` bundle on macOS, `.scr` on Windows, xscreensaver hack on Linux) and a settings UI are explicitly out of scope until the renderer is at feature parity.
 
@@ -48,6 +50,26 @@ cargo run -- --dump-png /tmp/starry.png
 
 Renders one simulated frame to an 8-bit RGBA PNG at the requested size and exits. The headless path drives the `Engine` at a fixed `dt = 5.0s` against a seeded RNG (default `--seed 42`), so output is byte-stable across runs for a given `(seed, width, height)` — perfect for committing reference images and diffing later.
 
+### Configuration file (TOML)
+
+Any CLI flag can be set in a TOML config file using its kebab-case name. Precedence is **clap defaults < TOML file < explicit CLI flags**, so a CLI flag always wins over the TOML, and the TOML always wins over the built-in defaults.
+
+Minimal example (`./starry.toml`):
+
+```toml
+seed = 12345
+width = 1920
+height = 1080
+```
+
+Path discovery:
+- `--config <path>` — explicit. If the file is missing, that's a hard error (the flag is a promise).
+- `$XDG_CONFIG_HOME/starry/config.toml` — auto-discovered. Missing = silent fallthrough.
+- `./starry.toml` (current working directory) — auto-discovered. Missing = silent fallthrough.
+- No file found anywhere → built-in defaults.
+
+`#[serde(deny_unknown_fields)]` is enabled, so typos in TOML key names (e.g. `start-fraction` instead of `stars-fraction`) trigger a parse error at load time rather than being silently ignored. The full list of valid keys is exactly the long-form CLI flag names (kebab-case, without the leading `--`).
+
 ### CLI flags
 
 `starry-rs` uses `clap` derive for argument parsing. Run `cargo run -- --help` for the full list.
@@ -59,6 +81,7 @@ Renders one simulated frame to an 8-bit RGBA PNG at the requested size and exits
 | `--width <px>` | 1280 | Window / dump width |
 | `--height <px>` | 800 | Window / dump height |
 | `--dump-png <path>` | — | Headless mode: render one frame to PNG, exit |
+| `--config <path>` | — | Explicit TOML config file path (missing file = hard error). Without this flag, auto-discovered at `$XDG_CONFIG_HOME/starry/config.toml` then `./starry.toml` |
 | `--seed <u64>` | 42 | RNG seed for skyline geometry + sprite emission |
 | `--stars-fraction <0..1>` | 0.5 | Star emission rate as a fraction of the reference max |
 | `--lights-fraction <0..1>` | 0.25 | Building-light emission rate fraction |
@@ -169,8 +192,9 @@ starry-rs/
 ├── starry-core/              library crate — window-agnostic; all simulation + GPU pipeline + WGSL + headless
 │   ├── Cargo.toml
 │   └── src/
-│       ├── lib.rs                19 pub mod declarations (no re-exports)
-│       ├── config.rs             clap Config (56 flags) + CLEAR_COLOR, LAYER_WIPE_COLOR + RingStyle enum
+│       ├── lib.rs                20 pub mod declarations (no re-exports)
+│       ├── config.rs             clap Config (59 flags incl. `--config <path>`) + CLEAR_COLOR, LAYER_WIPE_COLOR + RingStyle enum (3 enums grew serde derives in 6a for TOML deser)
+│       ├── toml_config.rs        Phase 6a TOML loader: PartialConfig (mirrors Config minus `--config`, all Option<T>) + apply_over + cli_partial_from_matches (uses ValueSource::CommandLine) + path discovery (`$XDG_CONFIG_HOME/starry/config.toml`, `./starry.toml`) + load_config_from_env(). `#[serde(deny_unknown_fields, rename_all = "kebab-case")]`
 │       ├── types.rs              Color + Point value types + random_star_color + debug_moon_color_premul (per-Galilean/Titan hue for --debug-moon-colors mode)
 │       ├── buildings.rs          6 BuildingStyles + Building + tile-pattern lookup
 │       ├── skyline.rs            Static world: building generation, sky-floor, flasher, periodic-clear timer

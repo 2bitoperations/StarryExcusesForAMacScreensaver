@@ -28,6 +28,8 @@ rand = "0.8"
 bytemuck = { version = "1", features = ["derive"] }
 png = "0.17"
 clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 [profile.release]
 lto = "thin"

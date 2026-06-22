@@ -77,7 +77,8 @@ pub const PLANET_TERMINATOR_BANDS: u32 = 3;
 ///              : config.planetTerminatorMode == "forcedHalf" ? 0.5
 ///              : Float(state.phaseFraction)
 /// ```
-#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum PlanetPhaseMode {
     /// `phaseFraction = 1.0`. Planet renders fully lit; terminator is
     /// invisible regardless of shader mode. Swift default.
@@ -108,7 +109,8 @@ impl std::fmt::Display for PlanetPhaseMode {
 /// retro (Bayer 2×2 dither + 4-color earthy palette), 2 = chunky pixel
 /// (radial 16-step quantize + checker dither). Default is `FlatRetro`
 /// for Swift parity.
-#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(clap::ValueEnum, Copy, Clone, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum RingStyle {
     /// Continuous brightness gradient — physically reasonable, but lacks
     /// the AfterDark-era look the project is going for.
@@ -161,6 +163,18 @@ pub struct Config {
     /// opening a window.
     #[arg(long)]
     pub dump_png: Option<PathBuf>,
+
+    /// Path to a TOML configuration file. If supplied, the file is loaded
+    /// and its keys override clap's built-in defaults; any flag passed on
+    /// the command line still takes precedence over both. If the file
+    /// doesn't exist, this is a hard error (the user explicitly asked
+    /// for it). When omitted, the loader auto-discovers
+    /// `$XDG_CONFIG_HOME/starry/config.toml` then `./starry.toml` —
+    /// missing files in that path are silently ignored. See
+    /// `toml_config.rs` for the schema (flat snake_case mirror of these
+    /// flags) and `starry-rs/README.md` for examples.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 
     /// Star emission rate as a fraction of the reference max. Swift default
     /// (`starsPerUpdateFraction`) is 0.5.
