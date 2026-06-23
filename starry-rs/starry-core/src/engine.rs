@@ -27,9 +27,11 @@ use std::time::{Instant, SystemTime};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use crate::config::{
-    Config, PlanetPhaseMode, RingStyle, PLANET_BRIGHT_BRIGHTNESS, PLANET_DARK_BRIGHTNESS,
-    PLANET_TERMINATOR_BANDS, PLANET_TERMINATOR_WIDTH,
+    Config, PlanetPhaseMode, RingStyle, BUILD_COMMIT, PLANET_BRIGHT_BRIGHTNESS,
+    PLANET_DARK_BRIGHTNESS, PLANET_TERMINATOR_BANDS, PLANET_TERMINATOR_WIDTH,
 };
+use crate::cpu_sample::sample_process_cpu_seconds;
+use crate::debug_overlay::DebugOverlayFrame;
 use crate::moon::{radius_from_percent, Moon, MoonParams};
 use crate::planet::{moon_sprite_states, Planet, PlanetIdentity, PlanetParams};
 use crate::satellites::SatellitesRenderer;
@@ -51,6 +53,67 @@ const MAX_DT_SECONDS: f64 = 0.25;
 pub struct LayerFrame<'a> {
     pub sprites: &'a [SpriteInstance],
     pub keep_factor: f32,
+}
+
+/// FPS + CPU% smoothers for the Phase 6b debug overlay. EMA constants and
+/// FPS-window length mirror `StarryEngine.swift::updateFPS` (`0.6 * prev +
+/// 0.4 * fresh` over a 500ms accumulation window) and `sampleCPU` (`0.8 *
+/// prev + 0.2 * fresh` every frame). `last_cpu_seconds` is `None` until the
+/// first CPU sample lands (matches Swift's `== 0` first-sample guard).
+struct DebugSmoothers {
+    fps_frame_count: u32,
+    fps_accumulated_time: f64,
+    current_fps: f64,
+    current_cpu_percent: f64,
+    last_cpu_seconds: Option<f64>,
+}
+
+impl DebugSmoothers {
+    fn new() -> Self {
+        Self {
+            fps_frame_count: 0,
+            fps_accumulated_time: 0.0,
+            current_fps: 0.0,
+            current_cpu_percent: 0.0,
+            last_cpu_seconds: None,
+        }
+    }
+
+    fn update(&mut self, dt: f64) {
+        if dt <= 0.0 {
+            return;
+        }
+
+        self.fps_frame_count += 1;
+        self.fps_accumulated_time += dt;
+        if self.fps_accumulated_time >= 0.5 {
+            let fps = self.fps_frame_count as f64 / self.fps_accumulated_time;
+            self.current_fps = self.current_fps * 0.6 + fps * 0.4;
+            self.fps_accumulated_time = 0.0;
+            self.fps_frame_count = 0;
+        }
+
+        if let Some(cpu_seconds) = sample_process_cpu_seconds() {
+            match self.last_cpu_seconds {
+                None => {
+                    self.last_cpu_seconds = Some(cpu_seconds);
+                }
+                Some(prev) => {
+                    let delta_cpu = (cpu_seconds - prev).max(0.0);
+                    let percent = (delta_cpu / dt) * 100.0;
+                    self.current_cpu_percent = self.current_cpu_percent * 0.8 + percent * 0.2;
+                    self.last_cpu_seconds = Some(cpu_seconds);
+                }
+            }
+        }
+    }
+
+    fn stats_text(&self) -> String {
+        format!(
+            "FPS={:.1} CPU={:.1}%",
+            self.current_fps, self.current_cpu_percent
+        )
+    }
 }
 
 /// Everything the GPU layer needs to render one frame. Skyline is the
@@ -85,6 +148,11 @@ pub struct FrameOutput<'a> {
     /// after the planets pass and before the moon pass — see `gpu.rs` /
     /// `headless.rs` for the per-frame draw order.
     pub planet_moons: &'a [SpriteInstance],
+    /// Phase 6b debug overlay (FPS/CPU stats + build commit). `Some` iff
+    /// `config.debug_overlay_enabled` was true at engine construction.
+    /// Owned strings (not borrowed) — the per-frame heap traffic is
+    /// negligible (~30 bytes) and keeps the lifetime story trivial.
+    pub debug_overlay: Option<DebugOverlayFrame>,
 }
 
 pub struct Engine {
@@ -112,6 +180,11 @@ pub struct Engine {
     /// because the planet-moons set is exactly Io + Europa + Ganymede +
     /// Callisto + Titan when both parents are visible. Reused across frames.
     planet_moons_sprite_buf: Vec<SpriteInstance>,
+    /// Phase 6b debug-overlay smoothers. `Some` iff `config.debug_overlay_enabled`
+    /// at construction; skipping construction when disabled keeps zero
+    /// per-frame work for the disabled case (no `sample_process_cpu_seconds`
+    /// syscall, no string formatting).
+    debug_smoothers: Option<DebugSmoothers>,
     config: Config,
     rng: StdRng,
     last_frame: Instant,
@@ -225,6 +298,7 @@ impl Engine {
             planet_params_buf: Vec::with_capacity(8),
             flasher_sprite_buf: Vec::with_capacity(1),
             planet_moons_sprite_buf: Vec::with_capacity(5),
+            debug_smoothers: config.debug_overlay_enabled.then(DebugSmoothers::new),
             config,
             rng,
             last_frame: Instant::now(),
@@ -450,6 +524,13 @@ impl Engine {
             moon,
             planets: &self.planet_params_buf,
             planet_moons: &self.planet_moons_sprite_buf,
+            debug_overlay: self.debug_smoothers.as_mut().map(|s| {
+                s.update(dt);
+                DebugOverlayFrame {
+                    stats_text: s.stats_text(),
+                    build_info_text: BUILD_COMMIT.to_string(),
+                }
+            }),
         }
     }
 }

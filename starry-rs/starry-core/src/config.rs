@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use git_version::git_version;
 
 /// Sky color cleared into the composite target every frame. Opaque black
 /// to match Swift (`StarryMetalRenderer.swift:1593` —
@@ -79,6 +80,12 @@ pub const PLANET_TERMINATOR_WIDTH: f32 = 0.1;
 /// mode 2). Mirrors Swift's hardcoded `terminatorBands: 3` at
 /// `StarryEngine.swift:1001`.
 pub const PLANET_TERMINATOR_BANDS: u32 = 3;
+
+/// Short git commit hash, baked in at build time. Used by the Phase 6b
+/// debug overlay to label which build is running. Falls back to
+/// `"unknown"` when built outside a git checkout (e.g. published source
+/// tarball). Rust counterpart of `BuildInfo.swift::buildCommit`.
+pub const BUILD_COMMIT: &str = git_version!(fallback = "unknown");
 
 /// Selects how `phaseFraction` is computed for planets before being passed
 /// to the shader. This does NOT control the shader's terminator render
@@ -433,6 +440,15 @@ pub struct Config {
     /// (`defaultDebugMoonColors`) is false.
     #[arg(long, action = clap::ArgAction::Set, default_value_t = false)]
     pub debug_moon_colors: bool,
+
+    /// Phase 6b debug overlay (FPS + CPU% stats top-left, build commit
+    /// bottom-right). Default off, matching Swift
+    /// (`defaultDebugOverlayEnabled` / `defaultShowBuildInfo` both false).
+    /// One flag here covers both stats and build-info overlays — Swift
+    /// has them as two separate config bools but in practice they're
+    /// always toggled together.
+    #[arg(long, action = clap::ArgAction::Set, default_value_t = false)]
+    pub debug_overlay_enabled: bool,
 
     // ---- Phase 5a: planets ----
 

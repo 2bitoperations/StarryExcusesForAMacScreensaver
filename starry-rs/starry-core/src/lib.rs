@@ -16,8 +16,11 @@
 pub mod buildings;
 pub mod composite;
 pub mod config;
+pub mod cpu_sample;
+pub mod debug_overlay;
 pub mod decay;
 pub mod engine;
+pub mod font;
 pub mod gpu;
 pub mod headless;
 pub mod moon;

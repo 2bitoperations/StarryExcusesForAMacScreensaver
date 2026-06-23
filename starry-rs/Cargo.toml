@@ -30,6 +30,11 @@ png = "0.17"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+# Compile-time git short SHA for the debug overlay's build-info widget; fallback keeps non-git checkouts building.
+git-version = "0.3"
+# Per-OS CPU sampling for the debug overlay; cfg-gated at the consumer site so only one of the two ships per target.
+libc = "0.2"
+windows-sys = { version = "0.59", features = ["Win32_System_Threading", "Win32_Foundation"] }
 
 [profile.release]
 lto = "thin"

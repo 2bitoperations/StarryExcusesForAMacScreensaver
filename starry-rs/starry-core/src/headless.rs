@@ -23,6 +23,7 @@
 //!   - Pass 5: load + planet discs (PremulAlpha)         [if any visible]
 //!   - Pass 6: load + planet-moon  sprites (Over)        [if any emitted]
 //!   - Pass 7: load + moon disc    (PremulAlpha)         [if enabled]
+//!   - Pass 8: load + debug overlay glyphs (Over)        [if enabled]
 //!
 //! `HEADLESS_NOW_UNIX_SECS` pins the moon's wall-clock anchor to a fixed
 //! reference instant (2024-01-01 UTC) so the moon's screen position and
@@ -41,6 +42,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use pollster::FutureExt as _;
 
 use crate::config::{CLEAR_COLOR, Config, HEADLESS_NOW_UNIX_SECS, SPRITE_CAPACITY};
+use crate::debug_overlay::{DebugOverlayRenderer, layout_instances};
 use crate::engine::Engine;
 use crate::moon_renderer::MoonRenderer;
 use crate::planet_renderer::PlanetRenderer;
@@ -173,6 +175,13 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
             width,
             config.moon_diameter_percent,
         )
+    });
+
+    let mut debug_overlay_renderer = frame_output.debug_overlay.as_ref().map(|frame| {
+        let mut r = DebugOverlayRenderer::new(&device, &queue, TEXTURE_FORMAT, width, height);
+        let instances = layout_instances(frame, width as f32, height as f32);
+        r.set_instances(&device, &queue, &instances);
+        r
     });
 
     log::info!(
@@ -335,6 +344,23 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
             ..Default::default()
         });
         m.draw(&queue, &mut pass, p, width as f32, height as f32);
+    }
+
+    if let Some(r) = debug_overlay_renderer.as_mut() {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("headless debug overlay pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &target_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+        r.draw(&mut pass);
     }
 
     encoder.copy_texture_to_buffer(

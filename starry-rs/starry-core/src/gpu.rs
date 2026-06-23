@@ -53,6 +53,7 @@
 
 use crate::composite::CompositeRenderer;
 use crate::config::{CLEAR_COLOR, Config, LAYER_WIPE_COLOR, SPRITE_CAPACITY};
+use crate::debug_overlay::{DebugOverlayRenderer, layout_instances};
 use crate::decay::DecayRenderer;
 use crate::engine::{FrameOutput, LayerFrame};
 use crate::moon_renderer::MoonRenderer;
@@ -190,6 +191,12 @@ pub struct GpuPipelines {
     /// Saturn are visible above the horizon. `BlendMode::Over` matches
     /// Swift's `spriteOver` pipeline.
     planet_moons: Option<SpriteRenderer>,
+    /// Debug overlay renderer (FPS/CPU stats + build commit). `Some` iff
+    /// `config.debug_overlay_enabled` at construction. Drawn inside the
+    /// composite pass *after* the moon so the overlay text sits on top of
+    /// everything. Owns its own atlas texture + procedural 5×7 glyph font
+    /// + grow-on-demand instance buffer.
+    debug_overlay: Option<DebugOverlayRenderer>,
 }
 
 impl GpuPipelines {
@@ -269,6 +276,10 @@ impl GpuPipelines {
             r
         });
 
+        let debug_overlay = app_config
+            .debug_overlay_enabled
+            .then(|| DebugOverlayRenderer::new(&device, &queue, format, width, height));
+
         Self {
             device,
             queue,
@@ -285,6 +296,7 @@ impl GpuPipelines {
             moon,
             planets,
             planet_moons,
+            debug_overlay,
         }
     }
 
@@ -332,6 +344,9 @@ impl GpuPipelines {
         if let Some(r) = self.planet_moons.as_ref() {
             r.set_viewport(&self.queue, width as f32, height as f32);
         }
+        if let Some(r) = self.debug_overlay.as_ref() {
+            r.set_viewport(&self.queue, width, height);
+        }
     }
 
     /// Encode the full 6-pass per-frame sequence into the caller's target
@@ -377,6 +392,17 @@ impl GpuPipelines {
 
         if let Some(r) = self.planet_moons.as_mut() {
             r.set_instances(&self.device, &self.queue, frame_output.planet_moons);
+        }
+
+        // Stage debug-overlay glyph instances (same write-buffer-before-encode
+        // pattern as the sprite renderers above). Skips entirely when either
+        // the renderer is disabled or the engine had nothing to report.
+        if let (Some(r), Some(frame)) = (
+            self.debug_overlay.as_mut(),
+            frame_output.debug_overlay.as_ref(),
+        ) {
+            let instances = layout_instances(frame, self.width as f32, self.height as f32);
+            r.set_instances(&self.device, &self.queue, &instances);
         }
 
         // Pre-stage planet GPU resources: ensure_planet rebuilds the per-slot
@@ -543,6 +569,17 @@ impl GpuPipelines {
 
             if let (Some(m), Some(p)) = (self.moon.as_ref(), frame_output.moon.as_ref()) {
                 m.draw(&self.queue, &mut pass, p, self.width as f32, self.height as f32);
+            }
+
+            // Debug overlay draws last so glyph text sits on top of every
+            // other layer including the moon. Both halves of the pair must be
+            // Some for a draw to happen — engine + GPU are gated on the same
+            // config flag so in practice they always agree.
+            if let (Some(r), Some(_)) = (
+                self.debug_overlay.as_ref(),
+                frame_output.debug_overlay.as_ref(),
+            ) {
+                r.draw(&mut pass);
             }
         }
 

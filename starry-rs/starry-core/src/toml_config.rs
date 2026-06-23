@@ -88,6 +88,7 @@ pub struct PartialConfig {
     pub moon_phase_override_enabled: Option<bool>,
     pub moon_phase_override_value: Option<f64>,
     pub debug_moon_colors: Option<bool>,
+    pub debug_overlay_enabled: Option<bool>,
     pub planets_enabled: Option<bool>,
     pub mercury_size: Option<f64>,
     pub venus_size: Option<f64>,
@@ -236,6 +237,9 @@ impl PartialConfig {
         if let Some(v) = self.debug_moon_colors {
             dst.debug_moon_colors = v;
         }
+        if let Some(v) = self.debug_overlay_enabled {
+            dst.debug_overlay_enabled = v;
+        }
         if let Some(v) = self.planets_enabled {
             dst.planets_enabled = v;
         }
@@ -364,6 +368,7 @@ fn cli_partial_from_matches(matches: &clap::ArgMatches) -> PartialConfig {
         moon_phase_override_enabled: pick(matches, "moon_phase_override_enabled"),
         moon_phase_override_value: pick(matches, "moon_phase_override_value"),
         debug_moon_colors: pick(matches, "debug_moon_colors"),
+        debug_overlay_enabled: pick(matches, "debug_overlay_enabled"),
         planets_enabled: pick(matches, "planets_enabled"),
         mercury_size: pick(matches, "mercury_size"),
         venus_size: pick(matches, "venus_size"),
@@ -603,13 +608,13 @@ mod tests {
     /// in stable Rust. Update both numbers when adding a flag.
     #[test]
     fn partial_field_count_matches_config() {
-        // `Config` has 62 user-facing fields per
-        // `grep -c "^    pub [a-z_]" config.rs` at Phase 6c (was 59 at 6a;
-        // 6c added `time_mode`, `fixed_dt`, `time_anchor`); `PartialConfig`
-        // mirrors 61 of them — the 62nd (`config: Option<PathBuf>` for the
-        // `--config <path>` flag) is intentionally omitted because a TOML
-        // file shouldn't be allowed to specify the path to itself.
-        const EXPECTED: usize = 61;
+        // `Config` has 63 user-facing fields per
+        // `grep -c "^    pub [a-z_]" config.rs` at Phase 6b (was 62 at 6c;
+        // 6b added `debug_overlay_enabled`); `PartialConfig` mirrors 62 of
+        // them — the 63rd (`config: Option<PathBuf>` for the `--config <path>`
+        // flag) is intentionally omitted because a TOML file shouldn't be
+        // allowed to specify the path to itself.
+        const EXPECTED: usize = 62;
 
         // Touching every `Config` field forces the compiler to fail
         // here if a field is renamed/removed — and forces the
@@ -662,6 +667,7 @@ mod tests {
             c.moon_phase_override_enabled,
             c.moon_phase_override_value,
             c.debug_moon_colors,
+            c.debug_overlay_enabled,
         );
         let _ = (
             c.planets_enabled,
@@ -684,7 +690,7 @@ mod tests {
             c.saturn_moon_scale,
         );
         let _ = (c.time_mode, c.fixed_dt, c.time_anchor);
-        assert_eq!(EXPECTED, 61, "phase-6c anchor");
+        assert_eq!(EXPECTED, 62, "phase-6b anchor");
     }
 
     // ----- Lightweight tempdir helper. tempfile crate is overkill for
