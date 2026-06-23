@@ -608,6 +608,29 @@ pub struct Config {
     /// mode.
     #[arg(long, default_value_t = HEADLESS_NOW_UNIX_SECS)]
     pub time_anchor: u64,
+
+    // ---- Phase 6d: bench harness ----
+
+    /// When set, the windowed event loop is bypassed and the bench
+    /// harness runs offscreen for this many frames. Each frame is
+    /// rendered via the real `GpuPipelines::render_to_view` path
+    /// (same code as the windowed renderer; NOT the headless
+    /// single-frame ad-hoc path), so per-frame stats reflect the
+    /// real hot loop including ping-pong decay. Times each frame
+    /// with `Instant::now()` deltas; reports mean / p50 / p95 / p99
+    /// / max in µs plus total wall + CPU seconds. Also appends one
+    /// row to `starry-rs/bench-results.md`. Recommended: `600`
+    /// (≈10 s @60 fps). Ignored when `--dump-png` is also set
+    /// (dump-png wins).
+    #[arg(long)]
+    pub bench_frames: Option<u32>,
+
+    /// Optional human-readable label for the benchmark row (e.g.
+    /// `baseline`, `fix-a-poll-to-wait`). Defaults to the current
+    /// git short hash, with `+dirty` appended if the working tree
+    /// has uncommitted changes.
+    #[arg(long)]
+    pub bench_tag: Option<String>,
 }
 
 impl Default for Config {

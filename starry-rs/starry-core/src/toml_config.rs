@@ -39,12 +39,13 @@ use crate::planet::BelowHorizonBehavior;
 /// than being silently accepted.
 ///
 /// For fields that are already `Option<T>` in `Config` (`dump_png`,
-/// `saturn_ring_tilt_angle`, `saturn_ring_rotation_angle`) the natural
-/// mirror would be `Option<Option<T>>` to distinguish "TOML missing"
-/// from "TOML set to null". That's gross and unnecessary — TOML doesn't
-/// have a clean `null` token anyway, so we collapse: `None` here means
-/// "TOML didn't specify, don't override"; `Some(value)` means "TOML
-/// wants this exact value".
+/// `saturn_ring_tilt_angle`, `saturn_ring_rotation_angle`,
+/// `bench_frames`, `bench_tag`) the natural mirror would be
+/// `Option<Option<T>>` to distinguish "TOML missing" from "TOML set to
+/// null". That's gross and unnecessary — TOML doesn't have a clean
+/// `null` token anyway, so we collapse: `None` here means "TOML didn't
+/// specify, don't override"; `Some(value)` means "TOML wants this exact
+/// value".
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct PartialConfig {
@@ -110,6 +111,8 @@ pub struct PartialConfig {
     pub time_mode: Option<TimeMode>,
     pub fixed_dt: Option<f64>,
     pub time_anchor: Option<u64>,
+    pub bench_frames: Option<u32>,
+    pub bench_tag: Option<String>,
 }
 
 impl PartialConfig {
@@ -303,6 +306,12 @@ impl PartialConfig {
         if let Some(v) = self.time_anchor {
             dst.time_anchor = v;
         }
+        if let Some(v) = self.bench_frames {
+            dst.bench_frames = Some(v);
+        }
+        if let Some(v) = self.bench_tag.clone() {
+            dst.bench_tag = Some(v);
+        }
     }
 }
 
@@ -390,6 +399,8 @@ fn cli_partial_from_matches(matches: &clap::ArgMatches) -> PartialConfig {
         time_mode: pick(matches, "time_mode"),
         fixed_dt: pick(matches, "fixed_dt"),
         time_anchor: pick(matches, "time_anchor"),
+        bench_frames: pick(matches, "bench_frames"),
+        bench_tag: pick::<String>(matches, "bench_tag"),
     }
 }
 
@@ -608,13 +619,13 @@ mod tests {
     /// in stable Rust. Update both numbers when adding a flag.
     #[test]
     fn partial_field_count_matches_config() {
-        // `Config` has 63 user-facing fields per
-        // `grep -c "^    pub [a-z_]" config.rs` at Phase 6b (was 62 at 6c;
-        // 6b added `debug_overlay_enabled`); `PartialConfig` mirrors 62 of
-        // them — the 63rd (`config: Option<PathBuf>` for the `--config <path>`
-        // flag) is intentionally omitted because a TOML file shouldn't be
-        // allowed to specify the path to itself.
-        const EXPECTED: usize = 62;
+        // `Config` has 65 user-facing fields per
+        // `grep -c "^    pub [a-z_]" config.rs` at Phase 6d (was 63 at 6b;
+        // 6d added `bench_frames` + `bench_tag`); `PartialConfig` mirrors
+        // 64 of them — the 65th (`config: Option<PathBuf>` for the
+        // `--config <path>` flag) is intentionally omitted because a TOML
+        // file shouldn't be allowed to specify the path to itself.
+        const EXPECTED: usize = 64;
 
         // Touching every `Config` field forces the compiler to fail
         // here if a field is renamed/removed — and forces the
@@ -690,7 +701,8 @@ mod tests {
             c.saturn_moon_scale,
         );
         let _ = (c.time_mode, c.fixed_dt, c.time_anchor);
-        assert_eq!(EXPECTED, 62, "phase-6b anchor");
+        let _ = (c.bench_frames, c.bench_tag.clone());
+        assert_eq!(EXPECTED, 64, "phase-6d anchor");
     }
 
     // ----- Lightweight tempdir helper. tempfile crate is overkill for

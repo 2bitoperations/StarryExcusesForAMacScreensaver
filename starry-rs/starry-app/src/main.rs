@@ -23,6 +23,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return starry_core::headless::dump_png(&config);
     }
 
+    // Phase 6d: --bench-frames N runs the benchmark harness and exits.
+    // Headless wins if both flags are set (dump_png is a one-shot artefact
+    // and clearly precedes "measure timings over N frames").
+    if config.bench_frames.is_some() {
+        return starry_core::bench::run_bench(&config);
+    }
+
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Poll);
 

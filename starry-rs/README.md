@@ -25,6 +25,7 @@ Working on the **Rust port roadmap**:
 - [x] **Phase 6a** — TOML config loader (defaults < TOML < explicit CLI; `--config <path>`, auto-discovery, `deny_unknown_fields`)
 - [x] **Phase 6c** — deterministic seed mode (`--time-mode {realtime|deterministic|frozen}` + `--fixed-dt` + `--time-anchor`; `frame_count`-driven wall clock, MAX_DT clamp skipped in det mode)
 - [x] **Phase 6b** — debug overlay (FPS counter + CPU usage + build commit via procedural 5×7 bitmap font; `--debug-overlay-enabled`, default off; per-OS CPU% via Mach `task_info` / `/proc/self/stat` / `GetProcessTimes`) → **v0.1 — Rust port now feature-complete vs. shipping Swift macOS build**
+- [x] **Phase 6d** — benchmark harness (`--bench-frames N` + `--bench-tag`; surfaceless `GpuPipelines::render_to_view` loop, 1 warmup + N timed frames each waiting on `device.poll(wait_indefinitely())`; nearest-rank mean/p50/p95/p99/max + cpu/frame stats appended to [`bench-results.md`](./bench-results.md)). Kicks off a measure-then-fix CPU-efficiency campaign; baselines captured at HEAD `0472ae2`. Surfaceless caveat: winit `Poll`→`Wait` busy-spin fixes and explicit `present_mode: Fifo` gains can only be measured via the windowed debug overlay (Phase 6b dogfood).
 
 Platform packaging (`.saver` bundle on macOS, `.scr` on Windows, xscreensaver hack on Linux) and a settings UI are explicitly out of scope until the renderer is at feature parity.
 
@@ -49,6 +50,24 @@ cargo run -- --dump-png /tmp/starry.png
 ```
 
 Renders one simulated frame to an 8-bit RGBA PNG at the requested size and exits. The headless path drives the `Engine` at a fixed `dt = 5.0s` against a seeded RNG (default `--seed 42`), so output is byte-stable across runs for a given `(seed, width, height)` — perfect for committing reference images and diffing later.
+
+### Benchmark (`--bench-frames`)
+
+A surfaceless GPU benchmark harness for measuring CPU+GPU per-frame cost without the noise of a real event loop. Useful as the first step in any CPU-efficiency change (the "measure → fix → measure" loop):
+
+```bash
+# 600 frames of release-mode timing, auto-appended to bench-results.md
+cargo run --release --manifest-path starry-rs/Cargo.toml -- --bench-frames 600
+
+# Override the auto-tag (default = git short hash + `+dirty` from `git status --porcelain`)
+cargo run --release --manifest-path starry-rs/Cargo.toml -- --bench-frames 600 --bench-tag "fix-a-poll-wait"
+```
+
+The harness boots the same `GpuPipelines` the windowed shell uses, renders into a single offscreen `Rgba8UnormSrgb` texture, runs 1 warmup frame (discarded — absorbs lazy GPU init / shader compile / page-in skew that otherwise wrecks p99+max), then N timed frames each ending in `device.poll(wgpu::PollType::wait_indefinitely())?` so per-frame deltas reflect GPU completion (not just submission). `CpuSampler::sample_process_cpu_seconds()` is taken pre+post loop for an honest cpu-per-frame number.
+
+Stats are nearest-rank percentile (matches `cargo bench` and `hyperfine`; simpler than linear interp). Output is dual: a stdout summary AND one appended row to [`bench-results.md`](./bench-results.md) (auto-headered on first write; schema `| timestamp | tag | git_hash | frames | size | seed | mean µs | p50 µs | p95 µs | p99 µs | max µs | wall s | cpu s | cpu/frame µs |`).
+
+**Surfaceless caveat**: the harness has no `Surface`, so winit `ControlFlow::Poll`→`Wait` busy-spin fixes (and explicit `present_mode: Fifo`) cannot be observed here. Those have to be measured via the dogfooded Phase 6b debug overlay running against the real winit shell.
 
 ### Configuration file (TOML)
 
@@ -181,6 +200,13 @@ Path discovery:
 |---|---:|---|
 | `--debug-overlay-enabled <bool>` | false | Master enable for the debug HUD. When `true`: draws a stats overlay (fuchsia text on dark-purple α=0.55 BG, top-left, 8px margin) showing `FPS: %.1f  CPU: %.1f%%` re-rasterized every 250ms, plus a build-info overlay (green text on dark-green α=0.55 BG, bottom-right, 8px margin) showing the short git commit hash captured at compile time via the `git_version` crate (falls back to `"unknown"` for non-git checkouts). FPS smoother uses a 500ms accumulation window + EMA `0.6*prev + 0.4*new`; CPU smoother uses per-frame `(deltaCPU / dt) * 100` + EMA `0.8*prev + 0.2*new`. Procedural 5×7 bitmap glyph font (no font dep, retro pixel-art aesthetic matching the moon + planets + skyline); 2× glyph scale; single GPU pipeline + single R8 atlas + single instance buffer shared between text glyphs and BG rects (DEL=127 sentinel = solid block). Per-OS CPU sampling: Mach `task_info` on macOS, `/proc/self/stat` fields 14+15 on Linux, `GetProcessTimes` FILETIME on Windows. Disabled by default so the headless `--dump-png` SHA stays byte-identical to Phase 6c baseline. Collapses Swift's 2-flag `debugOverlayEnabled` + `showBuildInfo` into one. |
 
+**Phase 6d (bench harness):**
+
+| Flag | Default | What |
+|---|---:|---|
+| `--bench-frames <N>` | — | When set (and `--dump-png` is absent), runs `N` timed frames against a surfaceless `GpuPipelines::render_to_view` loop and exits. 1 warmup frame is discarded (absorbs lazy GPU init / shader compile / page-in skew). Per-frame timing waits on `device.poll(wgpu::PollType::wait_indefinitely())?` so deltas reflect GPU completion, not just submission. Stats (nearest-rank mean / p50 / p95 / p99 / max + cpu/frame from `CpuSampler::sample_process_cpu_seconds()` pre+post loop) are printed to stdout AND appended as one row to [`bench-results.md`](./bench-results.md). Surfaceless caveat: winit `Poll`→`Wait` and explicit `Fifo` gains can't be measured here — those need the windowed Phase 6b debug overlay. |
+| `--bench-tag <label>` | (git short hash + `+dirty` from `git status --porcelain`; `"unknown"` if git isn't around) | Label written to the `bench-results.md` tag column. The default behavior auto-tags every row with the working-tree commit so result rows are self-describing across the per-fix commit cadence. Override for ad-hoc labels like `--bench-tag "baseline-release"` or `--bench-tag "fix-a-poll-wait"`. |
+
 Defaults mirror [`StarryDefaultsManager.swift`](../StarryExcuseForAMacScreensaver/StarryDefaultsManager.swift) so a fresh-install Rust run looks like a fresh-install Swift run.
 
 ### Logging
@@ -206,9 +232,9 @@ starry-rs/
 ├── starry-core/              library crate — window-agnostic; all simulation + GPU pipeline + WGSL + headless
 │   ├── Cargo.toml
 │   └── src/
-│       ├── lib.rs                23 pub mod declarations (no re-exports)
-│       ├── config.rs             clap Config (63 flags incl. `--config <path>` + Phase 6c `--time-mode` / `--fixed-dt` / `--time-anchor` + Phase 6b `--debug-overlay-enabled`) + CLEAR_COLOR, LAYER_WIPE_COLOR + `HEADLESS_NOW_UNIX_SECS` pub const (shared by windowed Phase 6c det-mode default + headless) + BUILD_COMMIT pub const (Phase 6b, from `git_version!()` macro w/ fallback `"unknown"`) + RingStyle enum + Phase 6c TimeMode enum (`Realtime` / `Deterministic` / `Frozen`, serde-derived for TOML)
-│       ├── toml_config.rs        Phase 6a TOML loader: PartialConfig (mirrors Config minus `--config`, all Option<T>) + apply_over + cli_partial_from_matches (uses ValueSource::CommandLine) + path discovery (`$XDG_CONFIG_HOME/starry/config.toml`, `./starry.toml`) + load_config_from_env(). `#[serde(deny_unknown_fields, rename_all = "kebab-case")]`. Phase 6c bumped EXPECTED field-count guard 58 → 61 (Config 59 → 62, PartialConfig 58 → 61).
+│       ├── lib.rs                24 pub mod declarations (no re-exports)
+│       ├── config.rs             clap Config (65 flags incl. `--config <path>` + Phase 6c `--time-mode` / `--fixed-dt` / `--time-anchor` + Phase 6b `--debug-overlay-enabled` + Phase 6d `--bench-frames` / `--bench-tag`) + CLEAR_COLOR, LAYER_WIPE_COLOR + `HEADLESS_NOW_UNIX_SECS` pub const (shared by windowed Phase 6c det-mode default + headless) + BUILD_COMMIT pub const (Phase 6b, from `git_version!()` macro w/ fallback `"unknown"`) + RingStyle enum + Phase 6c TimeMode enum (`Realtime` / `Deterministic` / `Frozen`, serde-derived for TOML)
+│       ├── toml_config.rs        Phase 6a TOML loader: PartialConfig (mirrors Config minus `--config`, all Option<T>) + apply_over + cli_partial_from_matches (uses ValueSource::CommandLine) + path discovery (`$XDG_CONFIG_HOME/starry/config.toml`, `./starry.toml`) + load_config_from_env(). `#[serde(deny_unknown_fields, rename_all = "kebab-case")]`. Phase 6c bumped EXPECTED field-count guard 58 → 61 (Config 59 → 62, PartialConfig 58 → 61); Phase 6d bumped again 61 → 64 (Config 62 → 65, PartialConfig 61 → 64) anchored as `"phase-6d"`.
 │       ├── types.rs              Color + Point value types + random_star_color + debug_moon_color_premul (per-Galilean/Titan hue for --debug-moon-colors mode)
 │       ├── buildings.rs          6 BuildingStyles + Building + tile-pattern lookup
 │       ├── skyline.rs            Static world: building generation, sky-floor, flasher, periodic-clear timer
@@ -229,6 +255,7 @@ starry-rs/
 │       ├── cpu_sample.rs         Phase 6b: per-OS process-CPU sampler. macOS = Mach `task_info(MACH_TASK_BASIC_INFO + TASK_THREAD_TIMES_INFO)`; Linux = `/proc/self/stat` fields 14+15; Windows = `GetProcessTimes` FILETIME. Single `sample_cpu_seconds() -> f64` accessor; engine takes delta against last sample, divides by dt, multiplies by 100% for CPU%.
 │       ├── font.rs               Phase 6b: procedural 5×7 bitmap font (no font dep, retro pixel-art aesthetic). 128-entry glyph table (printable ASCII); `t[127]` = DEL sentinel = solid 5×7 block, used by debug_overlay for BG rects (single pipeline + atlas serves text glyphs AND backgrounds).
 │       ├── debug_overlay.rs      Phase 6b: DebugOverlayRenderer — single GPU pipeline + single R8 glyph atlas + single grow-on-demand instance buffer + 48-byte instance schema (position[f32;2] / size[f32;2] / uv_min[f32;2] / _pad[f32;2] / tint[f32;4]). Renders BOTH overlays: stats (top-left, fuchsia text on dark-purple α=0.55 BG, 8px margin, "FPS: %.1f  CPU: %.1f%%" re-rasterized every 250ms) + build-info (bottom-right, green text on dark-green α=0.55 BG, 8px margin, BUILD_COMMIT short hash). 2× glyph scale, GLYPH_ADVANCE_PX=10, LINE_HEIGHT_PX=16, TriangleStrip 4-vertex, top-down screen-px Y in CPU layout / shader flips to NDC. Initial instance capacity 128, grow `n.next_power_of_two().max(cap*2)`.
+│       ├── bench.rs              Phase 6d: surfaceless GPU bench harness. `pub fn run_bench(cfg: &Config) -> Result<(), Box<dyn Error>>` (async via `pollster::block_on`). Boots the same `GpuPipelines` the windowed shell uses, renders into a single offscreen `Rgba8UnormSrgb` texture, runs 1 warmup frame (discarded — absorbs lazy GPU init / shader compile / page-in skew) then N timed frames each ending in `device.poll(wgpu::PollType::wait_indefinitely())?` so deltas reflect GPU completion not just submission. Wall-clock anchored at `UNIX_EPOCH + HEADLESS_NOW_UNIX_SECS + (i+1) * BENCH_DT_SECONDS` (warmup uses base_now). Stats via nearest-rank percentile (mean / p50 / p95 / p99 / max + cpu/frame from `CpuSampler::sample_process_cpu_seconds()` pre+post). Output: stdout summary + one appended row to `../bench-results.md` (auto-headered first write; in-tree path via `concat!(env!("CARGO_MANIFEST_DIR"), "/../bench-results.md")`). Default `--bench-tag` = `git rev-parse --short HEAD` + `+dirty` suffix from `git status --porcelain`. Surfaceless caveat documented in module docstring: winit `Poll`→`Wait` + explicit `Fifo` gains aren't observable here.
 │       ├── headless.rs           Offscreen single-frame render to PNG (up to 8 passes direct-to-target, no ping-pong; imports `HEADLESS_NOW_UNIX_SECS` from `crate::config` for byte-stable moon phase + planet ephemerides — Phase 6c promoted the const out of headless.rs so windowed det-mode shares the literal; Phase 6b added Pass 8 debug-overlay render after Pass 7 moon, gated lazily on `frame_output.debug_overlay.is_some()`)
 │       ├── shader.wgsl           Sprite vertex + fragment (pixel→NDC, round-disc, premultiplied output)
 │       ├── decay.wgsl            Fullscreen-tri + max(textureLoad(src) * keep − 1/2048, 0) — per-frame UBO; subtractive eps escapes sRGB-8 quantization residue (~0.000488 linear, imperceptible)

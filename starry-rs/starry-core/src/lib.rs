@@ -13,6 +13,7 @@
 //! crate, which depends on this one and adapts `GpuPipelines` onto a real
 //! swapchain.
 
+pub mod bench;
 pub mod buildings;
 pub mod composite;
 pub mod config;
