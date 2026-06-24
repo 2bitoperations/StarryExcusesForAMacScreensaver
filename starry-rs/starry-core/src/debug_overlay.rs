@@ -103,7 +103,7 @@ fn uv_min_for_solid_block() -> [f32; 2] {
     ]
 }
 
-/// Compute the bounding box (bg_w, bg_h) for an overlay from its line
+/// Compute the bounding box `[width, height]` for an overlay from its line
 /// content. Used by `layout_instances` to pre-compute dimensions before
 /// calling `push_overlay`, so each overlay's size is computed exactly once.
 fn overlay_size(lines: &[&str]) -> [f32; 2] {
