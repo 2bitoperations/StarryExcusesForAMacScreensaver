@@ -106,28 +106,26 @@ fn uv_min_for_solid_block() -> [f32; 2] {
 /// Compute the bounding box (bg_w, bg_h) for an overlay from its line
 /// content. Used by `layout_instances` to pre-compute dimensions before
 /// calling `push_overlay`, so each overlay's size is computed exactly once.
-fn overlay_size(lines: &[&str]) -> (f32, f32) {
+fn overlay_size(lines: &[&str]) -> [f32; 2] {
     let max_chars = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0);
     let text_w = max_chars as f32 * GLYPH_ADVANCE_PX;
     let text_h = lines.len() as f32 * LINE_HEIGHT_PX;
-    (text_w + 2.0 * OVERLAY_PAD_H_PX, text_h + 2.0 * OVERLAY_PAD_V_PX)
+    [text_w + 2.0 * OVERLAY_PAD_H_PX, text_h + 2.0 * OVERLAY_PAD_V_PX]
 }
 
 /// Push one overlay's BG rect + glyph quads to `out`. Accepts pre-computed
-/// `bg_w`/`bg_h` from `overlay_size` so the size is never computed twice.
+/// `bg_pos`/`bg_size` from `overlay_size` so the size is never computed twice.
 fn push_overlay(
     out: &mut Vec<DebugInstance>,
     lines: &[&str],
-    bg_x: f32,
-    bg_y: f32,
-    bg_w: f32,
-    bg_h: f32,
+    bg_pos: [f32; 2],
+    bg_size: [f32; 2],
     text_tint: [f32; 4],
     bg_tint: [f32; 4],
 ) {
     out.push(DebugInstance {
-        position: [bg_x, bg_y],
-        size: [bg_w, bg_h],
+        position: bg_pos,
+        size: bg_size,
         uv_min: uv_min_for_solid_block(),
         _pad: [0.0; 2],
         tint: bg_tint,
@@ -138,14 +136,14 @@ fn push_overlay(
         GLYPH_HEIGHT as f32 * GLYPH_SCALE,
     ];
     for (line_idx, line) in lines.iter().enumerate() {
-        let line_y = bg_y + OVERLAY_PAD_V_PX + line_idx as f32 * LINE_HEIGHT_PX;
+        let line_y = bg_pos[1] + OVERLAY_PAD_V_PX + line_idx as f32 * LINE_HEIGHT_PX;
         for (glyph_idx, ch) in line.chars().enumerate() {
             // Skip spaces — they're encoded as all-zero in the atlas anyway,
             // so they'd be invisible quads. Saves one instance per space.
             if ch == ' ' {
                 continue;
             }
-            let gx = bg_x + OVERLAY_PAD_H_PX + glyph_idx as f32 * GLYPH_ADVANCE_PX;
+            let gx = bg_pos[0] + OVERLAY_PAD_H_PX + glyph_idx as f32 * GLYPH_ADVANCE_PX;
             out.push(DebugInstance {
                 position: [gx, line_y],
                 size: glyph_size,
@@ -180,14 +178,12 @@ pub fn layout_instances(
     let stats_buf = [frame.stats_text];
     let stats_lines: &[&str] = if frame.stats_text.is_empty() { &[] } else { &stats_buf };
     if !stats_lines.is_empty() {
-        let (bg_w, bg_h) = overlay_size(stats_lines);
+        let bg_size = overlay_size(stats_lines);
         push_overlay(
             out,
             stats_lines,
-            OVERLAY_MARGIN_PX,
-            OVERLAY_MARGIN_PX,
-            bg_w,
-            bg_h,
+            [OVERLAY_MARGIN_PX, OVERLAY_MARGIN_PX],
+            bg_size,
             STATS_TEXT_TINT,
             STATS_BG_TINT,
         );
@@ -196,16 +192,14 @@ pub fn layout_instances(
     let build_buf = [frame.build_info_text];
     let build_lines: &[&str] = if frame.build_info_text.is_empty() { &[] } else { &build_buf };
     if !build_lines.is_empty() {
-        let (bg_w, bg_h) = overlay_size(build_lines);
-        let bg_x = (viewport_w - OVERLAY_MARGIN_PX - bg_w).max(0.0);
-        let bg_y = (viewport_h - OVERLAY_MARGIN_PX - bg_h).max(0.0);
+        let bg_size = overlay_size(build_lines);
+        let bg_x = (viewport_w - OVERLAY_MARGIN_PX - bg_size[0]).max(0.0);
+        let bg_y = (viewport_h - OVERLAY_MARGIN_PX - bg_size[1]).max(0.0);
         push_overlay(
             out,
             build_lines,
-            bg_x,
-            bg_y,
-            bg_w,
-            bg_h,
+            [bg_x, bg_y],
+            bg_size,
             BUILD_TEXT_TINT,
             BUILD_BG_TINT,
         );
