@@ -65,7 +65,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("starry-rs — phase 3.5")
+                        .with_title("starry-rs")
                         .with_inner_size(PhysicalSize::new(self.config.width, self.config.height)),
                 )
                 .expect("create winit window"),

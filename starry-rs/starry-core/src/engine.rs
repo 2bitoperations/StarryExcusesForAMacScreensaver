@@ -355,6 +355,11 @@ impl Engine {
     /// planets). Headless passes a fixed reference time to keep PNG
     /// output byte-stable across machines.
     pub fn frame_with_dt(&mut self, dt_seconds: f64, wall_now: SystemTime) -> FrameOutput<'_> {
+        // `last_frame` is reset to now so that any hypothetical subsequent
+        // call to `frame()` (wall-clock dt) sees a ~0 dt rather than the
+        // entire elapsed time since construction. In practice time_mode is
+        // fixed at config time, so `frame()` and `frame_with_dt()` are never
+        // mixed on the same `Engine` instance.
         self.last_frame = Instant::now();
         self.frame_impl(dt_seconds.max(0.0), wall_now)
     }

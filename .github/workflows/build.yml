@@ -7,6 +7,33 @@ on:
 
 jobs:
   # -------------------------------------------------------------------------
+  # Lint: fmt + clippy — runs first so formatting/lint errors fail fast
+  # before paying for all four platform builds.
+  # -------------------------------------------------------------------------
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Install system deps
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libwayland-dev libxkbcommon-dev libegl-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: starry-rs
+      - name: cargo fmt --check
+        run: cargo fmt --check --all
+        working-directory: starry-rs
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        working-directory: starry-rs
+
+  # -------------------------------------------------------------------------
   # macOS (ARM + Intel) — native runners, full test + release artifact
   # -------------------------------------------------------------------------
   build-macos:
@@ -27,15 +54,16 @@ jobs:
         with:
           workspaces: starry-rs
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
         working-directory: starry-rs
       - name: Build release
-        run: cargo build --release -p starry-app
+        run: cargo build --release --locked -p starry-app
         working-directory: starry-rs
       - uses: actions/upload-artifact@v4
         with:
           name: starry-app-macos-${{ matrix.arch }}
           path: starry-rs/target/release/starry-app
+          retention-days: 7
 
   # -------------------------------------------------------------------------
   # Windows x86_64 — MSVC toolchain, full test + release artifact
@@ -50,15 +78,16 @@ jobs:
         with:
           workspaces: starry-rs
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
         working-directory: starry-rs
       - name: Build release
-        run: cargo build --release -p starry-app
+        run: cargo build --release --locked -p starry-app
         working-directory: starry-rs
       - uses: actions/upload-artifact@v4
         with:
           name: starry-app-windows-x86_64
           path: starry-rs/target/release/starry-app.exe
+          retention-days: 7
 
   # -------------------------------------------------------------------------
   # Debian Trixie x86_64 — container job, manual rustup, full test + artifact
@@ -71,12 +100,16 @@ jobs:
     name: Debian Trixie (x86_64)
     runs-on: ubuntu-latest
     container: debian:trixie
+    env:
+      DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Install git and CA certificates
         # Must happen before checkout because actions/checkout needs git.
         run: apt-get update -q && apt-get install -y --no-install-recommends git ca-certificates
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Install system build dependencies
         run: |
@@ -92,14 +125,15 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
         working-directory: starry-rs
 
       - name: Build release
-        run: cargo build --release -p starry-app
+        run: cargo build --release --locked -p starry-app
         working-directory: starry-rs
 
       - uses: actions/upload-artifact@v4
         with:
           name: starry-app-debian-trixie-x86_64
           path: starry-rs/target/release/starry-app
+          retention-days: 7

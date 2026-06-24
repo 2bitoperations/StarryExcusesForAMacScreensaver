@@ -84,7 +84,11 @@ impl WindowedGpu {
             format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: caps.present_modes[0],
+            present_mode: caps.present_modes
+                .iter()
+                .copied()
+                .find(|&m| m == wgpu::PresentMode::Fifo)
+                .unwrap_or(caps.present_modes[0]),
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,

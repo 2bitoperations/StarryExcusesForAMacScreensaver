@@ -103,21 +103,28 @@ fn uv_min_for_solid_block() -> [f32; 2] {
     ]
 }
 
-/// Push one overlay's BG rect + glyph quads to `out`.
+/// Compute the bounding box (bg_w, bg_h) for an overlay from its line
+/// content. Used by `layout_instances` to pre-compute dimensions before
+/// calling `push_overlay`, so each overlay's size is computed exactly once.
+fn overlay_size(lines: &[&str]) -> (f32, f32) {
+    let max_chars = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+    let text_w = max_chars as f32 * GLYPH_ADVANCE_PX;
+    let text_h = lines.len() as f32 * LINE_HEIGHT_PX;
+    (text_w + 2.0 * OVERLAY_PAD_H_PX, text_h + 2.0 * OVERLAY_PAD_V_PX)
+}
+
+/// Push one overlay's BG rect + glyph quads to `out`. Accepts pre-computed
+/// `bg_w`/`bg_h` from `overlay_size` so the size is never computed twice.
 fn push_overlay(
     out: &mut Vec<DebugInstance>,
     lines: &[&str],
     bg_x: f32,
     bg_y: f32,
+    bg_w: f32,
+    bg_h: f32,
     text_tint: [f32; 4],
     bg_tint: [f32; 4],
-) -> (f32, f32) {
-    let max_chars = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0);
-    let text_w = max_chars as f32 * GLYPH_ADVANCE_PX;
-    let text_h = lines.len() as f32 * LINE_HEIGHT_PX;
-    let bg_w = text_w + 2.0 * OVERLAY_PAD_H_PX;
-    let bg_h = text_h + 2.0 * OVERLAY_PAD_V_PX;
-
+) {
     out.push(DebugInstance {
         position: [bg_x, bg_y],
         size: [bg_w, bg_h],
@@ -148,14 +155,17 @@ fn push_overlay(
             });
         }
     }
-
-    (bg_w, bg_h)
 }
 
 /// Convert frame data + viewport size into a flat list of textured-quad
 /// instances ready for the GPU. Stats overlay anchors top-left; build-info
 /// anchors bottom-right. Empty text in either field omits that overlay
 /// entirely (no instances pushed).
+///
+/// Both text fields are single-line by construction (`stats_text` is
+/// formatted with `write!` and no `\n`; `build_info_text` is a git SHA).
+/// We avoid heap-allocating a `Vec<&str>` by using a stack array of 1
+/// element and borrowing it as a slice.
 pub fn layout_instances(
     frame: &DebugOverlayFrame<'_>,
     viewport_w: f32,
@@ -164,37 +174,38 @@ pub fn layout_instances(
 ) {
     out.clear();
 
-    let stats_lines: Vec<&str> = frame.stats_text.lines().collect::<Vec<_>>();
+    debug_assert!(!frame.stats_text.contains('\n'), "stats_text must be single-line");
+    debug_assert!(!frame.build_info_text.contains('\n'), "build_info_text must be single-line");
+
+    let stats_buf = [frame.stats_text];
+    let stats_lines: &[&str] = if frame.stats_text.is_empty() { &[] } else { &stats_buf };
     if !stats_lines.is_empty() {
+        let (bg_w, bg_h) = overlay_size(stats_lines);
         push_overlay(
             out,
-            &stats_lines,
+            stats_lines,
             OVERLAY_MARGIN_PX,
             OVERLAY_MARGIN_PX,
+            bg_w,
+            bg_h,
             STATS_TEXT_TINT,
             STATS_BG_TINT,
         );
     }
 
-    let build_lines: Vec<&str> = frame.build_info_text.lines().collect::<Vec<_>>();
+    let build_buf = [frame.build_info_text];
+    let build_lines: &[&str] = if frame.build_info_text.is_empty() { &[] } else { &build_buf };
     if !build_lines.is_empty() {
-        // Pre-compute the BG size so we know where to anchor the bottom-right.
-        let max_chars = build_lines
-            .iter()
-            .map(|s| s.chars().count())
-            .max()
-            .unwrap_or(0);
-        let text_w = max_chars as f32 * GLYPH_ADVANCE_PX;
-        let text_h = build_lines.len() as f32 * LINE_HEIGHT_PX;
-        let bg_w = text_w + 2.0 * OVERLAY_PAD_H_PX;
-        let bg_h = text_h + 2.0 * OVERLAY_PAD_V_PX;
+        let (bg_w, bg_h) = overlay_size(build_lines);
         let bg_x = (viewport_w - OVERLAY_MARGIN_PX - bg_w).max(0.0);
         let bg_y = (viewport_h - OVERLAY_MARGIN_PX - bg_h).max(0.0);
         push_overlay(
             out,
-            &build_lines,
+            build_lines,
             bg_x,
             bg_y,
+            bg_w,
+            bg_h,
             BUILD_TEXT_TINT,
             BUILD_BG_TINT,
         );
