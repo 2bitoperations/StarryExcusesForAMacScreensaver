@@ -234,12 +234,12 @@ pub struct Config {
 
     /// Star emission rate as a fraction of the reference max. Swift default
     /// (`starsPerUpdateFraction`) is 0.5.
-    #[arg(long, default_value_t = 0.5)]
+    #[arg(long, default_value_t = 0.451_871_141_975_308_6)]
     pub stars_fraction: f64,
 
     /// Building-light emission rate as a fraction of the reference max.
     /// Swift default (`buildingLightsPerUpdateFraction`) is 0.25.
-    #[arg(long, default_value_t = 0.25)]
+    #[arg(long, default_value_t = 0.533_886_316_872_427_9)]
     pub lights_fraction: f64,
 
     /// Seconds between full-canvas wipes. Swift default is 120.
@@ -247,7 +247,7 @@ pub struct Config {
     pub clear_interval_s: f64,
 
     /// Max building height as a fraction of screen height. Swift default 0.35.
-    #[arg(long, default_value_t = 0.35)]
+    #[arg(long, default_value_t = 0.424_158_537_438_391_9)]
     pub building_height_pct_max: f64,
 
     /// Building width range, inclusive lower bound. Swift default 40.
@@ -325,7 +325,7 @@ pub struct Config {
 
     /// Streak brightness multiplier in [0, 1]. Swift default
     /// (`defaultShootingStarsBrightness`) is 0.2.
-    #[arg(long, default_value_t = 0.2)]
+    #[arg(long, default_value_t = 0.3)]
     pub shooting_stars_brightness: f32,
 
     /// Trail half-life in seconds — every `trail_half_life_s` seconds
@@ -344,12 +344,12 @@ pub struct Config {
     /// Mean seconds between satellite spawns (exponential distribution).
     /// Floored at 0.05s internally. Swift default
     /// (`defaultSatellitesAvgSpawnSeconds`) is 0.75.
-    #[arg(long, default_value_t = 0.75)]
+    #[arg(long, default_value_t = 30.0)]
     pub satellites_avg_spawn_seconds: f64,
 
     /// Satellite horizontal speed in pixels/second. Swift default
     /// (`defaultSatellitesSpeed`) is 30.
-    #[arg(long, default_value_t = 30.0)]
+    #[arg(long, default_value_t = 32.675_338_476_070_53)]
     pub satellites_speed: f32,
 
     /// Satellite head sprite diameter in pixels. Floored at 1.0px
@@ -361,7 +361,7 @@ pub struct Config {
     /// `satellitesBrightnessMax = 1.2` (lets satellites visually pop).
     /// Internally clamped to [0, 1]. Swift default
     /// (`defaultSatellitesBrightness`) is 0.5.
-    #[arg(long, default_value_t = 0.5)]
+    #[arg(long, default_value_t = 0.250_244_017_632_241_7)]
     pub satellites_brightness: f32,
 
     /// Whether the satellites layer leaves a fading trail. When false,
@@ -373,7 +373,7 @@ pub struct Config {
     /// Satellite trail half-life in seconds. 0 (with `trailing: true`)
     /// or `trailing: false` both wipe the layer every frame. Swift
     /// default (`defaultSatellitesTrailHalfLifeSeconds`) is 0.10.
-    #[arg(long, default_value_t = 0.10)]
+    #[arg(long, default_value_t = 0.112_173_331_234_256_9)]
     pub satellites_trail_half_life_s: f32,
 
     // ---- Phase 4: moon ----
@@ -384,7 +384,7 @@ pub struct Config {
     /// Moon diameter as a fraction of the viewport width. Swift default
     /// (`defaultMoonDiameterScreenWidthPercent`) is `80/3000 ≈ 0.02667`,
     /// allowed range `0.001..=0.25`.
-    #[arg(long, default_value_t = 80.0 / 3000.0)]
+    #[arg(long, default_value_t = 0.073_457_093_253_968_26)]
     pub moon_diameter_percent: f64,
 
     /// Brightness multiplier for the lit hemisphere. Swift default
@@ -395,7 +395,7 @@ pub struct Config {
     /// Brightness multiplier for the unlit hemisphere (earthshine).
     /// Swift default (`defaultMoonDarkBrightness`) is 0.15; range
     /// `0.0..=0.9`.
-    #[arg(long, default_value_t = 0.15)]
+    #[arg(long, default_value_t = 0.109_002_976_190_476_2)]
     pub moon_dark_brightness: f32,
 
     /// Full left→right traversal duration in seconds. Swift default
@@ -410,12 +410,12 @@ pub struct Config {
     /// frame (sharp brightness contrast → eye perceives a dark stripe at
     /// the terminator that isn't in the pixels). Swift default
     /// (`defaultMoonTerminatorMode`) is also `1` for parity.
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 2)]
     pub moon_terminator_mode: u32,
 
     /// Terminator half-width (fraction of disc, modes 1+2). Swift default
     /// (`defaultMoonTerminatorWidth`) is 0.06; range `0.01..=0.30`.
-    #[arg(long, default_value_t = 0.06)]
+    #[arg(long, default_value_t = 0.101_923_053_075_396_8)]
     pub moon_terminator_width: f32,
 
     /// Discrete brightness band count (mode 2 only). Swift default
@@ -477,7 +477,7 @@ pub struct Config {
 
     /// Jupiter body diameter as a fraction of viewport width. Swift
     /// default (`defaultJupiterSize`) is 0.016; range `0.0..=0.2`.
-    #[arg(long, default_value_t = 0.016)]
+    #[arg(long, default_value_t = 0.019_806_427_125_506_08)]
     pub jupiter_size: f64,
 
     /// Saturn body diameter as a fraction of viewport width. The Saturn
@@ -505,7 +505,7 @@ pub struct Config {
     /// What to do when a planet is geometrically below the observer's
     /// horizon. Swift default (`defaultPlanetBelowHorizonBehavior`) is
     /// `random-when-below`.
-    #[arg(long, value_enum, default_value_t = crate::planet::BelowHorizonBehavior::RandomWhenBelow)]
+    #[arg(long, value_enum, default_value_t = crate::planet::BelowHorizonBehavior::Hide)]
     pub planet_below_horizon_behavior: crate::planet::BelowHorizonBehavior,
 
     /// Selects how `phaseFraction` is computed for planets. See the
@@ -513,7 +513,7 @@ pub struct Config {
     /// the shader terminator render mode — that's the separate
     /// `planet_terminator_mode` flag below. Swift default
     /// (`defaultPlanetTerminatorMode`) is `forced-full`.
-    #[arg(long, value_enum, default_value_t = PlanetPhaseMode::ForcedFull)]
+    #[arg(long, value_enum, default_value_t = PlanetPhaseMode::Computed)]
     pub planet_phase_mode: PlanetPhaseMode,
 
     /// Shader terminator rendering mode for planets. `0` = hard step,
