@@ -143,10 +143,15 @@ impl ApplicationHandler for App {
                     }
                 };
                 gpu.render(frame_output);
-                window.request_redraw();
             }
 
             _ => {}
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(window) = &self.window {
+            window.request_redraw();
         }
     }
 }

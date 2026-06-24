@@ -22,6 +22,7 @@
 //!
 //! Rust counterpart of `StarryEngine.swift`.
 
+use std::fmt::Write;
 use std::time::{Instant, SystemTime};
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -66,6 +67,9 @@ struct DebugSmoothers {
     current_fps: f64,
     current_cpu_percent: f64,
     last_cpu_seconds: Option<f64>,
+    /// Pre-allocated buffer reused every frame; avoids a `format!` heap
+    /// allocation on the hot path. Cleared and refilled in `frame_impl`.
+    stats_buf: String,
 }
 
 impl DebugSmoothers {
@@ -76,6 +80,7 @@ impl DebugSmoothers {
             current_fps: 0.0,
             current_cpu_percent: 0.0,
             last_cpu_seconds: None,
+            stats_buf: String::with_capacity(32),
         }
     }
 
@@ -108,11 +113,14 @@ impl DebugSmoothers {
         }
     }
 
-    fn stats_text(&self) -> String {
-        format!(
+    fn refresh_stats_buf(&mut self) {
+        self.stats_buf.clear();
+        write!(
+            &mut self.stats_buf,
             "FPS={:.1} CPU={:.1}%",
             self.current_fps, self.current_cpu_percent
         )
+        .expect("write! to String is infallible");
     }
 }
 
@@ -150,9 +158,10 @@ pub struct FrameOutput<'a> {
     pub planet_moons: &'a [SpriteInstance],
     /// Phase 6b debug overlay (FPS/CPU stats + build commit). `Some` iff
     /// `config.debug_overlay_enabled` was true at engine construction.
-    /// Owned strings (not borrowed) — the per-frame heap traffic is
-    /// negligible (~30 bytes) and keeps the lifetime story trivial.
-    pub debug_overlay: Option<DebugOverlayFrame>,
+    /// Borrows `stats_text` from `DebugSmoothers::stats_buf` (pre-allocated,
+    /// refilled each frame via `write!`) and `build_info_text` from the
+    /// `BUILD_COMMIT` `&'static str` — zero per-frame heap allocation.
+    pub debug_overlay: Option<DebugOverlayFrame<'a>>,
 }
 
 pub struct Engine {
@@ -491,7 +500,8 @@ impl Engine {
             } else {
                 planet.radius as f64
             };
-            let moons = moon_sprite_states(
+            let debug_colors = self.config.debug_moon_colors;
+            moon_sprite_states(
                 planet.identity,
                 wall_now,
                 state.center_px,
@@ -499,22 +509,30 @@ impl Engine {
                 ring_tilt_deg as f64,
                 ring_rotation_deg as f64,
                 moon_scale,
+                |m| {
+                    let color = if debug_colors {
+                        debug_moon_color_premul(m.name)
+                            .unwrap_or_else(|| m.color.premul_rgba(m.alpha))
+                    } else {
+                        m.color.premul_rgba(m.alpha)
+                    };
+                    self.planet_moons_sprite_buf.push(SpriteInstance::new(
+                        [m.center_px.0 as f32, m.center_px.1 as f32],
+                        m.size_px,
+                        color,
+                    ));
+                },
             );
-            for m in moons {
-                let color = if self.config.debug_moon_colors {
-                    debug_moon_color_premul(m.name)
-                        .unwrap_or_else(|| m.color.premul_rgba(m.alpha))
-                } else {
-                    m.color.premul_rgba(m.alpha)
-                };
-                self.planet_moons_sprite_buf.push(SpriteInstance::new(
-                    [m.center_px.0 as f32, m.center_px.1 as f32],
-                    m.size_px,
-                    color,
-                ));
-            }
         }
 
+        if let Some(s) = self.debug_smoothers.as_mut() {
+            s.update(dt);
+            s.refresh_stats_buf();
+        }
+        let debug_overlay = self.debug_smoothers.as_ref().map(|s| DebugOverlayFrame {
+            stats_text: &s.stats_buf,
+            build_info_text: BUILD_COMMIT,
+        });
         FrameOutput {
             skyline_sprites,
             clear_skyline,
@@ -524,13 +542,7 @@ impl Engine {
             moon,
             planets: &self.planet_params_buf,
             planet_moons: &self.planet_moons_sprite_buf,
-            debug_overlay: self.debug_smoothers.as_mut().map(|s| {
-                s.update(dt);
-                DebugOverlayFrame {
-                    stats_text: s.stats_text(),
-                    build_info_text: BUILD_COMMIT.to_string(),
-                }
-            }),
+            debug_overlay,
         }
     }
 }

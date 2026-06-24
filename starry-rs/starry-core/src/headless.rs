@@ -179,7 +179,8 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
 
     let mut debug_overlay_renderer = frame_output.debug_overlay.as_ref().map(|frame| {
         let mut r = DebugOverlayRenderer::new(&device, &queue, TEXTURE_FORMAT, width, height);
-        let instances = layout_instances(frame, width as f32, height as f32);
+        let mut instances = Vec::new();
+        layout_instances(frame, width as f32, height as f32, &mut instances);
         r.set_instances(&device, &queue, &instances);
         r
     });

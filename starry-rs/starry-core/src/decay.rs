@@ -32,12 +32,19 @@ pub struct DecayRenderer {
     pipeline: wgpu::RenderPipeline,
     bgl: wgpu::BindGroupLayout,
     ubo: wgpu::Buffer,
+    /// Cached bind groups: index 0 = view_a as src (used when active_is_a
+    /// = true), index 1 = view_b as src (used when active_is_a = false).
+    /// Rebuilt on resize via `rebuild_bind_groups`; never recreated on the
+    /// hot frame path.
+    bind_groups: [wgpu::BindGroup; 2],
 }
 
 impl DecayRenderer {
     pub fn new(
         device: &wgpu::Device,
         output_format: wgpu::TextureFormat,
+        view_a: &wgpu::TextureView,
+        view_b: &wgpu::TextureView,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("decay shader"),
@@ -119,19 +126,31 @@ impl DecayRenderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        DecayRenderer { pipeline, bgl, ubo }
+        let bind_groups = build_decay_bind_groups(device, &bgl, &ubo, view_a, view_b);
+        DecayRenderer { pipeline, bgl, ubo, bind_groups }
     }
 
-    /// Encode one fade pass: read from `src_view`, write to `dst_view`
-    /// scaled by `keep_factor`. The dst view is cleared to transparent
-    /// first, so the output is purely the decayed source — there's no
-    /// implicit accumulation here. Caller does the ping-pong swap.
+    /// Rebuild the cached bind groups after a resize replaces the texture
+    /// views. Must be called before the next `apply` so the bind groups
+    /// reference the new views rather than the now-invalid old ones.
+    pub fn rebuild_bind_groups(
+        &mut self,
+        device: &wgpu::Device,
+        view_a: &wgpu::TextureView,
+        view_b: &wgpu::TextureView,
+    ) {
+        self.bind_groups = build_decay_bind_groups(device, &self.bgl, &self.ubo, view_a, view_b);
+    }
+
+    /// Encode one fade pass: read from the active ping-pong buffer
+    /// (selected by `active_is_a`), write to `dst_view` scaled by
+    /// `keep_factor`. Uses a pre-built bind group — no GPU object
+    /// creation on the hot path. Caller does the ping-pong swap.
     pub fn apply(
         &self,
-        device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        src_view: &wgpu::TextureView,
+        active_is_a: bool,
         dst_view: &wgpu::TextureView,
         keep_factor: f32,
     ) {
@@ -144,20 +163,11 @@ impl DecayRenderer {
             }]),
         );
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("decay bg (per-frame)"),
-            layout: &self.bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(src_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: self.ubo.as_entire_binding(),
-                },
-            ],
-        });
+        let bind_group = if active_is_a {
+            &self.bind_groups[0]
+        } else {
+            &self.bind_groups[1]
+        };
 
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("decay pass"),
@@ -173,7 +183,48 @@ impl DecayRenderer {
             ..Default::default()
         });
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &bind_group, &[]);
+        pass.set_bind_group(0, bind_group, &[]);
         pass.draw(0..3, 0..1);
     }
+}
+
+/// Build the two cached bind groups for a `DecayRenderer`. Index 0 binds
+/// `view_a` as the source texture (used when `active_is_a = true`); index 1
+/// binds `view_b` (used when `active_is_a = false`).
+fn build_decay_bind_groups(
+    device: &wgpu::Device,
+    bgl: &wgpu::BindGroupLayout,
+    ubo: &wgpu::Buffer,
+    view_a: &wgpu::TextureView,
+    view_b: &wgpu::TextureView,
+) -> [wgpu::BindGroup; 2] {
+    let bg_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("decay bg (A-reads)"),
+        layout: bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(view_a),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: ubo.as_entire_binding(),
+            },
+        ],
+    });
+    let bg_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("decay bg (B-reads)"),
+        layout: bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(view_b),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: ubo.as_entire_binding(),
+            },
+        ],
+    });
+    [bg_a, bg_b]
 }

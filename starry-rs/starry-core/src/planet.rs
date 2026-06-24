@@ -923,17 +923,18 @@ pub fn moon_sprite_states(
     ring_tilt_deg: f64,
     rotation_deg: f64,
     moon_scale: f64,
-) -> Vec<MoonSpriteState> {
+    mut push: impl FnMut(MoonSpriteState),
+) {
     if parent_radius_px <= 0.0 {
-        return Vec::new();
+        return;
     }
     let defs: &[MoonOrbitDefinition] = match parent {
         PlanetIdentity::Jupiter => JUPITER_MOONS,
         PlanetIdentity::Saturn => SATURN_MOONS,
-        _ => return Vec::new(),
+        _ => return,
     };
     if defs.is_empty() {
-        return Vec::new();
+        return;
     }
 
     let secs_since_epoch = now
@@ -963,7 +964,6 @@ pub fn moon_sprite_states(
     let sin_theta = theta.sin();
     let (cx, cy) = parent_center_px;
 
-    let mut states: Vec<MoonSpriteState> = Vec::with_capacity(defs.len());
     for moon in defs {
         let angle = (2.0 * std::f64::consts::PI * days_since_epoch / moon.period_days)
             + moon.initial_phase_rad;
@@ -985,7 +985,7 @@ pub fn moon_sprite_states(
         }
 
         let size_px = (moon.base_size_px * moon_scale * size_scale).clamp(1.0, 3.0) as f32;
-        states.push(MoonSpriteState {
+        push(MoonSpriteState {
             name: moon.name,
             center_px: (screen_x, screen_y),
             size_px,
@@ -993,7 +993,6 @@ pub fn moon_sprite_states(
             alpha: 0.78,
         });
     }
-    states
 }
 
 // ---------------------------------------------------------------------------
@@ -1186,7 +1185,8 @@ mod tests {
     fn moon_sprite_states_zero_radius_returns_empty() {
         let now = time_at_unix(1_704_067_200.0);
         for parent in PlanetIdentity::ALL {
-            let states = moon_sprite_states(parent, now, (640.0, 400.0), 0.0, 0.0, 0.0, 1.0);
+            let mut states = Vec::new();
+            moon_sprite_states(parent, now, (640.0, 400.0), 0.0, 0.0, 0.0, 1.0, |s| states.push(s));
             assert!(
                 states.is_empty(),
                 "{parent:?} with parent_radius_px=0 must return empty, got {} moons",
@@ -1199,7 +1199,8 @@ mod tests {
     fn moon_sprite_states_only_jupiter_and_saturn_have_moons() {
         let now = time_at_unix(1_704_067_200.0);
         for parent in PlanetIdentity::ALL {
-            let states = moon_sprite_states(parent, now, (640.0, 400.0), 30.0, 5.0, 12.0, 1.0);
+            let mut states = Vec::new();
+            moon_sprite_states(parent, now, (640.0, 400.0), 30.0, 5.0, 12.0, 1.0, |s| states.push(s));
             match parent {
                 PlanetIdentity::Jupiter => assert!(
                     states.len() <= 4,
@@ -1223,7 +1224,8 @@ mod tests {
     #[test]
     fn moon_sprite_states_jupiter_names_alpha_and_size_within_bounds() {
         let now = time_at_unix(1_704_067_200.0);
-        let states = moon_sprite_states(
+        let mut states = Vec::new();
+        moon_sprite_states(
             PlanetIdentity::Jupiter,
             now,
             (640.0, 400.0),
@@ -1231,6 +1233,7 @@ mod tests {
             5.0,
             12.0,
             1.0,
+            |s| states.push(s),
         );
         let known = ["io", "europa", "ganymede", "callisto"];
         let mut seen = std::collections::HashSet::new();
@@ -1257,7 +1260,8 @@ mod tests {
     #[test]
     fn moon_sprite_states_saturn_only_emits_titan() {
         let now = time_at_unix(1_704_067_200.0);
-        let states = moon_sprite_states(
+        let mut states = Vec::new();
+        moon_sprite_states(
             PlanetIdentity::Saturn,
             now,
             (640.0, 400.0),
@@ -1265,6 +1269,7 @@ mod tests {
             15.0,
             45.0,
             1.0,
+            |s| states.push(s),
         );
         for s in &states {
             assert_eq!(s.name, "titan", "Saturn only emits Titan");
@@ -1282,7 +1287,8 @@ mod tests {
         // clamp 1.0. Callisto is structurally never z-culled (a > 1) so the
         // result vec is guaranteed non-empty in both cases.
         let now = time_at_unix(1_704_067_200.0);
-        let big = moon_sprite_states(
+        let mut big = Vec::new();
+        moon_sprite_states(
             PlanetIdentity::Jupiter,
             now,
             (640.0, 400.0),
@@ -1290,6 +1296,7 @@ mod tests {
             0.0,
             0.0,
             4.0,
+            |s| big.push(s),
         );
         assert!(!big.is_empty(), "scale=4 should produce visible moons");
         for s in &big {
@@ -1299,7 +1306,8 @@ mod tests {
                 s.size_px
             );
         }
-        let tiny = moon_sprite_states(
+        let mut tiny = Vec::new();
+        moon_sprite_states(
             PlanetIdentity::Jupiter,
             now,
             (640.0, 400.0),
@@ -1307,6 +1315,7 @@ mod tests {
             0.0,
             0.0,
             0.5,
+            |s| tiny.push(s),
         );
         assert!(!tiny.is_empty(), "scale=0.5 should produce visible moons");
         for s in &tiny {

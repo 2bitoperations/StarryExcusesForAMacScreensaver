@@ -20,6 +20,7 @@ pub struct WindowedGpu {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     pipelines: GpuPipelines,
+    window: Arc<Window>,
 }
 
 impl WindowedGpu {
@@ -103,6 +104,7 @@ impl WindowedGpu {
             surface,
             surface_config,
             pipelines,
+            window,
         }
     }
 
@@ -167,6 +169,7 @@ impl WindowedGpu {
 
         self.pipelines.render_to_view(&swap_view, frame_output);
 
+        self.window.pre_present_notify();
         frame.present();
     }
 }

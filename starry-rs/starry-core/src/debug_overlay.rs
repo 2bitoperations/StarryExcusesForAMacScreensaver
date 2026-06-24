@@ -51,11 +51,24 @@ pub const BUILD_TEXT_TINT: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
 /// Build-info overlay BG tint: dark green with α=0.55, RGB premultiplied.
 pub const BUILD_BG_TINT: [f32; 4] = [0.0, 0.05 * 0.55, 0.0, 0.55];
 
-/// Per-frame data the engine flattens into instance buffers.
-#[derive(Debug, Clone, Default)]
-pub struct DebugOverlayFrame {
-    pub stats_text: String,
-    pub build_info_text: String,
+/// Per-frame data the engine flattens into instance buffers. Both fields
+/// are borrowed slices so no heap allocation occurs on the frame path:
+/// `stats_text` borrows from a pre-allocated `String` field on
+/// `DebugSmoothers`; `build_info_text` is a `&'static str` compile-time
+/// constant (`BUILD_COMMIT`).
+#[derive(Debug, Clone, Copy)]
+pub struct DebugOverlayFrame<'a> {
+    pub stats_text: &'a str,
+    pub build_info_text: &'static str,
+}
+
+impl Default for DebugOverlayFrame<'static> {
+    fn default() -> Self {
+        Self {
+            stats_text: "",
+            build_info_text: "",
+        }
+    }
 }
 
 /// One instanced quad. Same struct draws glyphs and BG rects.
@@ -144,16 +157,17 @@ fn push_overlay(
 /// anchors bottom-right. Empty text in either field omits that overlay
 /// entirely (no instances pushed).
 pub fn layout_instances(
-    frame: &DebugOverlayFrame,
+    frame: &DebugOverlayFrame<'_>,
     viewport_w: f32,
     viewport_h: f32,
-) -> Vec<DebugInstance> {
-    let mut out = Vec::new();
+    out: &mut Vec<DebugInstance>,
+) {
+    out.clear();
 
-    let stats_lines: Vec<&str> = frame.stats_text.lines().collect();
+    let stats_lines: Vec<&str> = frame.stats_text.lines().collect::<Vec<_>>();
     if !stats_lines.is_empty() {
         push_overlay(
-            &mut out,
+            out,
             &stats_lines,
             OVERLAY_MARGIN_PX,
             OVERLAY_MARGIN_PX,
@@ -162,7 +176,7 @@ pub fn layout_instances(
         );
     }
 
-    let build_lines: Vec<&str> = frame.build_info_text.lines().collect();
+    let build_lines: Vec<&str> = frame.build_info_text.lines().collect::<Vec<_>>();
     if !build_lines.is_empty() {
         // Pre-compute the BG size so we know where to anchor the bottom-right.
         let max_chars = build_lines
@@ -177,7 +191,7 @@ pub fn layout_instances(
         let bg_x = (viewport_w - OVERLAY_MARGIN_PX - bg_w).max(0.0);
         let bg_y = (viewport_h - OVERLAY_MARGIN_PX - bg_h).max(0.0);
         push_overlay(
-            &mut out,
+            out,
             &build_lines,
             bg_x,
             bg_y,
@@ -185,8 +199,6 @@ pub fn layout_instances(
             BUILD_BG_TINT,
         );
     }
-
-    out
 }
 
 /// Initial instance capacity. Covers stats (~20 glyphs + BG) + build-info
@@ -513,10 +525,11 @@ mod tests {
     fn layout_emits_expected_instance_count() {
         // "ABC" stats (1 BG + 3 glyphs) + "1234" build (1 BG + 4 glyphs) = 9.
         let frame = DebugOverlayFrame {
-            stats_text: "ABC".to_string(),
-            build_info_text: "1234".to_string(),
+            stats_text: "ABC",
+            build_info_text: "1234",
         };
-        let insts = layout_instances(&frame, 1280.0, 800.0);
+        let mut insts = Vec::new();
+        layout_instances(&frame, 1280.0, 800.0, &mut insts);
         assert_eq!(insts.len(), 9);
     }
 
@@ -525,10 +538,11 @@ mod tests {
         // "A B" emits BG + 2 glyphs (space is skipped — encoded as all-zero
         // so it'd be invisible anyway, saving an instance per space).
         let frame = DebugOverlayFrame {
-            stats_text: "A B".to_string(),
-            build_info_text: String::new(),
+            stats_text: "A B",
+            build_info_text: "",
         };
-        let insts = layout_instances(&frame, 1280.0, 800.0);
+        let mut insts = Vec::new();
+        layout_instances(&frame, 1280.0, 800.0, &mut insts);
         assert_eq!(insts.len(), 3);
     }
 
@@ -536,22 +550,24 @@ mod tests {
     fn stats_overlay_anchors_top_left() {
         // First instance is the stats BG rect at (margin, margin).
         let frame = DebugOverlayFrame {
-            stats_text: "X".to_string(),
-            build_info_text: String::new(),
+            stats_text: "X",
+            build_info_text: "",
         };
-        let insts = layout_instances(&frame, 1280.0, 800.0);
+        let mut insts = Vec::new();
+        layout_instances(&frame, 1280.0, 800.0, &mut insts);
         assert_eq!(insts[0].position, [OVERLAY_MARGIN_PX, OVERLAY_MARGIN_PX]);
     }
 
     #[test]
     fn build_overlay_anchors_bottom_right() {
         let frame = DebugOverlayFrame {
-            stats_text: String::new(),
-            build_info_text: "X".to_string(),
+            stats_text: "",
+            build_info_text: "X",
         };
         let w = 1280.0;
         let h = 800.0;
-        let insts = layout_instances(&frame, w, h);
+        let mut insts = Vec::new();
+        layout_instances(&frame, w, h, &mut insts);
         assert_eq!(insts.len(), 2);
         let bg = insts[0];
         // BG bottom-right corner should sit at (W - margin, H - margin).
@@ -564,7 +580,8 @@ mod tests {
     #[test]
     fn empty_frame_emits_zero_instances() {
         let frame = DebugOverlayFrame::default();
-        let insts = layout_instances(&frame, 1280.0, 800.0);
+        let mut insts = Vec::new();
+        layout_instances(&frame, 1280.0, 800.0, &mut insts);
         assert!(insts.is_empty());
     }
 

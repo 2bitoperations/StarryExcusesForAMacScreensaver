@@ -53,7 +53,7 @@
 
 use crate::composite::CompositeRenderer;
 use crate::config::{CLEAR_COLOR, Config, LAYER_WIPE_COLOR, SPRITE_CAPACITY};
-use crate::debug_overlay::{DebugOverlayRenderer, layout_instances};
+use crate::debug_overlay::{DebugInstance, DebugOverlayRenderer, layout_instances};
 use crate::decay::DecayRenderer;
 use crate::engine::{FrameOutput, LayerFrame};
 use crate::moon_renderer::MoonRenderer;
@@ -78,6 +78,10 @@ struct DecayLayer {
     active_is_a: bool,
     sprites: SpriteRenderer,
     decay: DecayRenderer,
+    /// Pre-built composite bind groups: index 0 = view_a as source,
+    /// index 1 = view_b as source. Selected each frame by `active_comp_bg`
+    /// so the composite pass never calls `create_bind_group`.
+    comp_bgs: [wgpu::BindGroup; 2],
 }
 
 impl DecayLayer {
@@ -91,6 +95,7 @@ impl DecayLayer {
         sprite_capacity: u64,
         blend_mode: BlendMode,
         label: &str,
+        composite: &CompositeRenderer,
     ) -> Self {
         let (tex_a, view_a) =
             create_layer_target(device, width, height, format, &format!("{label} A"));
@@ -98,7 +103,11 @@ impl DecayLayer {
             create_layer_target(device, width, height, format, &format!("{label} B"));
         let sprites = SpriteRenderer::new(device, format, sprite_capacity, blend_mode);
         sprites.set_viewport(queue, width as f32, height as f32);
-        let decay = DecayRenderer::new(device, format);
+        let decay = DecayRenderer::new(device, format, &view_a, &view_b);
+        let comp_bgs = [
+            composite.create_bind_group_for_view(device, &view_a),
+            composite.create_bind_group_for_view(device, &view_b),
+        ];
         Self {
             tex_a,
             view_a,
@@ -107,6 +116,7 @@ impl DecayLayer {
             active_is_a: true,
             sprites,
             decay,
+            comp_bgs,
         }
     }
 
@@ -130,6 +140,15 @@ impl DecayLayer {
         self.active_is_a = !self.active_is_a;
     }
 
+    /// Return the composite bind group for the currently active texture.
+    fn active_comp_bg(&self) -> &wgpu::BindGroup {
+        if self.active_is_a {
+            &self.comp_bgs[0]
+        } else {
+            &self.comp_bgs[1]
+        }
+    }
+
     fn resize(
         &mut self,
         device: &wgpu::Device,
@@ -138,6 +157,7 @@ impl DecayLayer {
         width: u32,
         height: u32,
         label: &str,
+        composite: &CompositeRenderer,
     ) {
         let (a, av) = create_layer_target(device, width, height, format, &format!("{label} A"));
         let (b, bv) = create_layer_target(device, width, height, format, &format!("{label} B"));
@@ -148,6 +168,11 @@ impl DecayLayer {
         // Reset to a known state: tex_a holds nothing (zero-init), and
         // the next decay pass will read zeros — same as a fresh start.
         self.active_is_a = true;
+        self.decay.rebuild_bind_groups(device, &self.view_a, &self.view_b);
+        self.comp_bgs = [
+            composite.create_bind_group_for_view(device, &self.view_a),
+            composite.create_bind_group_for_view(device, &self.view_b),
+        ];
         self.sprites.set_viewport(queue, width as f32, height as f32);
     }
 }
@@ -197,6 +222,13 @@ pub struct GpuPipelines {
     /// everything. Owns its own atlas texture + procedural 5×7 glyph font
     /// + grow-on-demand instance buffer.
     debug_overlay: Option<DebugOverlayRenderer>,
+    /// Reusable scratch buffer for debug-overlay glyph instances. Cleared
+    /// and refilled each frame by `layout_instances`; avoids a per-frame
+    /// heap allocation for the returned `Vec<DebugInstance>`.
+    debug_instance_buf: Vec<DebugInstance>,
+    /// Pre-built composite bind group for the static skyline layer. Never
+    /// ping-pongs so one bind group suffices; rebuilt on resize.
+    comp_bg_skyline: wgpu::BindGroup,
 }
 
 impl GpuPipelines {
@@ -215,6 +247,11 @@ impl GpuPipelines {
             SpriteRenderer::new(&device, format, SPRITE_CAPACITY, BlendMode::Over);
         skyline_sprites.set_viewport(&queue, width as f32, height as f32);
 
+        // Composite renderer created before the decay layers so it can be
+        // passed into DecayLayer::new() for pre-building composite bind groups.
+        let composite = CompositeRenderer::new(&device, format);
+        let comp_bg_skyline = composite.create_bind_group_for_view(&device, &skyline_view);
+
         let satellites = app_config.satellites_enabled.then(|| {
             DecayLayer::new(
                 &device,
@@ -225,6 +262,7 @@ impl GpuPipelines {
                 SPRITE_CAPACITY,
                 BlendMode::Additive,
                 "satellites",
+                &composite,
             )
         });
 
@@ -238,6 +276,7 @@ impl GpuPipelines {
                 SPRITE_CAPACITY,
                 BlendMode::Additive,
                 "shooting",
+                &composite,
             )
         });
 
@@ -251,10 +290,9 @@ impl GpuPipelines {
                 1,
                 BlendMode::Over,
                 "flasher",
+                &composite,
             )
         });
-
-        let composite = CompositeRenderer::new(&device, format);
 
         let moon = app_config.moon_enabled.then(|| {
             MoonRenderer::new(
@@ -297,6 +335,8 @@ impl GpuPipelines {
             planets,
             planet_moons,
             debug_overlay,
+            debug_instance_buf: Vec::with_capacity(128),
+            comp_bg_skyline,
         }
     }
 
@@ -328,15 +368,17 @@ impl GpuPipelines {
         let (tex, view) = create_layer_target(&self.device, width, height, self.format, "skyline");
         self.skyline_tex = tex;
         self.skyline_view = view;
+        self.comp_bg_skyline =
+            self.composite.create_bind_group_for_view(&self.device, &self.skyline_view);
 
         if let Some(layer) = self.satellites.as_mut() {
-            layer.resize(&self.device, &self.queue, self.format, width, height, "satellites");
+            layer.resize(&self.device, &self.queue, self.format, width, height, "satellites", &self.composite);
         }
         if let Some(layer) = self.shooting.as_mut() {
-            layer.resize(&self.device, &self.queue, self.format, width, height, "shooting");
+            layer.resize(&self.device, &self.queue, self.format, width, height, "shooting", &self.composite);
         }
         if let Some(layer) = self.flasher.as_mut() {
-            layer.resize(&self.device, &self.queue, self.format, width, height, "flasher");
+            layer.resize(&self.device, &self.queue, self.format, width, height, "flasher", &self.composite);
         }
         if let Some(m) = self.moon.as_mut() {
             m.resize(&self.device, &self.queue, width);
@@ -401,8 +443,8 @@ impl GpuPipelines {
             self.debug_overlay.as_mut(),
             frame_output.debug_overlay.as_ref(),
         ) {
-            let instances = layout_instances(frame, self.width as f32, self.height as f32);
-            r.set_instances(&self.device, &self.queue, &instances);
+            layout_instances(frame, self.width as f32, self.height as f32, &mut self.debug_instance_buf);
+            r.set_instances(&self.device, &self.queue, &self.debug_instance_buf);
         }
 
         // Pre-stage planet GPU resources: ensure_planet rebuilds the per-slot
@@ -427,17 +469,17 @@ impl GpuPipelines {
         if let (Some(layer), Some(frame)) =
             (self.satellites.as_mut(), frame_output.satellites.as_ref())
         {
-            run_decay_layer(layer, &self.device, &self.queue, &mut encoder, frame);
+            run_decay_layer(layer, &self.queue, &mut encoder, frame);
         }
         if let (Some(layer), Some(frame)) =
             (self.shooting.as_mut(), frame_output.shooting.as_ref())
         {
-            run_decay_layer(layer, &self.device, &self.queue, &mut encoder, frame);
+            run_decay_layer(layer, &self.queue, &mut encoder, frame);
         }
         if let (Some(layer), Some(frame)) =
             (self.flasher.as_mut(), frame_output.flasher.as_ref())
         {
-            run_decay_layer(layer, &self.device, &self.queue, &mut encoder, frame);
+            run_decay_layer(layer, &self.queue, &mut encoder, frame);
         }
 
         // ---- 4: Skyline sprite pass (persist-and-wipe).
@@ -523,16 +565,20 @@ impl GpuPipelines {
         // ---- 8: Composite all enabled layers onto the target view.
         // Layer order [skyline, flasher, satellites, shooting] is the back-to-front
         // Z-order matching Swift's pass order in StarryMetalRenderer.swift.
-        let mut layer_views: Vec<&wgpu::TextureView> = Vec::with_capacity(4);
-        layer_views.push(&self.skyline_view);
-        if let Some(layer) = self.flasher.as_ref() {
-            layer_views.push(layer.active_view());
+        // Stack-allocated array — no heap allocation, no create_bind_group.
+        let mut comp_bgs: [&wgpu::BindGroup; 4] = [&self.comp_bg_skyline; 4];
+        let mut n = 1usize;
+        if let Some(l) = self.flasher.as_ref() {
+            comp_bgs[n] = l.active_comp_bg();
+            n += 1;
         }
-        if let Some(layer) = self.satellites.as_ref() {
-            layer_views.push(layer.active_view());
+        if let Some(l) = self.satellites.as_ref() {
+            comp_bgs[n] = l.active_comp_bg();
+            n += 1;
         }
-        if let Some(layer) = self.shooting.as_ref() {
-            layer_views.push(layer.active_view());
+        if let Some(l) = self.shooting.as_ref() {
+            comp_bgs[n] = l.active_comp_bg();
+            n += 1;
         }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -548,8 +594,7 @@ impl GpuPipelines {
                 })],
                 ..Default::default()
             });
-            self.composite
-                .draw_all(&self.device, &mut pass, &layer_views);
+            self.composite.draw_all(&mut pass, &comp_bgs[..n]);
 
             if let Some(pr) = self.planets.as_ref()
                 && !frame_output.planets.is_empty()
@@ -595,16 +640,14 @@ impl GpuPipelines {
 /// no other passes are alive) with all sprite passes (encoded after).
 fn run_decay_layer(
     layer: &mut DecayLayer,
-    device: &wgpu::Device,
     queue: &wgpu::Queue,
     encoder: &mut wgpu::CommandEncoder,
     frame: &LayerFrame<'_>,
 ) {
     layer.decay.apply(
-        device,
         queue,
         encoder,
-        layer.active_view(),
+        layer.active_is_a,
         layer.scratch_view(),
         frame.keep_factor,
     );

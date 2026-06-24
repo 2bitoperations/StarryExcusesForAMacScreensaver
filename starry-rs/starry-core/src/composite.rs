@@ -4,12 +4,12 @@
 //! `PREMULTIPLIED_ALPHA_BLENDING` so brighter layer pixels occlude the
 //! darker layers underneath.
 //!
-//! Bind groups are rebuilt every `draw_all()` call rather than cached on
-//! the renderer. This is intentional: layer texture views ping-pong each
-//! frame (decay reads "active" and writes "scratch", then they swap), so
-//! the bind groups would need recreation every frame anyway. Building
-//! them inline keeps the API stateless and removes the need for a
-//! `rebind()` lifecycle hook.
+//! Bind groups for each layer are pre-built by the caller (`GpuPipelines`)
+//! and passed in as `&[&wgpu::BindGroup]`. Each ping-pong `DecayLayer`
+//! owns two cached bind groups (one per A/B texture view) and exposes the
+//! active one via `active_comp_bg()`; the static skyline layer has a single
+//! cached group on `GpuPipelines`. This eliminates all per-frame
+//! `create_bind_group` calls on the composite hot path.
 
 pub struct CompositeRenderer {
     pipeline: wgpu::RenderPipeline,
@@ -83,37 +83,36 @@ impl CompositeRenderer {
         Self { pipeline, bgl }
     }
 
-    /// Composite each layer view onto the bound render target, in slice
-    /// order: index 0 is the back layer, index N-1 is the front. Caller
-    /// owns the Z-order decision. Bind groups are built fresh from the
-    /// supplied views, so callers can pass ping-pong-swapped views every
-    /// frame without ceremony.
-    pub fn draw_all(
+    /// Build a single bind group for one texture view. Callers use this
+    /// at init time and on resize to pre-build their cached bind groups;
+    /// the hot `draw_all` path never calls it.
+    pub fn create_bind_group_for_view(
         &self,
         device: &wgpu::Device,
-        pass: &mut wgpu::RenderPass<'_>,
-        layer_views: &[&wgpu::TextureView],
-    ) {
-        // Build all bind groups first, then issue draws. wgpu 29 internally
-        // ref-counts bind groups so this local Vec can drop at end-of-fn
-        // without invalidating the recorded commands.
-        let bind_groups: Vec<wgpu::BindGroup> = layer_views
-            .iter()
-            .map(|view| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("composite layer bg"),
-                    layout: &self.bgl,
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(view),
-                    }],
-                })
-            })
-            .collect();
+        view: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("composite layer bg"),
+            layout: &self.bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(view),
+            }],
+        })
+    }
 
+    /// Composite pre-built bind groups onto the bound render target, in
+    /// slice order: index 0 is the back layer, index N-1 is the front.
+    /// No GPU object creation happens here — bind groups must be built
+    /// once (at init / resize) and supplied pre-cached by the caller.
+    pub fn draw_all(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        bind_groups: &[&wgpu::BindGroup],
+    ) {
         pass.set_pipeline(&self.pipeline);
-        for bg in &bind_groups {
-            pass.set_bind_group(0, bg, &[]);
+        for bg in bind_groups {
+            pass.set_bind_group(0, *bg, &[]);
             pass.draw(0..3, 0..1);
         }
     }
