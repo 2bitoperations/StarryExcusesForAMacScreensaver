@@ -79,7 +79,15 @@ class StarrySaverView: ScreenSaverView {
     private let cgWindowRecheckIntervalFrames: UInt64 = 30
 
     // Lazy so the panel controller is created on demand and lives for the view's lifetime.
-    private lazy var configController = StarryConfigPanel()
+    // The onLiveChange closure destroys the old engine and recreates it with the new
+    // TOML so the preview updates within ~350 ms of the user touching any control.
+    private lazy var configController: StarryConfigPanel = {
+        let panel = StarryConfigPanel()
+        panel.onLiveChange = { [weak self] toml in
+            self?.reloadEngineWithCurrentConfig(toml: toml)
+        }
+        return panel
+    }()
 
     override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
@@ -411,6 +419,26 @@ class StarrySaverView: ScreenSaverView {
     }
 
     // MARK: - Options panel
+
+    /// Tears down the running engine and recreates it with the given TOML config
+    /// string. Called by the config panel's live-preview debounce. Only acts when
+    /// the view has an active CAMetalLayer and is not stopped.
+    private func reloadEngineWithCurrentConfig(toml: String) {
+        guard let mLayer = metalLayer, !stoppedRunning else { return }
+        if let h = renderHandle {
+            starry_destroy(h)
+            renderHandle = nil
+        }
+        let scale = mLayer.contentsScale
+        let wPx = UInt32(max(bounds.width  * scale, 1))
+        let hPx = UInt32(max(bounds.height * scale, 1))
+        log.info("reloadEngine \(wPx)×\(hPx) px (live config update)")
+        renderHandle = toml.withCString { ptr in
+            starry_create_with_toml(
+                Unmanaged.passUnretained(mLayer).toOpaque(), wPx, hPx, ptr
+            )
+        }
+    }
 
     override var hasConfigureSheet: Bool { true }
     override var configureSheet: NSWindow? { configController.window }

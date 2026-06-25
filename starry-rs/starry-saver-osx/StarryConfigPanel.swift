@@ -18,6 +18,11 @@ final class StarryConfigPanel: NSObject {
     let window: NSWindow
     private let dm = RustDefaultsManager()
 
+    // Called (debounced ~350 ms) on every control change so the running
+    // engine can be recreated with the new settings without persisting to defaults.
+    var onLiveChange: ((String) -> Void)?
+    private var liveUpdateItem: DispatchWorkItem?
+
     // MARK: - Sky controls
     private let starsSlider       = NSSlider()
     private let starsLabel        = NSTextField(labelWithString: "")
@@ -255,20 +260,16 @@ final class StarryConfigPanel: NSObject {
             row("Pluto",    plutoSlider,   plutoLabel),
         ])
 
+        // inner.translatesAutoresizingMaskIntoConstraints is already false (set by vstack).
+        // Pin it to the scroll view's content view so Auto Layout knows its width;
+        // height is determined by the stack view's intrinsic content.
         scroll.documentView = inner
-        inner.frame = NSRect(x: 0, y: 0, width: 440, height: 600)
-        inner.translatesAutoresizingMaskIntoConstraints = false
-
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(scroll)
         NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: container.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            inner.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+            inner.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            inner.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
         ])
-        return container
+        return scroll
     }
 
     private func debugContent() -> NSView {
@@ -475,11 +476,66 @@ final class StarryConfigPanel: NSObject {
 
     // MARK: - Actions
 
-    @objc private func skyChanged(_: Any?)      { refreshValueLabels() }
-    @objc private func effectsChanged(_: Any?)  { refreshValueLabels() }
-    @objc private func moonChanged(_: Any?)     { refreshValueLabels() }
-    @objc private func planetsChanged(_: Any?)  { refreshValueLabels() }
-    @objc private func debugChanged(_: Any?)    {}
+    @objc private func skyChanged(_: Any?)      { refreshValueLabels(); scheduleLiveUpdate() }
+    @objc private func effectsChanged(_: Any?)  { refreshValueLabels(); scheduleLiveUpdate() }
+    @objc private func moonChanged(_: Any?)     { refreshValueLabels(); scheduleLiveUpdate() }
+    @objc private func planetsChanged(_: Any?)  { refreshValueLabels(); scheduleLiveUpdate() }
+    @objc private func debugChanged(_: Any?)    { scheduleLiveUpdate() }
+
+    private func scheduleLiveUpdate() {
+        liveUpdateItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.onLiveChange?(self.currentTomlString())
+        }
+        liveUpdateItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: item)
+    }
+
+    // Serialises the current UI control state to TOML without touching saved defaults.
+    // Key names and format must match PartialConfig in toml_config.rs exactly.
+    func currentTomlString() -> String {
+        var lines: [String] = []
+        func f(_ key: String, _ v: Double) { lines.append("\(key) = \(v)") }
+        func b(_ key: String, _ v: Bool)   { lines.append("\(key) = \(v)") }
+        func i(_ key: String, _ v: Int)    { lines.append("\(key) = \(v)") }
+        func q(_ key: String, _ v: String) { lines.append("\(key) = \"\(v)\"") }
+
+        f("stars_fraction",             starsSlider.doubleValue)
+        f("lights_fraction",            lightsSlider.doubleValue)
+        f("clear_interval_s",           clearSlider.doubleValue)
+        f("building_height_pct_max",    buildingHtSlider.doubleValue)
+        b("shooting_stars_enabled",     shootEnabledBox.state == .on)
+        f("shooting_stars_avg_seconds", shootAvgSlider.doubleValue)
+        b("satellites_enabled",         satEnabledBox.state == .on)
+        b("moon_enabled",               moonEnabledBox.state == .on)
+        f("moon_diameter_percent",      moonSizeSlider.doubleValue)
+        f("moon_traversal_seconds",     moonTravSlider.doubleValue)
+        i("moon_terminator_mode",       moonTermPopup.indexOfSelectedItem)
+        f("moon_bright_brightness",     moonBrightSlider.doubleValue)
+        f("moon_dark_brightness",       moonDarkSlider.doubleValue)
+        b("moon_phase_override_enabled", moonPhaseOverBox.state == .on)
+        f("moon_phase_override_value",  moonPhaseSlider.doubleValue)
+        b("planets_enabled",            planetsEnabledBox.state == .on)
+        b("planet_moons_enabled",       moonsEnabledBox.state == .on)
+        let horizValues = ["hide", "random", "random-when-below"]
+        q("planet_below_horizon_behavior", horizValues[safe: horizBehavPopup.indexOfSelectedItem] ?? "hide")
+        let phaseValues = ["forced-full", "forced-half", "computed"]
+        q("planet_phase_mode",          phaseValues[safe: phaseModePopup.indexOfSelectedItem] ?? "computed")
+        let ringValues = ["smooth", "flat-retro", "chunky-pixel"]
+        q("saturn_ring_style",          ringValues[safe: ringStylePopup.indexOfSelectedItem] ?? "flat-retro")
+        f("mercury_size",               mercurySlider.doubleValue)
+        f("venus_size",                 venusSlider.doubleValue)
+        f("mars_size",                  marsSlider.doubleValue)
+        f("jupiter_size",               jupiterSlider.doubleValue)
+        f("saturn_size",                saturnSlider.doubleValue)
+        f("uranus_size",                uranusSlider.doubleValue)
+        f("neptune_size",               neptuneSlider.doubleValue)
+        f("pluto_size",                 plutoSlider.doubleValue)
+        b("debug_overlay_enabled",      debugOverlayBox.state == .on)
+        b("debug_moon_colors",          debugMoonBox.state == .on)
+        return lines.joined(separator: "\n")
+    }
 
     @objc private func okTapped(_: Any?) {
         saveToDefaults()
