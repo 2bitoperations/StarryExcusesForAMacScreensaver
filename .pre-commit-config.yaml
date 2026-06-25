@@ -15,3 +15,11 @@ repos:
         entry: bash -c 'cd starry-rs && cargo fmt --check --all'
         pass_filenames: false
         types: [rust]
+
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Run clippy -D warnings on the starry-rs workspace.
+        language: system
+        entry: bash -c 'cd starry-rs && cargo clippy --workspace --all-targets -- -D warnings'
+        pass_filenames: false
+        types: [rust]
