@@ -35,6 +35,23 @@ private let log = Logger(
     category: "StarrySaverView"
 )
 
+/// Dummy CALayer delegate whose `window` returns nil.
+///
+/// wgpu 29's Metal HAL (wgpu-hal/src/metal/surface.rs `acquire_texture`)
+/// walks up the layer hierarchy to find a layer with a delegate, then
+/// sends `-window` to that delegate and checks the window's
+/// `occlusionState`.  In `legacyScreenSaver.appex` the saver window is a
+/// remote-layer-server window; `occlusionState` never has bit 1
+/// (`NSWindowOcclusionStateVisible`) set, so every `acquire_texture` call
+/// returns `SurfaceError::Occluded` before even calling `nextDrawable`.
+///
+/// Fix: sit a container CALayer with THIS delegate between `self.layer`
+/// and the CAMetalLayer.  wgpu finds this delegate first, calls
+/// `window` → nil → skips the occlusion check → calls `nextDrawable`.
+private class OcclusionBypassDelegate: NSObject, CALayerDelegate {
+    @objc func window() -> NSWindow? { nil }
+}
+
 // @objc(StarrySaverView) pins the Objective-C runtime name to the bare
 // class name so NSPrincipalClass = "StarrySaverView" in Info.plist works
 // regardless of the Swift module name.
@@ -48,6 +65,8 @@ class StarrySaverView: ScreenSaverView {
     // working pattern (mirrored from StarryExcuseForAView.swift) is wantsLayer=true
     // plus an explicit CAMetalLayer sublayer added in startAnimation.
     private var metalLayer: CAMetalLayer?
+    private var containerLayer: CALayer?
+    private let occlusionBypassDelegate = OcclusionBypassDelegate()
 
     // Lazy so the panel is created on demand and lives for the view's lifetime.
     private lazy var configPanel: NSWindow = makeConfigPanel()
@@ -87,7 +106,20 @@ class StarrySaverView: ScreenSaverView {
             mLayer.frame = bounds
             mLayer.contentsScale = scale
             mLayer.isOpaque = true
-            layer?.addSublayer(mLayer)
+
+            // Interpose a container CALayer so wgpu's occlusion workaround
+            // (wgpu-hal metal surface.rs acquire_texture) finds
+            // occlusionBypassDelegate instead of the NSView, returns nil for
+            // `window`, and proceeds to nextDrawable rather than bailing with
+            // SurfaceError::Occluded on every frame.
+            let cLayer = CALayer()
+            cLayer.frame = bounds
+            cLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+            cLayer.delegate = occlusionBypassDelegate
+            layer?.addSublayer(cLayer)
+            cLayer.addSublayer(mLayer)
+            containerLayer = cLayer
+
             metalLayer = mLayer
             log.info("CAMetalLayer sublayer added layer=\(self.layer != nil) contentsScale=\(scale)")
         }
@@ -115,6 +147,8 @@ class StarrySaverView: ScreenSaverView {
         }
         metalLayer?.removeFromSuperlayer()
         metalLayer = nil
+        containerLayer?.removeFromSuperlayer()
+        containerLayer = nil
         super.stopAnimation()
     }
 
@@ -131,6 +165,7 @@ class StarrySaverView: ScreenSaverView {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
+        containerLayer?.frame = bounds
         metalLayer?.frame = bounds
         guard let hdl = renderHandle else { return }
         let scale = metalLayer?.contentsScale ?? 1.0
