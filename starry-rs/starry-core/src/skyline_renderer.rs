@@ -17,7 +17,7 @@
 
 use rand::Rng;
 
-use crate::config::{lights_per_second, stars_per_second, Config};
+use crate::config::{Config, lights_per_second, stars_per_second};
 use crate::skyline::Skyline;
 use crate::sprite::SpriteInstance;
 use crate::types::Point;
@@ -53,8 +53,7 @@ impl SkylineRenderer {
     ) -> &[SpriteInstance] {
         self.sprites.clear();
 
-        let star_rate =
-            stars_per_second(config, skyline.width, skyline.height);
+        let star_rate = stars_per_second(config, skyline.width, skyline.height);
         self.star_acc += star_rate * dt_seconds;
         let star_attempts = self.star_acc.floor() as i32;
         self.star_acc -= star_attempts as f64;
@@ -65,8 +64,7 @@ impl SkylineRenderer {
             }
         }
 
-        let light_rate =
-            lights_per_second(config, skyline.width, skyline.height);
+        let light_rate = lights_per_second(config, skyline.width, skyline.height);
         self.light_acc += light_rate * dt_seconds;
         let light_count = self.light_acc.floor() as i32;
         self.light_acc -= light_count as f64;

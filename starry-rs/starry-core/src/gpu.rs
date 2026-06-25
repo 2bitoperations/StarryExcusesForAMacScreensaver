@@ -168,12 +168,14 @@ impl DecayLayer {
         // Reset to a known state: tex_a holds nothing (zero-init), and
         // the next decay pass will read zeros — same as a fresh start.
         self.active_is_a = true;
-        self.decay.rebuild_bind_groups(device, &self.view_a, &self.view_b);
+        self.decay
+            .rebuild_bind_groups(device, &self.view_a, &self.view_b);
         self.comp_bgs = [
             composite.create_bind_group_for_view(device, &self.view_a),
             composite.create_bind_group_for_view(device, &self.view_b),
         ];
-        self.sprites.set_viewport(queue, width as f32, height as f32);
+        self.sprites
+            .set_viewport(queue, width as f32, height as f32);
     }
 }
 
@@ -368,17 +370,42 @@ impl GpuPipelines {
         let (tex, view) = create_layer_target(&self.device, width, height, self.format, "skyline");
         self.skyline_tex = tex;
         self.skyline_view = view;
-        self.comp_bg_skyline =
-            self.composite.create_bind_group_for_view(&self.device, &self.skyline_view);
+        self.comp_bg_skyline = self
+            .composite
+            .create_bind_group_for_view(&self.device, &self.skyline_view);
 
         if let Some(layer) = self.satellites.as_mut() {
-            layer.resize(&self.device, &self.queue, self.format, width, height, "satellites", &self.composite);
+            layer.resize(
+                &self.device,
+                &self.queue,
+                self.format,
+                width,
+                height,
+                "satellites",
+                &self.composite,
+            );
         }
         if let Some(layer) = self.shooting.as_mut() {
-            layer.resize(&self.device, &self.queue, self.format, width, height, "shooting", &self.composite);
+            layer.resize(
+                &self.device,
+                &self.queue,
+                self.format,
+                width,
+                height,
+                "shooting",
+                &self.composite,
+            );
         }
         if let Some(layer) = self.flasher.as_mut() {
-            layer.resize(&self.device, &self.queue, self.format, width, height, "flasher", &self.composite);
+            layer.resize(
+                &self.device,
+                &self.queue,
+                self.format,
+                width,
+                height,
+                "flasher",
+                &self.composite,
+            );
         }
         if let Some(m) = self.moon.as_mut() {
             m.resize(&self.device, &self.queue, width);
@@ -417,16 +444,13 @@ impl GpuPipelines {
                 .sprites
                 .set_instances(&self.device, &self.queue, frame.sprites);
         }
-        if let (Some(layer), Some(frame)) =
-            (self.shooting.as_mut(), frame_output.shooting.as_ref())
+        if let (Some(layer), Some(frame)) = (self.shooting.as_mut(), frame_output.shooting.as_ref())
         {
             layer
                 .sprites
                 .set_instances(&self.device, &self.queue, frame.sprites);
         }
-        if let (Some(layer), Some(frame)) =
-            (self.flasher.as_mut(), frame_output.flasher.as_ref())
-        {
+        if let (Some(layer), Some(frame)) = (self.flasher.as_mut(), frame_output.flasher.as_ref()) {
             layer
                 .sprites
                 .set_instances(&self.device, &self.queue, frame.sprites);
@@ -443,7 +467,12 @@ impl GpuPipelines {
             self.debug_overlay.as_mut(),
             frame_output.debug_overlay.as_ref(),
         ) {
-            layout_instances(frame, self.width as f32, self.height as f32, &mut self.debug_instance_buf);
+            layout_instances(
+                frame,
+                self.width as f32,
+                self.height as f32,
+                &mut self.debug_instance_buf,
+            );
             r.set_instances(&self.device, &self.queue, &self.debug_instance_buf);
         }
 
@@ -471,14 +500,11 @@ impl GpuPipelines {
         {
             run_decay_layer(layer, &self.queue, &mut encoder, frame);
         }
-        if let (Some(layer), Some(frame)) =
-            (self.shooting.as_mut(), frame_output.shooting.as_ref())
+        if let (Some(layer), Some(frame)) = (self.shooting.as_mut(), frame_output.shooting.as_ref())
         {
             run_decay_layer(layer, &self.queue, &mut encoder, frame);
         }
-        if let (Some(layer), Some(frame)) =
-            (self.flasher.as_mut(), frame_output.flasher.as_ref())
-        {
+        if let (Some(layer), Some(frame)) = (self.flasher.as_mut(), frame_output.flasher.as_ref()) {
             run_decay_layer(layer, &self.queue, &mut encoder, frame);
         }
 
@@ -613,7 +639,13 @@ impl GpuPipelines {
             }
 
             if let (Some(m), Some(p)) = (self.moon.as_ref(), frame_output.moon.as_ref()) {
-                m.draw(&self.queue, &mut pass, p, self.width as f32, self.height as f32);
+                m.draw(
+                    &self.queue,
+                    &mut pass,
+                    p,
+                    self.width as f32,
+                    self.height as f32,
+                );
             }
 
             // Debug overlay draws last so glyph text sits on top of every

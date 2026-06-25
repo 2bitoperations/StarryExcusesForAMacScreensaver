@@ -187,8 +187,7 @@ impl Moon {
 
         // Arch peak: at least 20px, target 15% of screen height, never
         // exceeding the headroom between baseline and the top margin.
-        let vertical_headroom =
-            (screen_height - radius) as f64 - vertical_base_y - 10.0;
+        let vertical_headroom = (screen_height - radius) as f64 - vertical_base_y - 10.0;
         let suggested = 0.15 * screen_height as f64;
         let min_arch = 20.0;
         let vertical_arch_height = suggested.max(min_arch).min(vertical_headroom.max(0.0));
@@ -342,7 +341,10 @@ mod tests {
     fn phase_at_epoch_is_new_and_waxing() {
         let epoch = UNIX_EPOCH + Duration::from_secs_f64(NEW_MOON_EPOCH_UNIX_SECS);
         let (frac, waxing) = compute_phase(epoch);
-        assert!(frac < 1e-9, "expected ~0 illumination at new moon, got {frac}");
+        assert!(
+            frac < 1e-9,
+            "expected ~0 illumination at new moon, got {frac}"
+        );
         assert!(waxing, "expected waxing immediately after new moon");
     }
 
@@ -353,14 +355,17 @@ mod tests {
     #[test]
     fn phase_at_full_moon_is_one_and_tips_to_waning() {
         let half_synodic_secs = SYNODIC_MONTH_DAYS * 86_400.0 / 2.0;
-        let full = UNIX_EPOCH
-            + Duration::from_secs_f64(NEW_MOON_EPOCH_UNIX_SECS + half_synodic_secs);
+        let full =
+            UNIX_EPOCH + Duration::from_secs_f64(NEW_MOON_EPOCH_UNIX_SECS + half_synodic_secs);
         let (frac, waxing) = compute_phase(full);
         assert!(
             (frac - 1.0).abs() < 1e-9,
             "expected full illumination at half-synodic, got {frac}"
         );
-        assert!(!waxing, "waxing flag should tip to false at exactly synodic/2");
+        assert!(
+            !waxing,
+            "waxing flag should tip to false at exactly synodic/2"
+        );
     }
 
     /// Override `p = 0.25` should give illuminated fraction `0.5`, waxing.

@@ -68,10 +68,7 @@ mod tests {
             debug_moon_color_premul("callisto"),
             Some([1.0, 1.0, 0.0, 1.0])
         );
-        assert_eq!(
-            debug_moon_color_premul("titan"),
-            Some([1.0, 0.0, 1.0, 1.0])
-        );
+        assert_eq!(debug_moon_color_premul("titan"), Some([1.0, 0.0, 1.0, 1.0]));
     }
 
     #[test]

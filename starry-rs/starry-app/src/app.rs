@@ -88,12 +88,7 @@ impl ApplicationHandler for App {
         self.engine = Some(engine);
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         let (Some(gpu), Some(window), Some(engine)) = (
             self.gpu.as_mut(),
             self.window.as_ref(),

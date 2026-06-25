@@ -17,10 +17,7 @@ pub struct CompositeRenderer {
 }
 
 impl CompositeRenderer {
-    pub fn new(
-        device: &wgpu::Device,
-        output_format: wgpu::TextureFormat,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, output_format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("composite shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("composite.wgsl").into()),
@@ -105,11 +102,7 @@ impl CompositeRenderer {
     /// slice order: index 0 is the back layer, index N-1 is the front.
     /// No GPU object creation happens here — bind groups must be built
     /// once (at init / resize) and supplied pre-cached by the caller.
-    pub fn draw_all(
-        &self,
-        pass: &mut wgpu::RenderPass<'_>,
-        bind_groups: &[&wgpu::BindGroup],
-    ) {
+    pub fn draw_all(&self, pass: &mut wgpu::RenderPass<'_>, bind_groups: &[&wgpu::BindGroup]) {
         pass.set_pipeline(&self.pipeline);
         for bg in bind_groups {
             pass.set_bind_group(0, *bg, &[]);

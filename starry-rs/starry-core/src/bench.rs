@@ -142,8 +142,7 @@ async fn run_bench_async(config: &Config) -> Result<(), Box<dyn Error>> {
     // and queue, so after this we access them via pipelines.device() /
     // pipelines.queue().
     let mut engine = Engine::new(config.clone());
-    let mut pipelines =
-        GpuPipelines::new(device, queue, TEXTURE_FORMAT, width, height, config);
+    let mut pipelines = GpuPipelines::new(device, queue, TEXTURE_FORMAT, width, height, config);
 
     let base_now = UNIX_EPOCH + Duration::from_secs(HEADLESS_NOW_UNIX_SECS);
 
@@ -173,8 +172,7 @@ async fn run_bench_async(config: &Config) -> Result<(), Box<dyn Error>> {
         // (i + 1) because frame 0 was the warmup; the timed loop picks up
         // at frame 1 in simulation-time so the wall-clock anchor advances
         // monotonically and moon/planet positions don't snap backwards.
-        let wall_now =
-            base_now + Duration::from_secs_f64((i as f64 + 1.0) * BENCH_DT_SECONDS);
+        let wall_now = base_now + Duration::from_secs_f64((i as f64 + 1.0) * BENCH_DT_SECONDS);
 
         let start = Instant::now();
         let frame_output = engine.frame_with_dt(BENCH_DT_SECONDS, wall_now);
@@ -200,8 +198,7 @@ async fn run_bench_async(config: &Config) -> Result<(), Box<dyn Error>> {
 
     durations.sort_unstable();
     let n = durations.len();
-    let mean_us = durations.iter().map(|d| d.as_secs_f64()).sum::<f64>() / n as f64
-        * 1_000_000.0;
+    let mean_us = durations.iter().map(|d| d.as_secs_f64()).sum::<f64>() / n as f64 * 1_000_000.0;
     let p50_us = pct(&durations, 50);
     let p95_us = pct(&durations, 95);
     let p99_us = pct(&durations, 99);
@@ -257,10 +254,7 @@ async fn run_bench_async(config: &Config) -> Result<(), Box<dyn Error>> {
         .append(true)
         .open(&results_path)?;
     if needs_header {
-        writeln!(
-            file,
-            "# starry-rs benchmark results"
-        )?;
+        writeln!(file, "# starry-rs benchmark results")?;
         writeln!(file)?;
         writeln!(
             file,

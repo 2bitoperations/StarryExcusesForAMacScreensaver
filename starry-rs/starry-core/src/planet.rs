@@ -641,8 +641,8 @@ fn saturn_ring_state(now: SystemTime) -> (f64, f64) {
     let delta_pole = (83.537_f64).to_radians();
     let delta_alpha = alpha_pole - ra_rad;
     let numerator = delta_pole.cos() * delta_alpha.sin();
-    let denominator = delta_pole.sin() * dec_rad.cos()
-        - delta_pole.cos() * dec_rad.sin() * delta_alpha.cos();
+    let denominator =
+        delta_pole.sin() * dec_rad.cos() - delta_pole.cos() * dec_rad.sin() * delta_alpha.cos();
     let pa_deg = normalise_signed(numerator.atan2(denominator).to_degrees());
 
     (tilt_deg, pa_deg)
@@ -666,8 +666,8 @@ fn heliocentric_ecliptic(elements: OrbitalElements, t: f64) -> (f64, f64, f64) {
     }
 
     // True anomaly.
-    let nu = 2.0
-        * ((1.0 + e).sqrt() * (ecc / 2.0).sin()).atan2((1.0 - e).sqrt() * (ecc / 2.0).cos());
+    let nu =
+        2.0 * ((1.0 + e).sqrt() * (ecc / 2.0).sin()).atan2((1.0 - e).sqrt() * (ecc / 2.0).cos());
 
     // Heliocentric distance.
     let r = elements.a * (1.0 - e * ecc.cos());
@@ -1128,10 +1128,19 @@ mod tests {
         // Same nonce, same day, same planet → same position.
         assert_eq!(s_a1.center_px, s_a2.center_px, "deterministic per day");
         // Random mode reports below_horizon regardless of actual orbital position.
-        assert!(!s_a1.above_horizon, "random mode should report below horizon");
-        assert_eq!(s_a1.brightness, 1.0, "random mode renders at full brightness");
+        assert!(
+            !s_a1.above_horizon,
+            "random mode should report below horizon"
+        );
+        assert_eq!(
+            s_a1.brightness, 1.0,
+            "random mode renders at full brightness"
+        );
         // Different nonce → different position (overwhelmingly likely).
-        assert_ne!(s_a1.center_px, s_b.center_px, "nonce should shuffle position");
+        assert_ne!(
+            s_a1.center_px, s_b.center_px,
+            "nonce should shuffle position"
+        );
     }
 
     #[test]
@@ -1186,7 +1195,9 @@ mod tests {
         let now = time_at_unix(1_704_067_200.0);
         for parent in PlanetIdentity::ALL {
             let mut states = Vec::new();
-            moon_sprite_states(parent, now, (640.0, 400.0), 0.0, 0.0, 0.0, 1.0, |s| states.push(s));
+            moon_sprite_states(parent, now, (640.0, 400.0), 0.0, 0.0, 0.0, 1.0, |s| {
+                states.push(s)
+            });
             assert!(
                 states.is_empty(),
                 "{parent:?} with parent_radius_px=0 must return empty, got {} moons",
@@ -1200,7 +1211,9 @@ mod tests {
         let now = time_at_unix(1_704_067_200.0);
         for parent in PlanetIdentity::ALL {
             let mut states = Vec::new();
-            moon_sprite_states(parent, now, (640.0, 400.0), 30.0, 5.0, 12.0, 1.0, |s| states.push(s));
+            moon_sprite_states(parent, now, (640.0, 400.0), 30.0, 5.0, 12.0, 1.0, |s| {
+                states.push(s)
+            });
             match parent {
                 PlanetIdentity::Jupiter => assert!(
                     states.len() <= 4,

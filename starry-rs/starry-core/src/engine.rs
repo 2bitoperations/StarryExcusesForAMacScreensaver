@@ -25,16 +25,16 @@
 use std::fmt::Write;
 use std::time::{Instant, SystemTime};
 
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 
 use crate::config::{
-    Config, PlanetPhaseMode, RingStyle, BUILD_COMMIT, PLANET_BRIGHT_BRIGHTNESS,
-    PLANET_DARK_BRIGHTNESS, PLANET_TERMINATOR_BANDS, PLANET_TERMINATOR_WIDTH,
+    BUILD_COMMIT, Config, PLANET_BRIGHT_BRIGHTNESS, PLANET_DARK_BRIGHTNESS,
+    PLANET_TERMINATOR_BANDS, PLANET_TERMINATOR_WIDTH, PlanetPhaseMode, RingStyle,
 };
 use crate::cpu_sample::sample_process_cpu_seconds;
 use crate::debug_overlay::DebugOverlayFrame;
-use crate::moon::{radius_from_percent, Moon, MoonParams};
-use crate::planet::{moon_sprite_states, Planet, PlanetIdentity, PlanetParams};
+use crate::moon::{Moon, MoonParams, radius_from_percent};
+use crate::planet::{Planet, PlanetIdentity, PlanetParams, moon_sprite_states};
 use crate::satellites::SatellitesRenderer;
 use crate::shooting_stars::{ShootingStarDirectionMode, ShootingStarsRenderer};
 use crate::skyline::Skyline;
@@ -280,8 +280,7 @@ impl Engine {
                 .iter()
                 .map(|&identity| {
                     let size_fraction = planet_size_fraction(identity, &config);
-                    let radius =
-                        ((config.width as f64 * size_fraction / 2.0) as i32).max(1);
+                    let radius = ((config.width as f64 * size_fraction / 2.0) as i32).max(1);
                     Planet::new(
                         identity,
                         config.width as i32,
@@ -374,12 +373,9 @@ impl Engine {
         // and returns a slice borrowing from that same disjoint field.
         // NLL handles the three independent borrows cleanly when the
         // FrameOutput is constructed at the end.
-        let skyline_sprites = self.skyline_renderer.frame(
-            &mut self.skyline,
-            dt,
-            &self.config,
-            &mut self.rng,
-        );
+        let skyline_sprites =
+            self.skyline_renderer
+                .frame(&mut self.skyline, dt, &self.config, &mut self.rng);
 
         let satellites = self.satellites_renderer.as_mut().map(|r| {
             let f = r.frame(dt, &mut self.rng);

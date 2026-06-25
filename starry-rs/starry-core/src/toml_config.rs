@@ -326,10 +326,7 @@ fn cli_partial_from_matches(matches: &clap::ArgMatches) -> PartialConfig {
     /// Helper: returns `Some(value)` only if clap's source for this
     /// argument is `CommandLine`. Defaults and env-vars are filtered
     /// out — they should fall through to TOML / clap defaults.
-    fn pick<T: Clone + Send + Sync + 'static>(
-        matches: &clap::ArgMatches,
-        id: &str,
-    ) -> Option<T> {
+    fn pick<T: Clone + Send + Sync + 'static>(matches: &clap::ArgMatches, id: &str) -> Option<T> {
         match matches.value_source(id) {
             Some(ValueSource::CommandLine) => matches.get_one::<T>(id).cloned(),
             _ => None,
@@ -430,7 +427,11 @@ fn discover_config_path(cli_config: Option<&Path>) -> Result<Option<PathBuf>, St
     let xdg = std::env::var("XDG_CONFIG_HOME")
         .ok()
         .map(PathBuf::from)
-        .or_else(|| std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config")));
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| PathBuf::from(h).join(".config"))
+        });
     if let Some(base) = xdg {
         let p = base.join("starry").join("config.toml");
         if p.exists() {
@@ -450,8 +451,8 @@ fn discover_config_path(cli_config: Option<&Path>) -> Result<Option<PathBuf>, St
 /// or TOML parse failure (including unknown keys / type mismatches
 /// caught by `deny_unknown_fields`).
 fn load_partial_from_path(path: &Path) -> Result<PartialConfig, String> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| format!("reading {}: {}", path.display(), e))?;
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {}", path.display(), e))?;
     toml::from_str(&text).map_err(|e| format!("parsing {}: {}", path.display(), e))
 }
 
@@ -598,11 +599,7 @@ mod tests {
     fn explicit_config_missing_is_hard_error() {
         let nonexistent = PathBuf::from("/tmp/starry-rs-test-no-such-file-asdfqwer.toml");
         let matches = Config::command()
-            .try_get_matches_from([
-                "starry-rs",
-                "--config",
-                nonexistent.to_str().unwrap(),
-            ])
+            .try_get_matches_from(["starry-rs", "--config", nonexistent.to_str().unwrap()])
             .unwrap();
         let err = load_config_from_matches(&matches).unwrap_err();
         assert!(

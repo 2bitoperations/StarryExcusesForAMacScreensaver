@@ -133,11 +133,7 @@ impl SatellitesRenderer {
     /// new spawn per frame — see in-line note), emit one head sprite per
     /// survivor, and return `(sprites, keep_factor)`. Borrows into an
     /// internal buffer — caller must drain before next call.
-    pub fn frame<R: Rng + ?Sized>(
-        &mut self,
-        dt: f64,
-        rng: &mut R,
-    ) -> SatellitesFrame<'_> {
+    pub fn frame<R: Rng + ?Sized>(&mut self, dt: f64, rng: &mut R) -> SatellitesFrame<'_> {
         let dtf = dt as f32;
         for sat in self.satellites.iter_mut() {
             sat.x += sat.vx * dtf;
@@ -212,7 +208,11 @@ impl SatellitesRenderer {
         // Start fully off-screen on the entering side so the satellite
         // visibly "flies in" rather than popping into existence at the
         // edge. Direction determines both start x and velocity sign.
-        let x = if from_left { -self.size_px } else { self.width as f32 + self.size_px };
+        let x = if from_left {
+            -self.size_px
+        } else {
+            self.width as f32 + self.size_px
+        };
         let vx = if from_left { self.speed } else { -self.speed };
         // Per-satellite brightness jitter (0.8x .. 1.05x) so a parade of
         // satellites doesn't look mechanically identical. Swift line 336.
@@ -239,12 +239,10 @@ impl SatellitesRenderer {
         let mut y_min = h * DEFAULT_BAND_TOP_FRAC;
         let mut y_max = h * DEFAULT_BAND_BOTTOM_FRAC;
 
-        if let (Some(cy), Some(r)) = (self.flasher_center_y, self.flasher_radius)
-        {
+        if let (Some(cy), Some(r)) = (self.flasher_center_y, self.flasher_radius) {
             // Bottom-origin: "top of flasher" = center + radius.
             let flasher_top = cy + r;
-            let limit_min_center =
-                flasher_top + FLASHER_VERTICAL_GAP + self.size_px * 0.5;
+            let limit_min_center = flasher_top + FLASHER_VERTICAL_GAP + self.size_px * 0.5;
             if limit_min_center > h {
                 return None;
             }

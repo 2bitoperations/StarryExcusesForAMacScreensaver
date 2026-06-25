@@ -30,10 +30,8 @@ use std::time::{Duration, Instant};
 
 use rand::Rng;
 
-use crate::buildings::{
-    Building, BUILDING_COLOR, BUILDING_STYLES, FLASHER_COLOR,
-};
-use crate::types::{random_star_color, Point};
+use crate::buildings::{BUILDING_COLOR, BUILDING_STYLES, Building, FLASHER_COLOR};
+use crate::types::{Point, random_star_color};
 
 /// Default cap on per-call retries when hunting for a lit building window.
 /// Swift loops forever; we cap it so a degenerate "zero buildings" config
@@ -75,20 +73,16 @@ impl Skyline {
         clear_after_s: f64,
         rng: &mut R,
     ) -> Self {
-        let building_max_height =
-            (screen_height as f64 * building_height_pct_max).max(1.0) as i32;
+        let building_max_height = (screen_height as f64 * building_height_pct_max).max(1.0) as i32;
 
-        let computed_count =
-            ((screen_width as f64) * building_frequency).max(0.0) as i32;
+        let computed_count = ((screen_width as f64) * building_frequency).max(0.0) as i32;
 
-        let mut buildings: Vec<Building> =
-            Vec::with_capacity((computed_count + 1) as usize);
+        let mut buildings: Vec<Building> = Vec::with_capacity((computed_count + 1) as usize);
 
         // Inclusive upper bound matches Swift's `0...computedBuildingCount`.
         for z_index in 0..=computed_count {
             let style_idx = rng.gen_range(0..BUILDING_STYLES.len());
-            let height =
-                Self::weighted_random_height(rng, building_max_height);
+            let height = Self::weighted_random_height(rng, building_max_height);
 
             // Swift: `Int.random(in: 0...screenXMax - 1)`.
             let start_x = rng.gen_range(0..screen_width);
@@ -124,10 +118,7 @@ impl Skyline {
             }
         }
 
-        let flasher_pos = Self::compute_flasher_position(
-            &buildings,
-            flasher_radius,
-        );
+        let flasher_pos = Self::compute_flasher_position(&buildings, flasher_radius);
 
         let now = Instant::now();
         Skyline {
@@ -147,19 +138,13 @@ impl Skyline {
 
     /// Quadratically weighted toward small values, matching Swift's
     /// `pow(Double.random(in: 0.01...1), 2)` — biases buildings shorter.
-    fn weighted_random_height<R: Rng + ?Sized>(
-        rng: &mut R,
-        max_height: i32,
-    ) -> i32 {
+    fn weighted_random_height<R: Rng + ?Sized>(rng: &mut R, max_height: i32) -> i32 {
         let r: f64 = rng.gen_range(0.01..=1.0);
         let weighted = r * r;
         ((weighted * max_height as f64) as i32).max(1)
     }
 
-    fn compute_flasher_position(
-        buildings: &[Building],
-        flasher_radius: i32,
-    ) -> Option<Point> {
+    fn compute_flasher_position(buildings: &[Building], flasher_radius: i32) -> Option<Point> {
         let tallest = buildings.iter().max_by_key(|b| b.height)?;
         let fx = tallest.start_x + (tallest.width / 2);
         let fy = tallest.start_y + tallest.height + flasher_radius;
@@ -179,10 +164,7 @@ impl Skyline {
     /// One sample attempt at a horizon-weighted star. Returns `None` when
     /// the sampled y falls below the skyline at that column. **Does not
     /// retry** — caller-driven attempt count by design (see module doc).
-    pub fn attempt_star<R: Rng + ?Sized>(
-        &self,
-        rng: &mut R,
-    ) -> Option<Point> {
+    pub fn attempt_star<R: Rng + ?Sized>(&self, rng: &mut R) -> Option<Point> {
         if self.height <= 0 {
             return None;
         }
@@ -206,10 +188,7 @@ impl Skyline {
     /// Bounded search for a building pixel where the tile mask says the
     /// light is on. Returns `None` if no hit within `LIGHT_SAMPLE_MAX_ATTEMPTS`
     /// (only possible with no buildings or pathologically sparse styles).
-    pub fn sample_building_light<R: Rng + ?Sized>(
-        &self,
-        rng: &mut R,
-    ) -> Option<Point> {
+    pub fn sample_building_light<R: Rng + ?Sized>(&self, rng: &mut R) -> Option<Point> {
         if self.width <= 0 || self.height <= 0 || self.buildings.is_empty() {
             return None;
         }

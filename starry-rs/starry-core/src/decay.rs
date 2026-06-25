@@ -129,7 +129,12 @@ impl DecayRenderer {
         });
 
         let bind_groups = build_decay_bind_groups(device, &bgl, &ubo, view_a, view_b);
-        DecayRenderer { pipeline, bgl, ubo, bind_groups }
+        DecayRenderer {
+            pipeline,
+            bgl,
+            ubo,
+            bind_groups,
+        }
     }
 
     /// Rebuild the cached bind groups after a resize replaces the texture

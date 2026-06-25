@@ -84,7 +84,8 @@ impl WindowedGpu {
             format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: caps.present_modes
+            present_mode: caps
+                .present_modes
                 .iter()
                 .copied()
                 .find(|&m| m == wgpu::PresentMode::Fifo)

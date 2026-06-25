@@ -451,7 +451,6 @@ pub struct Config {
     pub debug_overlay_enabled: bool,
 
     // ---- Phase 5a: planets ----
-
     /// Enable the planet layer. Disabling skips both engine work and GPU
     /// resource allocation. No Swift counterpart — added for symmetry
     /// with the moon/satellites/shooting-stars master toggles in the
@@ -529,7 +528,6 @@ pub struct Config {
     pub planet_terminator_mode: u32,
 
     // ---- Phase 5b: Saturn rings ----
-
     /// Saturn ring tilt angle in degrees, range `−27..=+27`. When
     /// omitted, the engine computes the tilt automatically from the
     /// Schlyter formula against the current wall-clock time. When set,
@@ -558,7 +556,6 @@ pub struct Config {
     pub saturn_ring_style: RingStyle,
 
     // ---- Phase 5c: planet moons (Galilean + Titan) ----
-
     /// Enable the planet-moon layer (Io, Europa, Ganymede, Callisto
     /// orbiting Jupiter; Titan orbiting Saturn). Disabling skips engine
     /// emission and the GPU sprite pass entirely. No Swift counterpart —
@@ -581,7 +578,6 @@ pub struct Config {
     pub saturn_moon_scale: f64,
 
     // ---- Phase 6c: deterministic seed mode ----
-
     /// Source of wall-clock + dt for the windowed renderer. `realtime`
     /// (default) uses `SystemTime::now()` and Instant-derived dt with a
     /// MAX_DT clamp; `deterministic` advances `wall_now` by `fixed_dt`
@@ -610,7 +606,6 @@ pub struct Config {
     pub time_anchor: u64,
 
     // ---- Phase 6d: bench harness ----
-
     /// When set, the windowed event loop is bypassed and the bench
     /// harness runs offscreen for this many frames. Each frame is
     /// rendered via the real `GpuPipelines::render_to_view` path
@@ -642,12 +637,7 @@ impl Default for Config {
 /// Convert a 0..1 emission fraction into sprites-per-second, scaling by
 /// screen area so a tiny preview window gets proportionally fewer sprites
 /// than the reference resolution.
-pub fn scaled_rate(
-    fraction: f64,
-    max_at_ref: f64,
-    width: i32,
-    height: i32,
-) -> f64 {
+pub fn scaled_rate(fraction: f64, max_at_ref: f64, width: i32, height: i32) -> f64 {
     let area = (width as f64) * (height as f64);
     let ref_area = REFERENCE_W * REFERENCE_H;
     fraction.max(0.0) * max_at_ref * (area / ref_area)
@@ -658,5 +648,10 @@ pub fn stars_per_second(cfg: &Config, width: i32, height: i32) -> f64 {
 }
 
 pub fn lights_per_second(cfg: &Config, width: i32, height: i32) -> f64 {
-    scaled_rate(cfg.lights_fraction, MAX_LIGHTS_PER_SEC_AT_REF, width, height)
+    scaled_rate(
+        cfg.lights_fraction,
+        MAX_LIGHTS_PER_SEC_AT_REF,
+        width,
+        height,
+    )
 }

@@ -148,11 +148,7 @@ impl ShootingStarsRenderer {
     /// roll the per-frame spawn Bernoulli, emit a fresh 18-segment trail
     /// for each survivor, and return `(sprites, keep_factor)`. Borrows
     /// into an internal buffer — caller must drain before next call.
-    pub fn frame<R: Rng + ?Sized>(
-        &mut self,
-        dt: f64,
-        rng: &mut R,
-    ) -> ShootingStarsFrame<'_> {
+    pub fn frame<R: Rng + ?Sized>(&mut self, dt: f64, rng: &mut R) -> ShootingStarsFrame<'_> {
         self.spawn_if_needed(dt, rng);
 
         for star in self.active.iter_mut() {

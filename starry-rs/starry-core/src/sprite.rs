@@ -46,10 +46,18 @@ struct QuadVertex {
 }
 
 const QUAD_VERTICES: [QuadVertex; 4] = [
-    QuadVertex { position: [-0.5, -0.5] },
-    QuadVertex { position: [ 0.5, -0.5] },
-    QuadVertex { position: [-0.5,  0.5] },
-    QuadVertex { position: [ 0.5,  0.5] },
+    QuadVertex {
+        position: [-0.5, -0.5],
+    },
+    QuadVertex {
+        position: [0.5, -0.5],
+    },
+    QuadVertex {
+        position: [-0.5, 0.5],
+    },
+    QuadVertex {
+        position: [0.5, 0.5],
+    },
 ];
 
 /// Selects the color-blend equation used by a `SpriteRenderer`'s pipeline.

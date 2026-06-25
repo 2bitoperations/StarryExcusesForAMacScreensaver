@@ -78,7 +78,9 @@ pub fn generate_albedo_map(size: usize) -> Vec<u8> {
             brightness += (noise - 0.5) * 0.06;
             // x * 13 + y * 7 (wrapping) feeds a second hash for very rare
             // bright crater spots. Matches Swift's `x &* 13 &+ y &* 7`.
-            let crater_input = (x as i64).wrapping_mul(13).wrapping_add((y as i64).wrapping_mul(7));
+            let crater_input = (x as i64)
+                .wrapping_mul(13)
+                .wrapping_add((y as i64).wrapping_mul(7));
             let crater_seed = pseudo_noise_hash(crater_input);
             if crater_seed > 0.995 {
                 brightness += 0.12;
@@ -240,7 +242,11 @@ mod tests {
     #[test]
     fn create_moon_texture_matches_explicit_chain() {
         let direct = create_moon_texture(120);
-        let explicit = upsample_nearest(&generate_albedo_map(BASE_TEXTURE_SIZE), BASE_TEXTURE_SIZE, 120);
+        let explicit = upsample_nearest(
+            &generate_albedo_map(BASE_TEXTURE_SIZE),
+            BASE_TEXTURE_SIZE,
+            120,
+        );
         assert_eq!(direct, explicit);
     }
 }

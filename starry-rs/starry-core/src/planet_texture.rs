@@ -449,7 +449,8 @@ mod tests {
                 );
                 for chunk in tex.chunks_exact(4) {
                     assert_eq!(
-                        chunk[3], 255,
+                        chunk[3],
+                        255,
                         "non-opaque alpha for {} at d={}",
                         identity.name(),
                         diameter
@@ -527,10 +528,8 @@ mod tests {
     #[test]
     fn saturn_texture_is_banded_not_flat() {
         let tex = create_planet_texture(PlanetIdentity::Saturn, 32);
-        let unique: std::collections::HashSet<[u8; 3]> = tex
-            .chunks_exact(4)
-            .map(|c| [c[0], c[1], c[2]])
-            .collect();
+        let unique: std::collections::HashSet<[u8; 3]> =
+            tex.chunks_exact(4).map(|c| [c[0], c[1], c[2]]).collect();
         assert!(
             unique.len() > 50,
             "saturn body should have band/noise variation, got {} unique RGB values",
@@ -549,7 +548,10 @@ mod tests {
         let cy = (size / 2) as usize;
         let i = (cy * size as usize + cx) * 4;
         let (r, g, b) = (tex[i], tex[i + 1], tex[i + 2]);
-        assert!(r > g && g > b, "expected pale-gold ordering R > G > B at centre, got ({r}, {g}, {b})");
+        assert!(
+            r > g && g > b,
+            "expected pale-gold ordering R > G > B at centre, got ({r}, {g}, {b})"
+        );
         assert!(r > 180, "expected bright centre red, got {r}");
         assert!(b < 200, "expected muted centre blue, got {b}");
     }

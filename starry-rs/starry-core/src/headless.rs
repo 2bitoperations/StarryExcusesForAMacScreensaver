@@ -67,7 +67,10 @@ pub fn dump_png(config: &Config) -> Result<(), Box<dyn Error>> {
 async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
     let width = config.width;
     let height = config.height;
-    assert!(width > 0 && height > 0, "headless dimensions must be positive");
+    assert!(
+        width > 0 && height > 0,
+        "headless dimensions must be positive"
+    );
     let path = config
         .dump_png
         .as_ref()
@@ -136,16 +139,24 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
     });
 
     let satellites_sprites = frame_output.satellites.as_ref().map(|layer| {
-        let mut s =
-            SpriteRenderer::new(&device, TEXTURE_FORMAT, SPRITE_CAPACITY, BlendMode::Additive);
+        let mut s = SpriteRenderer::new(
+            &device,
+            TEXTURE_FORMAT,
+            SPRITE_CAPACITY,
+            BlendMode::Additive,
+        );
         s.set_viewport(&queue, width as f32, height as f32);
         s.set_instances(&device, &queue, layer.sprites);
         s
     });
 
     let shooting_sprites = frame_output.shooting.as_ref().map(|layer| {
-        let mut s =
-            SpriteRenderer::new(&device, TEXTURE_FORMAT, SPRITE_CAPACITY, BlendMode::Additive);
+        let mut s = SpriteRenderer::new(
+            &device,
+            TEXTURE_FORMAT,
+            SPRITE_CAPACITY,
+            BlendMode::Additive,
+        );
         s.set_viewport(&queue, width as f32, height as f32);
         s.set_instances(&device, &queue, layer.sprites);
         s
@@ -158,8 +169,8 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
         s
     });
 
-    let mut planet_renderer = (!frame_output.planets.is_empty())
-        .then(|| PlanetRenderer::new(&device, TEXTURE_FORMAT));
+    let mut planet_renderer =
+        (!frame_output.planets.is_empty()).then(|| PlanetRenderer::new(&device, TEXTURE_FORMAT));
     if let Some(pr) = planet_renderer.as_mut() {
         for (identity, params) in frame_output.planets {
             let diameter = ((params.radius_px as u32) * 2).max(1);
@@ -191,8 +202,14 @@ async fn dump_png_async(config: &Config) -> Result<(), Box<dyn Error>> {
         frame_output.clear_skyline,
         frame_output.skyline_sprites.len(),
         frame_output.flasher.as_ref().map_or(0, |l| l.sprites.len()),
-        frame_output.satellites.as_ref().map_or(0, |l| l.sprites.len()),
-        frame_output.shooting.as_ref().map_or(0, |l| l.sprites.len()),
+        frame_output
+            .satellites
+            .as_ref()
+            .map_or(0, |l| l.sprites.len()),
+        frame_output
+            .shooting
+            .as_ref()
+            .map_or(0, |l| l.sprites.len()),
         frame_output.planets.len(),
         frame_output.planet_moons.len(),
         frame_output.moon.is_some(),

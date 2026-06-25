@@ -91,7 +91,10 @@ pub struct DebugInstance {
 #[inline]
 fn uv_min_for_char(c: char) -> [f32; 2] {
     let code = if (c as u32) < 128 { c as u32 } else { 0 };
-    [code as f32 * GLYPH_WIDTH as f32 / ATLAS_WIDTH_PX as f32, 0.0]
+    [
+        code as f32 * GLYPH_WIDTH as f32 / ATLAS_WIDTH_PX as f32,
+        0.0,
+    ]
 }
 
 /// UV origin of the DEL solid-block sentinel (used for BG rects).
@@ -110,7 +113,10 @@ fn overlay_size(lines: &[&str]) -> [f32; 2] {
     let max_chars = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0);
     let text_w = max_chars as f32 * GLYPH_ADVANCE_PX;
     let text_h = lines.len() as f32 * LINE_HEIGHT_PX;
-    [text_w + 2.0 * OVERLAY_PAD_H_PX, text_h + 2.0 * OVERLAY_PAD_V_PX]
+    [
+        text_w + 2.0 * OVERLAY_PAD_H_PX,
+        text_h + 2.0 * OVERLAY_PAD_V_PX,
+    ]
 }
 
 /// Push one overlay's BG rect + glyph quads to `out`. Accepts pre-computed
@@ -172,11 +178,21 @@ pub fn layout_instances(
 ) {
     out.clear();
 
-    debug_assert!(!frame.stats_text.contains('\n'), "stats_text must be single-line");
-    debug_assert!(!frame.build_info_text.contains('\n'), "build_info_text must be single-line");
+    debug_assert!(
+        !frame.stats_text.contains('\n'),
+        "stats_text must be single-line"
+    );
+    debug_assert!(
+        !frame.build_info_text.contains('\n'),
+        "build_info_text must be single-line"
+    );
 
     let stats_buf = [frame.stats_text];
-    let stats_lines: &[&str] = if frame.stats_text.is_empty() { &[] } else { &stats_buf };
+    let stats_lines: &[&str] = if frame.stats_text.is_empty() {
+        &[]
+    } else {
+        &stats_buf
+    };
     if !stats_lines.is_empty() {
         let bg_size = overlay_size(stats_lines);
         push_overlay(
@@ -190,7 +206,11 @@ pub fn layout_instances(
     }
 
     let build_buf = [frame.build_info_text];
-    let build_lines: &[&str] = if frame.build_info_text.is_empty() { &[] } else { &build_buf };
+    let build_lines: &[&str] = if frame.build_info_text.is_empty() {
+        &[]
+    } else {
+        &build_buf
+    };
     if !build_lines.is_empty() {
         let bg_size = overlay_size(build_lines);
         let bg_x = (viewport_w - OVERLAY_MARGIN_PX - bg_size[0]).max(0.0);
@@ -241,9 +261,7 @@ impl DebugOverlayRenderer {
                 for col in 0..GLYPH_WIDTH {
                     let bit = (glyph_row >> (4 - col)) & 1;
                     let lit: u8 = if bit == 1 { 255 } else { 0 };
-                    let idx = row * ATLAS_WIDTH_PX as usize
-                        + code as usize * GLYPH_WIDTH
-                        + col;
+                    let idx = row * ATLAS_WIDTH_PX as usize + code as usize * GLYPH_WIDTH + col;
                     atlas_bytes[idx] = lit;
                 }
             }
