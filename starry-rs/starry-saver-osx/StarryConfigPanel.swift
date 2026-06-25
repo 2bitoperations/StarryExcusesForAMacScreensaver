@@ -163,7 +163,7 @@ final class StarryConfigPanel: NSObject {
         previewView = pv
 
         // Label underneath the preview
-        let hint = NSTextField(labelWithString: "Preview (reflects changes after ~0.35 s)")
+        let hint = NSTextField(labelWithString: "Preview — build \(buildCommit) • changes apply after ~0.35 s")
         hint.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         hint.textColor = .secondaryLabelColor
         hint.translatesAutoresizingMaskIntoConstraints = false
@@ -564,13 +564,15 @@ final class StarryConfigPanel: NSObject {
                 name: NSView.frameDidChangeNotification,
                 object: pv
             )
-            self.previewTimer = Timer.scheduledTimer(
-                timeInterval: 1.0 / 60.0,
-                target: self,
-                selector: #selector(self.previewTick),
-                userInfo: nil,
-                repeats: true
-            )
+            // Add to both .common and .eventTracking so the timer fires
+            // during live resize (NSEventTrackingRunLoopMode is not in .common
+            // by default on macOS).
+            let t = Timer(timeInterval: 1.0 / 60.0, target: self,
+                          selector: #selector(self.previewTick),
+                          userInfo: nil, repeats: true)
+            RunLoop.main.add(t, forMode: .common)
+            RunLoop.main.add(t, forMode: .eventTracking)
+            self.previewTimer = t
         }
     }
 
@@ -597,6 +599,7 @@ final class StarryConfigPanel: NSObject {
         let w  = UInt32(max(pv.bounds.width  * scale, 1))
         let hp = UInt32(max(pv.bounds.height * scale, 1))
         starry_resize(h, w, hp)
+        starry_frame(h)
     }
 
     private func rebuildPreviewEngine(toml: String) {
