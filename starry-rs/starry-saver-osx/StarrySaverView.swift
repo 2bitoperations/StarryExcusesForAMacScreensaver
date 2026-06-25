@@ -1,3 +1,4 @@
+import CoreGraphics
 import ScreenSaver
 import QuartzCore
 import os.log
@@ -49,6 +50,26 @@ class StarrySaverView: ScreenSaverView {
     // plus an explicit CAMetalLayer sublayer added in startAnimation.
     private var metalLayer: CAMetalLayer?
 
+    // MARK: - Visibility state (ported from StarryExcuseForAView.swift)
+
+    private var stoppedRunning = false
+    private var firstAnimationWallTime: CFTimeInterval?
+    private let initialVisibilityGraceSeconds: Double = 1.5
+    private var lastVisibilityState: Bool = true
+    private var lastVisibilityReason: String = "initial"
+    private var lastVisibilityDecisionPath: String = "initial"
+    private var lastLoggedVisibilityState: Bool?
+    private var lastLoggedVisibilityReason: String?
+    private var invisibilityBeganTime: CFTimeInterval?
+    private var invisibleConsecutiveFrames: UInt64 = 0
+    private let visibilityReleaseThresholdSeconds: Double = 3.0
+    private var resourcesReleasedWhileInvisible = false
+    private let visibilityCheckIntervalSeconds: CFTimeInterval = 2.0
+    private var lastVisibilityCheckWallTime: CFTimeInterval = 0
+    private var lastCGWindowCheckFrame: UInt64 = 0
+    private var cachedCGWindowOnscreen: Bool = true
+    private let cgWindowRecheckIntervalFrames: UInt64 = 30
+
     // Lazy so the panel is created on demand and lives for the view's lifetime.
     private lazy var configPanel: NSWindow = makeConfigPanel()
 
@@ -65,7 +86,10 @@ class StarrySaverView: ScreenSaverView {
 
     override func startAnimation() {
         super.startAnimation()
+        stoppedRunning = false
+        firstAnimationWallTime = CACurrentMediaTime()
         log.info("startAnimation \(Int(self.bounds.width))×\(Int(self.bounds.height)) pts")
+        registerListeners()
         guard renderHandle == nil else { return }
 
         // Set wantsLayer here (not in init) so the backing layer is created
@@ -105,28 +129,252 @@ class StarrySaverView: ScreenSaverView {
         } else {
             log.info("starry_create OK")
         }
+
+        if let win = window {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(windowOcclusionChanged(_:)),
+                name: NSWindow.didChangeOcclusionStateNotification,
+                object: win
+            )
+        }
     }
 
     override func stopAnimation() {
         log.info("stopAnimation")
+        stoppedRunning = true
+        NotificationCenter.default.removeObserver(
+            self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
+        DistributedNotificationCenter.default().removeObserver(self)
+        releaseResources()
+        super.stopAnimation()
+    }
+
+    private func releaseResources() {
         if let h = renderHandle {
             starry_destroy(h)
             renderHandle = nil
         }
         metalLayer?.removeFromSuperlayer()
         metalLayer = nil
-        super.stopAnimation()
+        resourcesReleasedWhileInvisible = true
+    }
+
+    private func recreateResources() {
+        guard resourcesReleasedWhileInvisible, !stoppedRunning else { return }
+        log.info("recreateResources: visibility restored, recreating GPU context")
+        resourcesReleasedWhileInvisible = false
+        invisibilityBeganTime = nil
+        invisibleConsecutiveFrames = 0
+
+        wantsLayer = true
+        let scale = window?.screen?.backingScaleFactor
+            ?? window?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor
+            ?? 2.0
+        let mLayer = CAMetalLayer()
+        mLayer.frame = bounds
+        mLayer.contentsScale = scale
+        mLayer.isOpaque = true
+        layer?.addSublayer(mLayer)
+        metalLayer = mLayer
+
+        let wPx = UInt32(max(bounds.width  * scale, 1))
+        let hPx = UInt32(max(bounds.height * scale, 1))
+        log.info("recreateResources starry_create \(wPx)×\(hPx) px")
+        renderHandle = starry_create(
+            Unmanaged.passUnretained(mLayer).toOpaque(), wPx, hPx
+        )
+        if renderHandle == nil {
+            log.error("recreateResources: starry_create returned nil")
+        } else {
+            log.info("recreateResources OK")
+        }
     }
 
     private var frameCount: UInt64 = 0
 
     override func animateOneFrame() {
-        guard let hdl = renderHandle else { return }
+        guard !stoppedRunning else { return }
         frameCount += 1
         if frameCount == 1 || frameCount % 300 == 0 {
             log.info("animateOneFrame #\(self.frameCount) window=\(self.window != nil)")
         }
+
+        let now = CACurrentMediaTime()
+        if now - lastVisibilityCheckWallTime >= visibilityCheckIntervalSeconds {
+            lastVisibilityCheckWallTime = now
+            inferVisibilityState(frameIndex: frameCount, logEveryCheck: true)
+        }
+
+        guard shouldRenderCurrentFrame() else { return }
+
+        if resourcesReleasedWhileInvisible {
+            recreateResources()
+            return
+        }
+
+        guard let hdl = renderHandle else { return }
         starry_frame(hdl)
+    }
+
+    // MARK: - Visibility notifications
+
+    private func registerListeners() {
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(willStopHandler(_:)),
+            name: Notification.Name("com.apple.screensaver.willstop"),
+            object: nil
+        )
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(willStopHandler(_:)),
+            name: Notification.Name("com.apple.screensaver.didstop"),
+            object: nil
+        )
+    }
+
+    @objc private func willStopHandler(_ note: Notification) {
+        if !isPreview {
+            log.info("willStop/didStop received — terminating process")
+            NSApplication.shared.terminate(nil)
+        } else {
+            log.info("willStop/didStop received (preview) — ignoring terminate")
+        }
+    }
+
+    @objc private func windowOcclusionChanged(_ note: Notification) {
+        inferVisibilityState(frameIndex: frameCount, logEveryCheck: true)
+    }
+
+    // MARK: - Visibility inference (ported from StarryExcuseForAView.swift)
+
+    private func shouldRenderCurrentFrame() -> Bool {
+        lastVisibilityState
+    }
+
+    private func inInitialGracePeriod() -> Bool {
+        guard let t0 = firstAnimationWallTime else { return true }
+        return (CACurrentMediaTime() - t0) < initialVisibilityGraceSeconds
+    }
+
+    private func inferVisibilityState(frameIndex: UInt64, logEveryCheck: Bool = false) {
+        let prevVisible = lastVisibilityState
+        let prevReason = lastVisibilityReason
+        let (visible, reason, path) = visibilityDecision()
+
+        if visible != prevVisible {
+            if visible {
+                invisibleConsecutiveFrames = 0
+                invisibilityBeganTime = nil
+                log.info("visibility → VISIBLE frame=#\(frameIndex) reason=\(reason, privacy: .public) prev=\(prevReason, privacy: .public) path=\(path, privacy: .public)")
+            } else if !inInitialGracePeriod() {
+                invisibilityBeganTime = CACurrentMediaTime()
+                log.info("visibility → INVISIBLE frame=#\(frameIndex) reason=\(reason, privacy: .public) prev=\(prevReason, privacy: .public) path=\(path, privacy: .public)")
+            }
+            lastVisibilityState = visible
+            lastLoggedVisibilityState = nil
+            lastLoggedVisibilityReason = nil
+        }
+        lastVisibilityReason = reason
+        lastVisibilityDecisionPath = path
+
+        if logEveryCheck {
+            if lastLoggedVisibilityState != visible || lastLoggedVisibilityReason != reason {
+                log.info("visibilityCheck frame=#\(frameIndex) visible=\(visible) reason=\(reason, privacy: .public)")
+                lastLoggedVisibilityState = visible
+                lastLoggedVisibilityReason = reason
+            }
+        }
+
+        if !lastVisibilityState {
+            invisibleConsecutiveFrames &+= 1
+            if let start = invisibilityBeganTime {
+                let elapsed = CACurrentMediaTime() - start
+                if elapsed >= visibilityReleaseThresholdSeconds, !resourcesReleasedWhileInvisible {
+                    log.info("Long invisibility (\(String(format: "%.1f", elapsed))s) — releasing GPU resources")
+                    releaseResources()
+                }
+            }
+        }
+    }
+
+    private func visibilityDecision() -> (Bool, String, String) {
+        var steps: [String] = ["BEGIN"]
+
+        func finish(_ visible: Bool, _ reason: String) -> (Bool, String, String) {
+            steps.append("FINAL=\(visible ? "VISIBLE" : "INVISIBLE") reason=\(reason)")
+            return (visible, reason, steps.joined(separator: " -> "))
+        }
+
+        if isPreview {
+            steps.append("mode=preview")
+            guard let win = window else { return finish(true, "preview-no-window-assume") }
+            if win.isMiniaturized { return finish(false, "preview-miniaturized") }
+            if !win.isVisible    { return finish(false, "preview-notVisible") }
+            return finish(true, "preview-visible")
+        }
+
+        let grace = inInitialGracePeriod()
+        steps.append("grace=\(grace)")
+
+        guard let win = window else {
+            if grace { return finish(true, "grace-no-window") }
+            return finish(false, "no-window")
+        }
+
+        if win.isMiniaturized {
+            steps.append("miniaturized=true")
+            return finish(false, "miniaturized")
+        }
+
+        if !win.isVisible {
+            steps.append("win.isVisible=false")
+            if grace { return finish(true, "grace-notVisibleFlag") }
+            return finish(false, "window-notVisible-flag")
+        }
+
+        let occ = win.occlusionState
+        steps.append("occlusionState=\(occ.contains(.visible) ? "visible" : "none")")
+
+        if !occ.contains(.visible) {
+            if grace { return finish(true, "grace-ambiguous-occlusion") }
+            let onScreen = cgWindowIsOnScreenThrottled(frameIndex: frameCount)
+            steps.append("CGWindow=\(onScreen)")
+            return onScreen
+                ? finish(true,  "cgWindow-onscreen-ambiguousOcc")
+                : finish(false, "cgWindow-offscreen-ambiguousOcc")
+        }
+
+        let wf = win.frame
+        let intersects = NSScreen.screens.contains { NSIntersectsRect($0.frame, wf) }
+        steps.append("screenIntersect=\(intersects)")
+        if !intersects {
+            if grace { return finish(true, "grace-offscreen-frame") }
+            return finish(false, "no-screen-intersection")
+        }
+
+        return finish(true, "visible-occlusionState-visibleBit")
+    }
+
+    private func cgWindowIsOnScreenThrottled(frameIndex: UInt64) -> Bool {
+        if frameIndex - lastCGWindowCheckFrame < cgWindowRecheckIntervalFrames {
+            return cachedCGWindowOnscreen
+        }
+        lastCGWindowCheckFrame = frameIndex
+        guard let win = window else { return cachedCGWindowOnscreen }
+        let wid = CGWindowID(win.windowNumber)
+        guard wid != 0 else { return cachedCGWindowOnscreen }
+        if let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], wid)
+            as? [[String: Any]],
+           let info = list.first,
+           let onScreen = info[kCGWindowIsOnscreen as String] as? Bool
+        {
+            cachedCGWindowOnscreen = onScreen
+            return onScreen
+        }
+        return cachedCGWindowOnscreen
     }
 
     override func setFrameSize(_ newSize: NSSize) {
