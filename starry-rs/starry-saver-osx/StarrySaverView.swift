@@ -55,7 +55,7 @@ class StarrySaverView: ScreenSaverView {
     override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
         animationTimeInterval = 1.0 / 60.0
-        log.info("init \(Int(frame.width))×\(Int(frame.height)) isPreview=\(isPreview) build=\(buildCommit)")
+        log.info("init \(Int(frame.width))×\(Int(frame.height)) isPreview=\(isPreview) build=\(buildCommit, privacy: .public)")
     }
 
     required init?(coder: NSCoder) {
