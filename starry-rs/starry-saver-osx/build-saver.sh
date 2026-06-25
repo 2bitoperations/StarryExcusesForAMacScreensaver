@@ -22,6 +22,12 @@ DYLIB="$TARGET_DIR/libstarry_saver.dylib"
 SWIFT_SRC="$SCRIPT_DIR/StarrySaverView.swift"
 PLIST_SRC="$SCRIPT_DIR/Info.plist"
 
+# Embed the current git commit so the options panel shows build identity.
+COMMIT=$(git -C "$WORKSPACE_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_INFO_SWIFT="$TARGET_DIR/BuildInfo.swift"
+printf 'let buildCommit = "%s"
+' "$COMMIT" > "$BUILD_INFO_SWIFT"
+
 # Cargo bakes the absolute build-tree path into the dylib's LC_ID_DYLIB.
 # If swiftc links against it before we fix this, it copies that absolute path
 # into LC_LOAD_DYLIB — the screensaver engine then can't find the dylib at
@@ -35,8 +41,8 @@ rm -rf "$SAVER_DIR"
 mkdir -p "$SAVER_DIR/Contents/MacOS"
 mkdir -p "$SAVER_DIR/Contents/Frameworks"
 
-echo "→ Compiling Swift wrapper…"
-swiftc "$SWIFT_SRC" \
+echo "→ Compiling Swift wrapper (commit $COMMIT)…"
+swiftc "$SWIFT_SRC" "$BUILD_INFO_SWIFT" \
     -module-name StarryNightSaver \
     -emit-library \
     -o "$SAVER_DIR/Contents/MacOS/$BUNDLE_NAME" \

@@ -34,17 +34,36 @@ struct SaverState {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     last_frame: Instant,
+    frame_count: u64,
 }
 
 impl SaverState {
     fn render_frame(&mut self) {
+        self.frame_count += 1;
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f64().min(0.25);
         self.last_frame = now;
 
         let frame_output = self.engine.frame_with_dt(dt, SystemTime::now());
 
-        let frame = match self.surface.get_current_texture() {
+        let result = self.surface.get_current_texture();
+        // Log the first 5 frames so Console.app shows whether Metal is
+        // handing us drawables.  env_logger writes to stderr which the
+        // legacyScreenSaver host captures in the system log.
+        if self.frame_count <= 5 {
+            let status = match &result {
+                wgpu::CurrentSurfaceTexture::Success(_) => "Success",
+                wgpu::CurrentSurfaceTexture::Suboptimal(_) => "Suboptimal",
+                wgpu::CurrentSurfaceTexture::Outdated => "Outdated",
+                wgpu::CurrentSurfaceTexture::Lost => "Lost",
+                _ => "Timeout",
+            };
+            log::warn!(
+                "render_frame #{}: get_current_texture={status}",
+                self.frame_count
+            );
+        }
+        let frame = match result {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
             wgpu::CurrentSurfaceTexture::Suboptimal(t) => {
                 self.surface
@@ -130,7 +149,17 @@ async fn init_async(layer: *mut c_void, width: u32, height: u32) -> Box<SaverSta
             .copied()
             .find(|&m| m == wgpu::PresentMode::Fifo)
             .unwrap_or(caps.present_modes[0]),
-        alpha_mode: caps.alpha_modes[0],
+        // Prefer Opaque so Core Animation composites our sublayer as fully
+        // opaque over the desktop.  PreMultiplied (often caps.alpha_modes[0]
+        // on Metal) causes the layer to alpha-blend with whatever is beneath
+        // it, which makes it invisible when all clear-color pixels have a=1
+        // but the compositor treats the channel as pre-multiplied transparency.
+        alpha_mode: caps
+            .alpha_modes
+            .iter()
+            .copied()
+            .find(|&m| m == wgpu::CompositeAlphaMode::Opaque)
+            .unwrap_or(caps.alpha_modes[0]),
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
     };
@@ -146,6 +175,7 @@ async fn init_async(layer: *mut c_void, width: u32, height: u32) -> Box<SaverSta
         surface,
         surface_config,
         last_frame: Instant::now(),
+        frame_count: 0,
     })
 }
 

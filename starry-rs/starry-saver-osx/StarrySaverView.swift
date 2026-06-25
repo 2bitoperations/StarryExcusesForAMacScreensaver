@@ -67,8 +67,13 @@ class StarrySaverView: ScreenSaverView {
 
     override func startAnimation() {
         super.startAnimation()
-        log.info("startAnimation \(Int(self.bounds.width))×\(Int(self.bounds.height))")
+        log.info("startAnimation \(Int(self.bounds.width))×\(Int(self.bounds.height)) pts")
         guard renderHandle == nil else { return }
+
+        let scale = window?.screen?.backingScaleFactor
+            ?? window?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor
+            ?? 2.0
 
         let mLayer: CAMetalLayer
         if let existing = metalLayer {
@@ -76,20 +81,20 @@ class StarrySaverView: ScreenSaverView {
         } else {
             mLayer = CAMetalLayer()
             mLayer.frame = bounds
-            let scale = window?.screen?.backingScaleFactor
-                ?? window?.backingScaleFactor
-                ?? NSScreen.main?.backingScaleFactor
-                ?? 2.0
             mLayer.contentsScale = scale
+            mLayer.isOpaque = true
             layer?.addSublayer(mLayer)
             metalLayer = mLayer
-            log.info("CAMetalLayer sublayer added contentsScale=\(scale)")
+            log.info("CAMetalLayer sublayer added layer=\(self.layer != nil) contentsScale=\(scale)")
         }
 
-        let w = UInt32(max(bounds.width, 1))
-        let h = UInt32(max(bounds.height, 1))
+        // Pass physical pixel dimensions (points × backingScaleFactor) — the
+        // same pattern used by StarryExcuseForAView.swift lines 344-350.
+        let wPx = UInt32(max(bounds.width  * scale, 1))
+        let hPx = UInt32(max(bounds.height * scale, 1))
+        log.info("starry_create \(wPx)×\(hPx) px @ \(scale)x scale")
         renderHandle = starry_create(
-            Unmanaged.passUnretained(mLayer).toOpaque(), w, h
+            Unmanaged.passUnretained(mLayer).toOpaque(), wPx, hPx
         )
         if renderHandle == nil {
             log.error("starry_create returned nil — GPU init failed")
@@ -110,16 +115,24 @@ class StarrySaverView: ScreenSaverView {
     }
 
     override func animateOneFrame() {
-        guard let h = renderHandle else { return }
-        starry_frame(h)
+        guard let hdl = renderHandle else { return }
+        // Basic occlusion guard — skip GPU work if the view has no window.
+        // The Swift screensaver does a fuller CGWindowList occlusion check
+        // (StarryExcuseForAView.swift ~L230-280) to pause when a dialog or
+        // notification covers the saver; that pattern is a TODO here.
+        guard window != nil else { return }
+        starry_frame(hdl)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         metalLayer?.frame = bounds
-        guard let h = renderHandle else { return }
-        log.debug("setFrameSize \(Int(newSize.width))×\(Int(newSize.height))")
-        starry_resize(h, UInt32(max(newSize.width, 1)), UInt32(max(newSize.height, 1)))
+        guard let hdl = renderHandle else { return }
+        let scale = metalLayer?.contentsScale ?? 1.0
+        let wPx = UInt32(max(newSize.width  * scale, 1))
+        let hPx = UInt32(max(newSize.height * scale, 1))
+        log.debug("setFrameSize \(Int(newSize.width))×\(Int(newSize.height)) pts @\(scale)x → \(wPx)×\(hPx) px")
+        starry_resize(hdl, wPx, hPx)
     }
 
     // MARK: - Options panel
@@ -141,7 +154,7 @@ class StarrySaverView: ScreenSaverView {
         panel.title = "Starry Night (Rust)"
 
         let label = NSTextField(wrappingLabelWithString:
-            "Settings are read from the Swift screensaver preferences.\n" +
+            "Starry Night · Rust/wgpu port · build \(buildCommit)\n" +
             "A dedicated preferences UI is planned for a future release."
         )
         label.translatesAutoresizingMaskIntoConstraints = false
