@@ -207,7 +207,15 @@ class StarrySaverView: ScreenSaverView {
             inferVisibilityState(frameIndex: frameCount, logEveryCheck: true)
         }
 
-        guard shouldRenderCurrentFrame() else { return }
+        guard shouldRenderCurrentFrame() else {
+            // Drop to 1 Hz while invisible so the idle WallpaperAgent background
+            // instance doesn't burn CPU on 60 empty wakeups per second.
+            if animationTimeInterval < 0.5 { animationTimeInterval = 1.0 }
+            return
+        }
+
+        // Restore full rate the moment we're visible again.
+        if animationTimeInterval > 1.0 / 55.0 { animationTimeInterval = 1.0 / 60.0 }
 
         if resourcesReleasedWhileInvisible {
             recreateResources()
