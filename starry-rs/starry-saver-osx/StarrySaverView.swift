@@ -293,8 +293,20 @@ class StarrySaverView: ScreenSaverView {
             if let start = invisibilityBeganTime {
                 let elapsed = CACurrentMediaTime() - start
                 if elapsed >= visibilityReleaseThresholdSeconds, !resourcesReleasedWhileInvisible {
-                    log.info("Long invisibility (\(String(format: "%.1f", elapsed))s) — releasing GPU resources")
+                    log.info("Long invisibility (\(String(format: "%.1f", elapsed), privacy: .public)s) — releasing GPU resources")
                     releaseResources()
+                    if !isPreview {
+                        // willstop/didstop distributed notifications are not reliably
+                        // delivered to legacyScreenSaver.appex, and stopAnimation is
+                        // not always called by the host.  Terminate the process
+                        // ourselves once we are confident the screensaver is done.
+                        log.info("Scheduling process termination after resource release")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                            guard let self, !self.lastVisibilityState, !self.stoppedRunning else { return }
+                            log.info("Terminating process: confirmed invisible after release")
+                            NSApplication.shared.terminate(nil)
+                        }
+                    }
                 }
             }
         }
@@ -332,7 +344,15 @@ class StarrySaverView: ScreenSaverView {
         if !win.isVisible {
             steps.append("win.isVisible=false")
             if grace { return finish(true, "grace-notVisibleFlag") }
-            return finish(false, "window-notVisible-flag")
+            // In legacyScreenSaver.appex the saver runs in a remote-layer-server
+            // process; the host window's isVisible flag is often false even while
+            // the screensaver is actively rendering.  Use the CGWindow compositor
+            // query as the ground-truth signal rather than immediately declaring
+            // invisible — the same fallback used when occlusionState is ambiguous.
+            let onScreen = cgWindowIsOnScreenThrottled(frameIndex: frameCount)
+            steps.append("CGWindow(fromIsVisibleFalse)=\(onScreen)")
+            if !onScreen { return finish(false, "cgWindow-offscreen-notVisibleFlag") }
+            steps.append("cgWindow-onscreen despite isVisible=false — continuing to occlusionState")
         }
 
         let occ = win.occlusionState
