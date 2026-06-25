@@ -1,0 +1,18 @@
+[package]
+name = "starry-saver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "macOS ScreenSaverView C-FFI shim — compiles to a cdylib embedded inside StarryNight.saver"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+starry-core = { path = "../starry-core" }
+wgpu.workspace = true
+pollster.workspace = true
+log.workspace = true
+env_logger.workspace = true

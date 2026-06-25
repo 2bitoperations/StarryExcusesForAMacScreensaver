@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["starry-core", "starry-app"]
+members = ["starry-core", "starry-app", "starry-saver"]
 # `cargo run` / `cargo build` from the workspace root operates on starry-app
 # by default, so the post-split UX matches the pre-split single-crate days
 # ("cargo run" Just Works without remembering `-p starry-app`).

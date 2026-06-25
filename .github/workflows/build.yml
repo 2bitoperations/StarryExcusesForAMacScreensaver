@@ -34,19 +34,11 @@ jobs:
         working-directory: starry-rs
 
   # -------------------------------------------------------------------------
-  # macOS (ARM + Intel) — native runners, full test + release artifact
+  # macOS ARM — native runner, full test + starry-app binary + .saver bundle
   # -------------------------------------------------------------------------
   build-macos:
-    name: macOS (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest   # macOS 15, Apple Silicon
-            arch: aarch64
-          - runner: macos-13       # macOS 13, Intel
-            arch: x86_64
+    name: macOS (aarch64)
+    runs-on: macos-latest   # macOS 15, Apple Silicon
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -56,13 +48,25 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
         working-directory: starry-rs
-      - name: Build release
-        run: cargo build --release --locked -p starry-app
+      - name: Build release (app + saver cdylib)
+        run: cargo build --release --locked -p starry-app -p starry-saver
         working-directory: starry-rs
+      - name: Assemble StarryNight.saver bundle
+        run: starry-rs/starry-saver-osx/build-saver.sh
+      - name: Zip .saver bundle (preserves macOS bundle structure)
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            starry-rs/target/release/StarryNight.saver \
+            StarryNight.saver.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: starry-app-macos-${{ matrix.arch }}
+          name: starry-app-macos-aarch64
           path: starry-rs/target/release/starry-app
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarryNight.saver
+          path: StarryNight.saver.zip
           retention-days: 7
 
   # -------------------------------------------------------------------------
