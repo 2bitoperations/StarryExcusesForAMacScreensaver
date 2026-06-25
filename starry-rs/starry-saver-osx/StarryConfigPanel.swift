@@ -555,6 +555,15 @@ final class StarryConfigPanel: NSObject {
             pv.layer?.addSublayer(mLayer)
             self.previewMetalLayer = mLayer
             self.rebuildPreviewEngine(toml: RustDefaultsManager().tomlString())
+            // Observe frame changes on pv so we can sync mLayer + Rust engine
+            // after Auto Layout finishes (windowDidResize fires *before* layout).
+            pv.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(self.previewViewFrameChanged(_:)),
+                name: NSView.frameDidChangeNotification,
+                object: pv
+            )
             self.previewTimer = Timer.scheduledTimer(
                 timeInterval: 1.0 / 60.0,
                 target: self,
@@ -566,6 +575,11 @@ final class StarryConfigPanel: NSObject {
     }
 
     private func stopPreview() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSView.frameDidChangeNotification,
+            object: previewView
+        )
         previewTimer?.invalidate()
         previewTimer = nil
         if let h = previewHandle {
@@ -574,6 +588,15 @@ final class StarryConfigPanel: NSObject {
         }
         previewMetalLayer?.removeFromSuperlayer()
         previewMetalLayer = nil
+    }
+
+    @objc private func previewViewFrameChanged(_ notification: Notification) {
+        guard let pv = previewView, let mLayer = previewMetalLayer, let h = previewHandle else { return }
+        let scale = pv.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        mLayer.frame = pv.bounds
+        let w  = UInt32(max(pv.bounds.width  * scale, 1))
+        let hp = UInt32(max(pv.bounds.height * scale, 1))
+        starry_resize(h, w, hp)
     }
 
     private func rebuildPreviewEngine(toml: String) {
@@ -667,14 +690,6 @@ extension StarryConfigPanel: NSWindowDelegate {
         stopPreview()
     }
 
-    func windowDidResize(_ notification: Notification) {
-        guard let pv = previewView, let mLayer = previewMetalLayer, let h = previewHandle else { return }
-        let scale = pv.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-        mLayer.frame = pv.bounds
-        let w  = UInt32(max(pv.bounds.width  * scale, 1))
-        let hp = UInt32(max(pv.bounds.height * scale, 1))
-        starry_resize(h, w, hp)
-    }
 }
 
 // MARK: - Array safe subscript helper (local to this file)
