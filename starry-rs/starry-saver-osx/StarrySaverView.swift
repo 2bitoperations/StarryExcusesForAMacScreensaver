@@ -41,6 +41,13 @@ private let log = Logger(
 @objc(StarrySaverView)
 class StarrySaverView: ScreenSaverView {
     private var renderHandle: UnsafeMutableRawPointer?
+    // The CAMetalLayer is a sublayer of self.layer (the view's regular CALayer
+    // backing).  Using makeBackingLayer() to return a CAMetalLayer directly does
+    // NOT work in the legacyScreenSaver.appex host — the host manages the backing
+    // layer itself and our Metal frames are never composited to screen.  The
+    // working pattern (mirrored from StarryExcuseForAView.swift) is wantsLayer=true
+    // plus an explicit CAMetalLayer sublayer added in startAnimation.
+    private var metalLayer: CAMetalLayer?
 
     // Lazy so the panel is created on demand and lives for the view's lifetime.
     private lazy var configPanel: NSWindow = makeConfigPanel()
@@ -58,26 +65,31 @@ class StarrySaverView: ScreenSaverView {
         animationTimeInterval = 1.0 / 60.0
     }
 
-    // makeBackingLayer() is the canonical NSView override for customising the
-    // backing layer type. AppKit calls it when the view is ready to back itself
-    // — unlike setting `layer` directly in init, which races the layer setup.
-    override func makeBackingLayer() -> CALayer {
-        log.debug("makeBackingLayer → CAMetalLayer")
-        return CAMetalLayer()
-    }
-
     override func startAnimation() {
         super.startAnimation()
         log.info("startAnimation \(Int(self.bounds.width))×\(Int(self.bounds.height))")
         guard renderHandle == nil else { return }
-        guard let metalLayer = layer as? CAMetalLayer else {
-            log.error("layer is not CAMetalLayer — got \(String(describing: type(of: self.layer as AnyObject)))")
-            return
+
+        let mLayer: CAMetalLayer
+        if let existing = metalLayer {
+            mLayer = existing
+        } else {
+            mLayer = CAMetalLayer()
+            mLayer.frame = bounds
+            let scale = window?.screen?.backingScaleFactor
+                ?? window?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor
+                ?? 2.0
+            mLayer.contentsScale = scale
+            layer?.addSublayer(mLayer)
+            metalLayer = mLayer
+            log.info("CAMetalLayer sublayer added contentsScale=\(scale)")
         }
+
         let w = UInt32(max(bounds.width, 1))
         let h = UInt32(max(bounds.height, 1))
         renderHandle = starry_create(
-            Unmanaged.passUnretained(metalLayer).toOpaque(), w, h
+            Unmanaged.passUnretained(mLayer).toOpaque(), w, h
         )
         if renderHandle == nil {
             log.error("starry_create returned nil — GPU init failed")
@@ -92,6 +104,8 @@ class StarrySaverView: ScreenSaverView {
             starry_destroy(h)
             renderHandle = nil
         }
+        metalLayer?.removeFromSuperlayer()
+        metalLayer = nil
         super.stopAnimation()
     }
 
@@ -102,6 +116,7 @@ class StarrySaverView: ScreenSaverView {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
+        metalLayer?.frame = bounds
         guard let h = renderHandle else { return }
         log.debug("setFrameSize \(Int(newSize.width))×\(Int(newSize.height))")
         starry_resize(h, UInt32(max(newSize.width, 1)), UInt32(max(newSize.height, 1)))
