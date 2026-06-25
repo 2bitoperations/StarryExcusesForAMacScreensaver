@@ -149,6 +149,7 @@ impl DecayLayer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn resize(
         &mut self,
         device: &wgpu::Device,

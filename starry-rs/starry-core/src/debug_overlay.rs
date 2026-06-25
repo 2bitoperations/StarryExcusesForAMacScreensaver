@@ -56,19 +56,10 @@ pub const BUILD_BG_TINT: [f32; 4] = [0.0, 0.05 * 0.55, 0.0, 0.55];
 /// `stats_text` borrows from a pre-allocated `String` field on
 /// `DebugSmoothers`; `build_info_text` is a `&'static str` compile-time
 /// constant (`BUILD_COMMIT`).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct DebugOverlayFrame<'a> {
     pub stats_text: &'a str,
     pub build_info_text: &'static str,
-}
-
-impl Default for DebugOverlayFrame<'static> {
-    fn default() -> Self {
-        Self {
-            stats_text: "",
-            build_info_text: "",
-        }
-    }
 }
 
 /// One instanced quad. Same struct draws glyphs and BG rects.

@@ -915,6 +915,7 @@ pub struct MoonSpriteState {
 /// Mirrors Swift
 /// `Planet.moonSpriteStates(for:now:parentCenter:parentRadiusPx:ringTiltDeg:rotationDeg:)`
 /// at `Planet.swift:179-240`.
+#[allow(clippy::too_many_arguments)]
 pub fn moon_sprite_states(
     parent: PlanetIdentity,
     now: SystemTime,
