@@ -45,3 +45,11 @@ opt-level = 3
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# wgpu-hal 29 added a macOS occlusion check (wgpu#8309) that incorrectly
+# blocks every acquire_texture call in legacyScreenSaver.appex because the
+# screensaver host window is a remote-layer-server and never has
+# NSWindowOcclusionStateVisible set.  Patch it out locally until upstream
+# adds an opt-out mechanism.
+[patch.crates-io]
+wgpu-hal = { path = "wgpu-hal-patch" }
