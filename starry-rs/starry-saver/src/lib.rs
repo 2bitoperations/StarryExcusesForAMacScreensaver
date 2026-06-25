@@ -27,6 +27,7 @@ use pollster::FutureExt as _;
 use starry_core::config::Config;
 use starry_core::engine::Engine;
 use starry_core::gpu::GpuPipelines;
+use starry_core::toml_config::load_config_from_toml_str;
 
 struct SaverState {
     engine: Engine,
@@ -100,7 +101,10 @@ impl SaverState {
     }
 }
 
-async fn init_async(layer: *mut c_void, width: u32, height: u32) -> Box<SaverState> {
+async fn init_async(layer: *mut c_void, cfg: Config) -> Box<SaverState> {
+    let w = cfg.width.max(1);
+    let h = cfg.height.max(1);
+
     let instance = wgpu::Instance::default();
 
     let surface = unsafe {
@@ -135,9 +139,6 @@ async fn init_async(layer: *mut c_void, width: u32, height: u32) -> Box<SaverSta
         .find(wgpu::TextureFormat::is_srgb)
         .unwrap_or(caps.formats[0]);
 
-    let w = width.max(1);
-    let h = height.max(1);
-
     let surface_config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format,
@@ -165,11 +166,6 @@ async fn init_async(layer: *mut c_void, width: u32, height: u32) -> Box<SaverSta
     };
     surface.configure(&device, &surface_config);
 
-    let cfg = Config {
-        width: w,
-        height: h,
-        ..Config::default()
-    };
     let pipelines = GpuPipelines::new(device, queue, format, w, h, &cfg);
     let engine = Engine::new(cfg);
 
@@ -189,6 +185,7 @@ async fn init_async(layer: *mut c_void, width: u32, height: u32) -> Box<SaverSta
 
 /// Initialise the renderer for a `CAMetalLayer*` and return an opaque handle.
 /// Called once from `ScreenSaverView -startAnimation`.
+/// Uses `Config::default()` with the supplied pixel dimensions.
 #[unsafe(no_mangle)]
 pub extern "C" fn starry_create(layer: *mut c_void, width: u32, height: u32) -> *mut c_void {
     env_logger::Builder::from_default_env()
@@ -199,7 +196,55 @@ pub extern "C" fn starry_create(layer: *mut c_void, width: u32, height: u32) -> 
         log::error!("starry_create: null CAMetalLayer pointer");
         return std::ptr::null_mut();
     }
-    let state = init_async(layer, width, height).block_on();
+    let cfg = Config {
+        width: width.max(1),
+        height: height.max(1),
+        ..Config::default()
+    };
+    let state = init_async(layer, cfg).block_on();
+    Box::into_raw(state) as *mut c_void
+}
+
+/// Initialise the renderer with a UTF-8 TOML configuration string.
+/// `toml_ptr` may be null (equivalent to calling `starry_create`).
+/// The TOML string is parsed as a `PartialConfig` and applied over
+/// `Config::default()`; the physical pixel dimensions always win over
+/// any `width`/`height` keys present in the TOML.
+/// Called from `ScreenSaverView -startAnimation` when the options panel
+/// has saved preferences to `ScreenSaverDefaults`.
+#[unsafe(no_mangle)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn starry_create_with_toml(
+    layer: *mut c_void,
+    width: u32,
+    height: u32,
+    toml_ptr: *const std::ffi::c_char,
+) -> *mut c_void {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Warn)
+        .try_init()
+        .ok();
+    if layer.is_null() {
+        log::error!("starry_create_with_toml: null CAMetalLayer pointer");
+        return std::ptr::null_mut();
+    }
+    let cfg = if toml_ptr.is_null() {
+        Config {
+            width: width.max(1),
+            height: height.max(1),
+            ..Config::default()
+        }
+    } else {
+        let toml_str = unsafe { std::ffi::CStr::from_ptr(toml_ptr) }
+            .to_str()
+            .unwrap_or("");
+        log::info!(
+            "starry_create_with_toml: loading config from TOML ({} bytes)",
+            toml_str.len()
+        );
+        load_config_from_toml_str(toml_str, width.max(1), height.max(1))
+    };
+    let state = init_async(layer, cfg).block_on();
     Box::into_raw(state) as *mut c_void
 }
 

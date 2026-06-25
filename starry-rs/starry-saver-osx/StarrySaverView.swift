@@ -29,6 +29,14 @@ private func starry_resize(
 @_silgen_name("starry_destroy")
 private func starry_destroy(_ handle: UnsafeMutableRawPointer)
 
+@_silgen_name("starry_create_with_toml")
+private func starry_create_with_toml(
+    _ layer: UnsafeMutableRawPointer,
+    _ width: UInt32,
+    _ height: UInt32,
+    _ toml: UnsafePointer<CChar>?
+) -> UnsafeMutableRawPointer?
+
 // ---------------------------------------------------------------------------
 
 private let log = Logger(
@@ -70,8 +78,8 @@ class StarrySaverView: ScreenSaverView {
     private var cachedCGWindowOnscreen: Bool = true
     private let cgWindowRecheckIntervalFrames: UInt64 = 30
 
-    // Lazy so the panel is created on demand and lives for the view's lifetime.
-    private lazy var configPanel: NSWindow = makeConfigPanel()
+    // Lazy so the panel controller is created on demand and lives for the view's lifetime.
+    private lazy var configController = StarryConfigPanel()
 
     override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
@@ -120,10 +128,13 @@ class StarrySaverView: ScreenSaverView {
         // same pattern used by StarryExcuseForAView.swift lines 344-350.
         let wPx = UInt32(max(bounds.width  * scale, 1))
         let hPx = UInt32(max(bounds.height * scale, 1))
-        log.info("starry_create \(wPx)×\(hPx) px @ \(scale)x scale")
-        renderHandle = starry_create(
-            Unmanaged.passUnretained(mLayer).toOpaque(), wPx, hPx
-        )
+        let toml = RustDefaultsManager().tomlString()
+        log.info("starry_create_with_toml \(wPx)×\(hPx) px @ \(scale)x scale (\(toml.utf8.count) toml bytes)")
+        renderHandle = toml.withCString { ptr in
+            starry_create_with_toml(
+                Unmanaged.passUnretained(mLayer).toOpaque(), wPx, hPx, ptr
+            )
+        }
         if renderHandle == nil {
             log.error("starry_create returned nil — GPU init failed")
         } else {
@@ -181,10 +192,13 @@ class StarrySaverView: ScreenSaverView {
 
         let wPx = UInt32(max(bounds.width  * scale, 1))
         let hPx = UInt32(max(bounds.height * scale, 1))
-        log.info("recreateResources starry_create \(wPx)×\(hPx) px")
-        renderHandle = starry_create(
-            Unmanaged.passUnretained(mLayer).toOpaque(), wPx, hPx
-        )
+        let toml = RustDefaultsManager().tomlString()
+        log.info("recreateResources starry_create_with_toml \(wPx)×\(hPx) px")
+        renderHandle = toml.withCString { ptr in
+            starry_create_with_toml(
+                Unmanaged.passUnretained(mLayer).toOpaque(), wPx, hPx, ptr
+            )
+        }
         if renderHandle == nil {
             log.error("recreateResources: starry_create returned nil")
         } else {
@@ -399,43 +413,6 @@ class StarrySaverView: ScreenSaverView {
     // MARK: - Options panel
 
     override var hasConfigureSheet: Bool { true }
-    override var configureSheet: NSWindow? { configPanel }
+    override var configureSheet: NSWindow? { configController.window }
 
-    @objc private func closeConfigPanel(_ sender: Any?) {
-        configPanel.sheetParent?.endSheet(configPanel)
-    }
-
-    private func makeConfigPanel() -> NSWindow {
-        let panel = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 130),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        panel.title = "Starry Night (Rust)"
-
-        let label = NSTextField(wrappingLabelWithString:
-            "Starry Night · Rust/wgpu port · build \(buildCommit)\n" +
-            "A dedicated preferences UI is planned for a future release."
-        )
-        label.translatesAutoresizingMaskIntoConstraints = false
-
-        let button = NSButton(title: "OK", target: self, action: #selector(closeConfigPanel))
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.keyEquivalent = "\r"
-
-        let cv = panel.contentView!
-        cv.addSubview(label)
-        cv.addSubview(button)
-
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: cv.topAnchor, constant: 20),
-            label.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 20),
-            label.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -20),
-            button.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 16),
-            button.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -20),
-            button.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -16),
-        ])
-        return panel
-    }
 }

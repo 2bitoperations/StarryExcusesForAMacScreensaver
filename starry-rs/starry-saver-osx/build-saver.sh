@@ -19,7 +19,11 @@ echo "→ Building Rust cdylib (starry-saver)…"
 cargo build --release --locked -p starry-saver --manifest-path "$WORKSPACE_DIR/Cargo.toml"
 
 DYLIB="$TARGET_DIR/libstarry_saver.dylib"
-SWIFT_SRC="$SCRIPT_DIR/StarrySaverView.swift"
+SWIFT_SRCS=(
+    "$SCRIPT_DIR/RustDefaultsManager.swift"
+    "$SCRIPT_DIR/StarryConfigPanel.swift"
+    "$SCRIPT_DIR/StarrySaverView.swift"
+)
 PLIST_SRC="$SCRIPT_DIR/Info.plist"
 
 # Embed the current git commit so the options panel shows build identity.
@@ -42,7 +46,7 @@ mkdir -p "$SAVER_DIR/Contents/MacOS"
 mkdir -p "$SAVER_DIR/Contents/Frameworks"
 
 echo "→ Compiling Swift wrapper (commit $COMMIT)…"
-swiftc "$SWIFT_SRC" "$BUILD_INFO_SWIFT" \
+swiftc "${SWIFT_SRCS[@]}" "$BUILD_INFO_SWIFT" \
     -module-name StarryNightSaver \
     -emit-library \
     -o "$SAVER_DIR/Contents/MacOS/$BUNDLE_NAME" \

@@ -456,6 +456,31 @@ fn load_partial_from_path(path: &Path) -> Result<PartialConfig, String> {
     toml::from_str(&text).map_err(|e| format!("parsing {}: {}", path.display(), e))
 }
 
+/// Parse a TOML string into a `Config`, applying any present keys over
+/// `Config::default()`. Always stamps `width`/`height` from the supplied
+/// arguments so the screen dimensions passed through the C FFI win over
+/// whatever (if anything) the TOML string contains for those fields.
+/// Parse errors are logged as warnings and the default config is returned.
+/// Used by `starry_create_with_toml` in `starry-saver`.
+pub fn load_config_from_toml_str(toml_str: &str, width: u32, height: u32) -> Config {
+    let mut cfg = Config {
+        width: width.max(1),
+        height: height.max(1),
+        ..Config::default()
+    };
+    match toml::from_str::<PartialConfig>(toml_str) {
+        Ok(partial) => {
+            partial.apply_over(&mut cfg);
+            cfg.width = width.max(1);
+            cfg.height = height.max(1);
+        }
+        Err(e) => {
+            log::warn!("starry: failed to parse TOML config string: {e}");
+        }
+    }
+    cfg
+}
+
 /// Full CLI + TOML + defaults parse. The single entry point external
 /// callers (binaries, tests) should use instead of `Config::parse()`.
 ///
