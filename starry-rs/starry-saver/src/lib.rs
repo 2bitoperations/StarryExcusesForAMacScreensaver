@@ -165,7 +165,11 @@ async fn init_async(layer: *mut c_void, width: u32, height: u32) -> Box<SaverSta
     };
     surface.configure(&device, &surface_config);
 
-    let cfg = Config::default();
+    let cfg = Config {
+        width: w,
+        height: h,
+        ..Config::default()
+    };
     let pipelines = GpuPipelines::new(device, queue, format, w, h, &cfg);
     let engine = Engine::new(cfg);
 
