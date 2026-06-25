@@ -298,13 +298,7 @@ final class StarryConfigPanel: NSObject {
             _ = lbl
         }
 
-        let scroll = NSScrollView()
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
-
-        let inner = vstack([
+        return vstack([
             indentRow(planetsEnabledBox),
             indentRow(moonsEnabledBox),
             row("Below-horizon",         horizBehavPopup,   nil),
@@ -320,17 +314,6 @@ final class StarryConfigPanel: NSObject {
             row("Neptune",  neptuneSlider, neptuneLabel),
             row("Pluto",    plutoSlider,   plutoLabel),
         ])
-
-        // inner.translatesAutoresizingMaskIntoConstraints is already false (set by vstack).
-        // Pin it to the scroll view's content view so Auto Layout knows its width;
-        // height is determined by the stack view's intrinsic content.
-        scroll.documentView = inner
-        NSLayoutConstraint.activate([
-            inner.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-            inner.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            inner.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-        ])
-        return scroll
     }
 
     private func debugContent() -> NSView {
@@ -682,6 +665,15 @@ extension StarryConfigPanel: NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         stopPreview()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        guard let pv = previewView, let mLayer = previewMetalLayer, let h = previewHandle else { return }
+        let scale = pv.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        mLayer.frame = pv.bounds
+        let w  = UInt32(max(pv.bounds.width  * scale, 1))
+        let hp = UInt32(max(pv.bounds.height * scale, 1))
+        starry_resize(h, w, hp)
     }
 }
 
