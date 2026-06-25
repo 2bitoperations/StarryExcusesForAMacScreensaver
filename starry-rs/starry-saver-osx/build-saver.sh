@@ -22,6 +22,14 @@ DYLIB="$TARGET_DIR/libstarry_saver.dylib"
 SWIFT_SRC="$SCRIPT_DIR/StarrySaverView.swift"
 PLIST_SRC="$SCRIPT_DIR/Info.plist"
 
+# Cargo bakes the absolute build-tree path into the dylib's LC_ID_DYLIB.
+# If swiftc links against it before we fix this, it copies that absolute path
+# into LC_LOAD_DYLIB — the screensaver engine then can't find the dylib at
+# runtime and the Swift binary silently fails to load.  Fix the install name
+# FIRST so swiftc records @rpath/libstarry_saver.dylib instead.
+echo "→ Fixing Rust dylib install name → @rpath/libstarry_saver.dylib"
+install_name_tool -id "@rpath/libstarry_saver.dylib" "$DYLIB"
+
 echo "→ Assembling bundle: $SAVER_DIR"
 rm -rf "$SAVER_DIR"
 mkdir -p "$SAVER_DIR/Contents/MacOS"
@@ -45,6 +53,11 @@ cp "$DYLIB" "$SAVER_DIR/Contents/Frameworks/libstarry_saver.dylib"
 
 echo "→ Copying Info.plist…"
 cp "$PLIST_SRC" "$SAVER_DIR/Contents/Info.plist"
+
+# Ad-hoc sign the whole bundle so the screensaver engine will load it.
+# --deep signs the Frameworks dylib and the main executable in one pass.
+echo "→ Ad-hoc signing bundle…"
+codesign --force --deep --sign - "$SAVER_DIR"
 
 echo ""
 echo "✓ Built $SAVER_DIR"
