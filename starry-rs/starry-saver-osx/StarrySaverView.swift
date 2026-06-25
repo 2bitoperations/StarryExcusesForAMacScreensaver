@@ -10,27 +10,27 @@ import os.log
 // ---------------------------------------------------------------------------
 
 @_silgen_name("starry_create")
-private func starry_create(
+func starry_create(
     _ layer: UnsafeMutableRawPointer,
     _ width: UInt32,
     _ height: UInt32
 ) -> UnsafeMutableRawPointer?
 
 @_silgen_name("starry_frame")
-private func starry_frame(_ handle: UnsafeMutableRawPointer)
+func starry_frame(_ handle: UnsafeMutableRawPointer)
 
 @_silgen_name("starry_resize")
-private func starry_resize(
+func starry_resize(
     _ handle: UnsafeMutableRawPointer,
     _ width: UInt32,
     _ height: UInt32
 )
 
 @_silgen_name("starry_destroy")
-private func starry_destroy(_ handle: UnsafeMutableRawPointer)
+func starry_destroy(_ handle: UnsafeMutableRawPointer)
 
 @_silgen_name("starry_create_with_toml")
-private func starry_create_with_toml(
+func starry_create_with_toml(
     _ layer: UnsafeMutableRawPointer,
     _ width: UInt32,
     _ height: UInt32,

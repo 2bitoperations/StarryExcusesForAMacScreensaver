@@ -1,5 +1,6 @@
 import Cocoa
 import ScreenSaver
+import QuartzCore
 
 // ---------------------------------------------------------------------------
 // StarryConfigPanel
@@ -22,6 +23,12 @@ final class StarryConfigPanel: NSObject {
     // engine can be recreated with the new settings without persisting to defaults.
     var onLiveChange: ((String) -> Void)?
     private var liveUpdateItem: DispatchWorkItem?
+
+    // MARK: - In-panel preview
+    private var previewView: NSView?
+    private var previewMetalLayer: CAMetalLayer?
+    private var previewHandle: UnsafeMutableRawPointer?
+    private var previewTimer: Timer?
 
     // MARK: - Sky controls
     private let starsSlider       = NSSlider()
@@ -85,13 +92,14 @@ final class StarryConfigPanel: NSObject {
 
     override init() {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 540),
-            styleMask: [.titled],
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 580),
+            styleMask: [.titled, .closable, .resizable],
             backing:  .buffered,
             defer:    false
         )
         window.title = "Starry Night (Rust) Options"
         super.init()
+        window.delegate = self
         buildUI()
         loadFromDefaults()
     }
@@ -100,10 +108,14 @@ final class StarryConfigPanel: NSObject {
 
     private func buildUI() {
         let cv = window.contentView!
+        let leftWidth: CGFloat = 380
+
+        // --- Left pane: tabs + OK/Cancel ---
+        let left = NSView()
+        left.translatesAutoresizingMaskIntoConstraints = false
 
         let tabs = NSTabView()
         tabs.translatesAutoresizingMaskIntoConstraints = false
-        cv.addSubview(tabs)
 
         tabs.addTabViewItem(makeTab("Sky",     skyContent()))
         tabs.addTabViewItem(makeTab("Effects", effectsContent()))
@@ -119,22 +131,71 @@ final class StarryConfigPanel: NSObject {
         cancel.translatesAutoresizingMaskIntoConstraints = false
         cancel.keyEquivalent = "\u{1b}"
 
-        cv.addSubview(ok)
-        cv.addSubview(cancel)
+        left.addSubview(tabs)
+        left.addSubview(ok)
+        left.addSubview(cancel)
 
         NSLayoutConstraint.activate([
-            tabs.topAnchor.constraint(equalTo: cv.topAnchor, constant: 12),
-            tabs.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 12),
-            tabs.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -12),
-            tabs.bottomAnchor.constraint(equalTo: ok.topAnchor, constant: -12),
+            tabs.topAnchor.constraint(equalTo: left.topAnchor, constant: 12),
+            tabs.leadingAnchor.constraint(equalTo: left.leadingAnchor, constant: 8),
+            tabs.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -8),
+            tabs.bottomAnchor.constraint(equalTo: ok.topAnchor, constant: -10),
 
-            ok.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -16),
-            ok.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -16),
+            ok.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -12),
+            ok.bottomAnchor.constraint(equalTo: left.bottomAnchor, constant: -12),
             ok.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
 
             cancel.trailingAnchor.constraint(equalTo: ok.leadingAnchor, constant: -8),
             cancel.centerYAnchor.constraint(equalTo: ok.centerYAnchor),
             cancel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+        ])
+
+        // --- Separator ---
+        let sep = NSBox()
+        sep.boxType = .separator
+        sep.translatesAutoresizingMaskIntoConstraints = false
+
+        // --- Right pane: live preview ---
+        let pv = NSView()
+        pv.wantsLayer = true
+        pv.translatesAutoresizingMaskIntoConstraints = false
+        pv.layer?.backgroundColor = NSColor.black.cgColor
+        previewView = pv
+
+        // Label underneath the preview
+        let hint = NSTextField(labelWithString: "Preview (reflects changes after ~0.35 s)")
+        hint.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        hint.textColor = .secondaryLabelColor
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        hint.alignment = .center
+
+        cv.addSubview(left)
+        cv.addSubview(sep)
+        cv.addSubview(pv)
+        cv.addSubview(hint)
+
+        NSLayoutConstraint.activate([
+            // left pane
+            left.topAnchor.constraint(equalTo: cv.topAnchor),
+            left.leadingAnchor.constraint(equalTo: cv.leadingAnchor),
+            left.bottomAnchor.constraint(equalTo: cv.bottomAnchor),
+            left.widthAnchor.constraint(equalToConstant: leftWidth),
+
+            // separator
+            sep.topAnchor.constraint(equalTo: cv.topAnchor, constant: 8),
+            sep.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -8),
+            sep.leadingAnchor.constraint(equalTo: left.trailingAnchor),
+            sep.widthAnchor.constraint(equalToConstant: 1),
+
+            // preview pane (fills remaining width, leaving room for hint)
+            pv.topAnchor.constraint(equalTo: cv.topAnchor, constant: 12),
+            pv.leadingAnchor.constraint(equalTo: sep.trailingAnchor, constant: 10),
+            pv.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -10),
+            pv.bottomAnchor.constraint(equalTo: hint.topAnchor, constant: -6),
+
+            hint.leadingAnchor.constraint(equalTo: pv.leadingAnchor),
+            hint.trailingAnchor.constraint(equalTo: pv.trailingAnchor),
+            hint.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -8),
         ])
     }
 
@@ -486,10 +547,73 @@ final class StarryConfigPanel: NSObject {
         liveUpdateItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            self.onLiveChange?(self.currentTomlString())
+            let toml = self.currentTomlString()
+            self.onLiveChange?(toml)
+            self.rebuildPreviewEngine(toml: toml)
         }
         liveUpdateItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: item)
+    }
+
+    // MARK: - Preview engine lifecycle
+
+    private func startPreview() {
+        guard let pv = previewView, previewMetalLayer == nil else { return }
+        pv.wantsLayer = true
+        // Defer one run-loop cycle so the view is fully laid out.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let pv = self.previewView else { return }
+            let scale = pv.window?.screen?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor ?? 2.0
+            let mLayer = CAMetalLayer()
+            mLayer.frame = pv.bounds
+            mLayer.contentsScale = scale
+            mLayer.isOpaque = true
+            pv.layer?.addSublayer(mLayer)
+            self.previewMetalLayer = mLayer
+            self.rebuildPreviewEngine(toml: RustDefaultsManager().tomlString())
+            self.previewTimer = Timer.scheduledTimer(
+                timeInterval: 1.0 / 60.0,
+                target: self,
+                selector: #selector(self.previewTick),
+                userInfo: nil,
+                repeats: true
+            )
+        }
+    }
+
+    private func stopPreview() {
+        previewTimer?.invalidate()
+        previewTimer = nil
+        if let h = previewHandle {
+            starry_destroy(h)
+            previewHandle = nil
+        }
+        previewMetalLayer?.removeFromSuperlayer()
+        previewMetalLayer = nil
+    }
+
+    private func rebuildPreviewEngine(toml: String) {
+        guard let pv = previewView, let mLayer = previewMetalLayer else { return }
+        if let h = previewHandle {
+            starry_destroy(h)
+            previewHandle = nil
+        }
+        let scale = pv.window?.screen?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        mLayer.frame = pv.bounds
+        let w = UInt32(max(pv.bounds.width  * scale, 1))
+        let h = UInt32(max(pv.bounds.height * scale, 1))
+        previewHandle = toml.withCString { ptr in
+            starry_create_with_toml(
+                Unmanaged.passUnretained(mLayer).toOpaque(), w, h, ptr
+            )
+        }
+    }
+
+    @objc private func previewTick() {
+        guard let h = previewHandle else { return }
+        starry_frame(h)
     }
 
     // Serialises the current UI control state to TOML without touching saved defaults.
@@ -539,11 +663,25 @@ final class StarryConfigPanel: NSObject {
 
     @objc private func okTapped(_: Any?) {
         saveToDefaults()
+        stopPreview()
         window.sheetParent?.endSheet(window, returnCode: .OK)
     }
 
     @objc private func cancelTapped(_: Any?) {
+        stopPreview()
         window.sheetParent?.endSheet(window, returnCode: .cancel)
+    }
+}
+
+// MARK: - NSWindowDelegate (preview lifecycle)
+
+extension StarryConfigPanel: NSWindowDelegate {
+    func windowDidBecomeKey(_ notification: Notification) {
+        startPreview()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        stopPreview()
     }
 }
 
