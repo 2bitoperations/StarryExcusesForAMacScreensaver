@@ -157,7 +157,10 @@ async fn init_async(layer: *mut c_void, width: u32, height: u32) -> Box<SaverSta
 /// Called once from `ScreenSaverView -startAnimation`.
 #[unsafe(no_mangle)]
 pub extern "C" fn starry_create(layer: *mut c_void, width: u32, height: u32) -> *mut c_void {
-    env_logger::try_init().ok();
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Warn)
+        .try_init()
+        .ok();
     if layer.is_null() {
         log::error!("starry_create: null CAMetalLayer pointer");
         return std::ptr::null_mut();
