@@ -54,14 +54,12 @@ class StarrySaverView: ScreenSaverView {
 
     override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
-        wantsLayer = true
         animationTimeInterval = 1.0 / 60.0
         log.info("init \(Int(frame.width))×\(Int(frame.height)) isPreview=\(isPreview)")
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        wantsLayer = true
         animationTimeInterval = 1.0 / 60.0
     }
 
@@ -69,6 +67,12 @@ class StarrySaverView: ScreenSaverView {
         super.startAnimation()
         log.info("startAnimation \(Int(self.bounds.width))×\(Int(self.bounds.height)) pts")
         guard renderHandle == nil else { return }
+
+        // Set wantsLayer here (not in init) so the backing layer is created
+        // while the view is already in a window — the same order used by
+        // StarryExcuseForAView.swift:457.  Setting it in init produces a layer
+        // that isn't wired to the window-server compositor.
+        wantsLayer = true
 
         let scale = window?.screen?.backingScaleFactor
             ?? window?.backingScaleFactor
@@ -114,13 +118,14 @@ class StarrySaverView: ScreenSaverView {
         super.stopAnimation()
     }
 
+    private var frameCount: UInt64 = 0
+
     override func animateOneFrame() {
         guard let hdl = renderHandle else { return }
-        // Basic occlusion guard — skip GPU work if the view has no window.
-        // The Swift screensaver does a fuller CGWindowList occlusion check
-        // (StarryExcuseForAView.swift ~L230-280) to pause when a dialog or
-        // notification covers the saver; that pattern is a TODO here.
-        guard window != nil else { return }
+        frameCount += 1
+        if frameCount == 1 || frameCount % 300 == 0 {
+            log.info("animateOneFrame #\(self.frameCount) window=\(self.window != nil)")
+        }
         starry_frame(hdl)
     }
 
