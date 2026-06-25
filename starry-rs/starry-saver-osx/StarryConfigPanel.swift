@@ -23,6 +23,7 @@ final class StarryConfigPanel: NSObject {
     // engine can be recreated with the new settings without persisting to defaults.
     var onLiveChange: ((String) -> Void)?
     private var liveUpdateItem: DispatchWorkItem?
+    private var resizeDebounceItem: DispatchWorkItem?
 
     // MARK: - In-panel preview
     private var previewView: NSView?
@@ -593,13 +594,18 @@ final class StarryConfigPanel: NSObject {
     }
 
     @objc private func previewViewFrameChanged(_ notification: Notification) {
-        guard let pv = previewView, let mLayer = previewMetalLayer, let h = previewHandle else { return }
-        let scale = pv.window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        guard let pv = previewView, let mLayer = previewMetalLayer else { return }
+        // Keep the layer filling the view while we wait for the resize to settle.
         mLayer.frame = pv.bounds
-        let w  = UInt32(max(pv.bounds.width  * scale, 1))
-        let hp = UInt32(max(pv.bounds.height * scale, 1))
-        starry_resize(h, w, hp)
-        starry_frame(h)
+        // Debounce: the internal FBOs are fixed at creation size, so starry_resize
+        // alone doesn't help — we need a full engine rebuild at the new geometry.
+        resizeDebounceItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.rebuildPreviewEngine(toml: self.currentTomlString())
+        }
+        resizeDebounceItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
     }
 
     private func rebuildPreviewEngine(toml: String) {
