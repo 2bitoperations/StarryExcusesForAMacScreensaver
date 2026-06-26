@@ -1,0 +1,21 @@
+[package]
+name = "starry-app"
+description = "Windowed shell + CLI entry point for the starry-rs port"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "starry-app"
+path = "src/main.rs"
+
+[dependencies]
+starry-core = { path = "../starry-core" }
+wgpu.workspace = true
+winit.workspace = true
+pollster.workspace = true
+log.workspace = true
+env_logger.workspace = true
+clap.workspace = true

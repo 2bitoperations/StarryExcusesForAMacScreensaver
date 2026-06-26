@@ -1,0 +1,143 @@
+name: Build & Test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Lint: fmt + clippy — runs first so formatting/lint errors fail fast
+  # before paying for all four platform builds.
+  # -------------------------------------------------------------------------
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Install system deps
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libwayland-dev libxkbcommon-dev libegl-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: starry-rs
+      - name: cargo fmt --check
+        run: cargo fmt --check --all
+        working-directory: starry-rs
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        working-directory: starry-rs
+
+  # -------------------------------------------------------------------------
+  # macOS ARM — native runner, full test + starry-app binary + .saver bundle
+  # -------------------------------------------------------------------------
+  build-macos:
+    name: macOS (aarch64)
+    runs-on: macos-latest   # macOS 15, Apple Silicon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: starry-rs
+      - name: Test
+        run: cargo test --workspace --locked
+        working-directory: starry-rs
+      - name: Build release (app + saver cdylib)
+        run: cargo build --release --locked -p starry-app -p starry-saver
+        working-directory: starry-rs
+      - name: Assemble StarryNight.saver bundle
+        run: starry-rs/starry-saver-osx/build-saver.sh
+      - name: Zip .saver bundle (preserves macOS bundle structure)
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            starry-rs/target/release/StarryNight.saver \
+            StarryNight.saver.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starry-app-macos-aarch64
+          path: starry-rs/target/release/starry-app
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StarryNight.saver
+          path: StarryNight.saver.zip
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # Windows x86_64 — MSVC toolchain, full test + release artifact
+  # -------------------------------------------------------------------------
+  build-windows:
+    name: Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: starry-rs
+      - name: Test
+        run: cargo test --workspace --locked
+        working-directory: starry-rs
+      - name: Build release
+        run: cargo build --release --locked -p starry-app
+        working-directory: starry-rs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starry-app-windows-x86_64
+          path: starry-rs/target/release/starry-app.exe
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # Debian Trixie x86_64 — container job, manual rustup, full test + artifact
+  #
+  # JavaScript actions (checkout, upload-artifact) run on the Ubuntu host but
+  # operate on the shared workspace volume, so they work correctly.  All
+  # `run:` steps execute inside the debian:trixie container.
+  # -------------------------------------------------------------------------
+  build-debian-trixie:
+    name: Debian Trixie (x86_64)
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install git and CA certificates
+        # Must happen before checkout because actions/checkout needs git.
+        run: apt-get update -q && apt-get install -y --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install system build dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            curl build-essential pkg-config \
+            libwayland-dev libxkbcommon-dev \
+            libegl-dev
+
+      - name: Install Rust via rustup
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --no-modify-path
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Test
+        run: cargo test --workspace --locked
+        working-directory: starry-rs
+
+      - name: Build release
+        run: cargo build --release --locked -p starry-app
+        working-directory: starry-rs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starry-app-debian-trixie-x86_64
+          path: starry-rs/target/release/starry-app
+          retention-days: 7

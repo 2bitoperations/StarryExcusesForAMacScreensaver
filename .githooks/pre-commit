@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Pre-commit hook: enforce rustfmt on the starry-rs workspace.
+# Installed via: git config core.hooksPath .githooks
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)/starry-rs"
+exec cargo fmt --check --all

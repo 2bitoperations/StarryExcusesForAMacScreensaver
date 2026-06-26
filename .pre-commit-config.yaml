@@ -1,0 +1,25 @@
+# pre-commit hook configuration.
+# Install once per clone: pre-commit install
+# Run manually against all files: pre-commit run --all-files
+#
+# Uses local hooks so the working directory can be pointed at the
+# starry-rs/ Cargo workspace subdirectory rather than the repo root.
+
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        description: Enforce rustfmt formatting on the starry-rs workspace.
+        language: system
+        entry: bash -c 'cd starry-rs && cargo fmt --check --all'
+        pass_filenames: false
+        types: [rust]
+
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Run clippy -D warnings on the starry-rs workspace.
+        language: system
+        entry: bash -c 'cd starry-rs && cargo clippy --workspace --all-targets -- -D warnings'
+        pass_filenames: false
+        types: [rust]

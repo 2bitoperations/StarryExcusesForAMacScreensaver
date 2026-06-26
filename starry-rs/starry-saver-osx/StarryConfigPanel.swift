@@ -1,0 +1,910 @@
+import Cocoa
+import ScreenSaver
+import QuartzCore
+
+// ---------------------------------------------------------------------------
+// StarryConfigPanel
+//
+// Programmatic options sheet for the Rust/wgpu Starry Night screensaver.
+// No dependency on the legacy Swift implementation.
+//
+// Usage:
+//   private lazy var configController = StarryConfigPanel()
+//   override var hasConfigureSheet: Bool { true }
+//   override var configureSheet: NSWindow? { configController.window }
+// ---------------------------------------------------------------------------
+
+final class StarryConfigPanel: NSObject {
+
+    let window: NSWindow
+    private let dm = RustDefaultsManager()
+
+    // Called (debounced ~350 ms) on every control change so the running
+    // engine can be recreated with the new settings without persisting to defaults.
+    var onLiveChange: ((String) -> Void)?
+    private var liveUpdateItem: DispatchWorkItem?
+    private var resizeDebounceItem: DispatchWorkItem?
+
+    // MARK: - In-panel preview
+    private var previewView: NSView?
+    private var previewMetalLayer: CAMetalLayer?
+    private var previewHandle: UnsafeMutableRawPointer?
+    private var previewTimer: Timer?
+
+    // MARK: - Editable value label support
+    private struct LabelInfo {
+        let slider: NSSlider
+        let fromDisplay: (Double) -> Double  // converts display string value → slider raw value
+    }
+    private var labelInfoMap: [NSTextField: LabelInfo] = [:]
+
+    // MARK: - Compiled-in defaults (mirrors RustDefaultsManager fallback values)
+    private enum Defaults {
+        static let starsFraction      = 0.5;    static let lightsFraction    = 0.25
+        static let clearIntervalS     = 120.0;  static let buildingHtMax     = 0.35
+        static let shootEnabled       = true;   static let shootAvgS         = 7.0
+        static let satEnabled         = true
+        static let moonEnabled        = true;   static let moonDiamPct       = 80.0 / 3000.0
+        static let moonTravS          = 3600.0; static let moonTermMode      = 2
+        static let moonBrightBright   = 1.0;    static let moonDarkBright    = 0.15
+        static let moonPhaseOver      = false;  static let moonPhaseVal      = 0.5
+        static let planetsEnabled     = true;   static let moonsEnabled      = true
+        static let horizBehavIdx      = 0;      static let phaseModeIdx      = 2
+        static let ringStyleIdx       = 1;      static let sizingModeIdx     = 0
+        static let mercurySize        = 0.00056;  static let venusSize       = 0.00139
+        static let marsSize           = 0.000784; static let jupiterSize     = 0.016
+        static let saturnSize         = 0.01349;  static let uranusSize      = 0.00584
+        static let neptuneSize        = 0.00566;  static let plutoSize       = 0.000272
+        static let debugOverlay       = false;  static let debugMoon         = false
+    }
+
+    // Radius ratios relative to Jupiter (for "Locked to Jupiter scale" mode)
+    private enum JupiterRatio {
+        static let mercury = 0.0341; static let venus   = 0.0847
+        static let mars    = 0.0474; static let saturn  = 0.8430
+        static let uranus  = 0.3575; static let neptune = 0.3464
+        static let pluto   = 0.0166
+    }
+
+    // MARK: - Sky controls
+    private let starsSlider       = NSSlider()
+    private let starsLabel        = NSTextField()
+    private let lightsSlider      = NSSlider()
+    private let lightsLabel       = NSTextField()
+    private let clearSlider       = NSSlider()
+    private let clearLabel        = NSTextField()
+    private let buildingHtSlider  = NSSlider()
+    private let buildingHtLabel   = NSTextField()
+
+    // MARK: - Effects controls
+    private let shootEnabledBox   = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
+    private let shootAvgSlider    = NSSlider()
+    private let shootAvgLabel     = NSTextField()
+    private let satEnabledBox     = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
+
+    // MARK: - Moon controls
+    private let moonEnabledBox    = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
+    private let moonSizeSlider    = NSSlider()
+    private let moonSizeLabel     = NSTextField()
+    private let moonTravSlider    = NSSlider()
+    private let moonTravLabel     = NSTextField()
+    private let moonTermPopup     = NSPopUpButton()
+    private let moonBrightSlider  = NSSlider()
+    private let moonBrightLabel   = NSTextField()
+    private let moonDarkSlider    = NSSlider()
+    private let moonDarkLabel     = NSTextField()
+    private let moonPhaseOverBox  = NSButton(checkboxWithTitle: "Override phase", target: nil, action: nil)
+    private let moonPhaseSlider   = NSSlider()
+    private let moonPhaseLabel    = NSTextField()
+
+    // MARK: - Planet controls
+    private let planetsEnabledBox = NSButton(checkboxWithTitle: "Planets enabled", target: nil, action: nil)
+    private let moonsEnabledBox   = NSButton(checkboxWithTitle: "Planet moons enabled (Galilean + Titan)", target: nil, action: nil)
+    private let sizingModePopup   = NSPopUpButton()
+    private let horizBehavPopup   = NSPopUpButton()
+    private let phaseModePopup    = NSPopUpButton()
+    private let ringStylePopup    = NSPopUpButton()
+    private let mercurySlider     = NSSlider()
+    private let mercuryLabel      = NSTextField()
+    private let venusSlider       = NSSlider()
+    private let venusLabel        = NSTextField()
+    private let marsSlider        = NSSlider()
+    private let marsLabel         = NSTextField()
+    private let jupiterSlider     = NSSlider()
+    private let jupiterLabel      = NSTextField()
+    private let saturnSlider      = NSSlider()
+    private let saturnLabel       = NSTextField()
+    private let uranusSlider      = NSSlider()
+    private let uranusLabel       = NSTextField()
+    private let neptuneSlider     = NSSlider()
+    private let neptuneLabel      = NSTextField()
+    private let plutoSlider       = NSSlider()
+    private let plutoLabel        = NSTextField()
+
+    // MARK: - Debug controls
+    private let debugOverlayBox   = NSButton(checkboxWithTitle: "Show FPS / CPU overlay", target: nil, action: nil)
+    private let debugMoonBox      = NSButton(checkboxWithTitle: "Debug moon colors (raw albedo)", target: nil, action: nil)
+
+    // MARK: - Init
+
+    override init() {
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 580),
+            styleMask: [.titled, .closable, .resizable],
+            backing:  .buffered,
+            defer:    false
+        )
+        window.title = "Starry Night (Rust) Options"
+        super.init()
+        window.delegate = self
+        buildUI()
+        loadFromDefaults()
+    }
+
+    // MARK: - UI construction
+
+    private func buildUI() {
+        let cv = window.contentView!
+        let leftWidth: CGFloat = 380
+
+        // --- Left pane: tabs + OK/Cancel ---
+        let left = NSView()
+        left.translatesAutoresizingMaskIntoConstraints = false
+
+        let tabs = NSTabView()
+        tabs.translatesAutoresizingMaskIntoConstraints = false
+
+        tabs.addTabViewItem(makeTab("Sky",     skyContent()))
+        tabs.addTabViewItem(makeTab("Effects", effectsContent()))
+        tabs.addTabViewItem(makeTab("Moon",    moonContent()))
+        tabs.addTabViewItem(makeTab("Planets", planetsContent()))
+        tabs.addTabViewItem(makeTab("Debug",   debugContent()))
+
+        let ok = NSButton(title: "OK", target: self, action: #selector(okTapped))
+        ok.translatesAutoresizingMaskIntoConstraints = false
+        ok.keyEquivalent = "\r"
+
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
+        cancel.translatesAutoresizingMaskIntoConstraints = false
+        cancel.keyEquivalent = "\u{1b}"
+
+        left.addSubview(tabs)
+        left.addSubview(ok)
+        left.addSubview(cancel)
+
+        NSLayoutConstraint.activate([
+            tabs.topAnchor.constraint(equalTo: left.topAnchor, constant: 12),
+            tabs.leadingAnchor.constraint(equalTo: left.leadingAnchor, constant: 8),
+            tabs.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -8),
+            tabs.bottomAnchor.constraint(equalTo: ok.topAnchor, constant: -10),
+
+            ok.trailingAnchor.constraint(equalTo: left.trailingAnchor, constant: -12),
+            ok.bottomAnchor.constraint(equalTo: left.bottomAnchor, constant: -12),
+            ok.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+
+            cancel.trailingAnchor.constraint(equalTo: ok.leadingAnchor, constant: -8),
+            cancel.centerYAnchor.constraint(equalTo: ok.centerYAnchor),
+            cancel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+        ])
+
+        // --- Separator ---
+        let sep = NSBox()
+        sep.boxType = .separator
+        sep.translatesAutoresizingMaskIntoConstraints = false
+
+        // --- Right pane: live preview ---
+        let pv = NSView()
+        pv.wantsLayer = true
+        pv.translatesAutoresizingMaskIntoConstraints = false
+        pv.layer?.backgroundColor = NSColor.black.cgColor
+        previewView = pv
+
+        // Label underneath the preview
+        let hint = NSTextField(labelWithString: "Preview — build \(buildCommit) • changes apply after ~0.35 s")
+        hint.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        hint.textColor = .secondaryLabelColor
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        hint.alignment = .center
+
+        cv.addSubview(left)
+        cv.addSubview(sep)
+        cv.addSubview(pv)
+        cv.addSubview(hint)
+
+        NSLayoutConstraint.activate([
+            // left pane
+            left.topAnchor.constraint(equalTo: cv.topAnchor),
+            left.leadingAnchor.constraint(equalTo: cv.leadingAnchor),
+            left.bottomAnchor.constraint(equalTo: cv.bottomAnchor),
+            left.widthAnchor.constraint(equalToConstant: leftWidth),
+
+            // separator
+            sep.topAnchor.constraint(equalTo: cv.topAnchor, constant: 8),
+            sep.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -8),
+            sep.leadingAnchor.constraint(equalTo: left.trailingAnchor),
+            sep.widthAnchor.constraint(equalToConstant: 1),
+
+            // preview pane (fills remaining width, leaving room for hint)
+            pv.topAnchor.constraint(equalTo: cv.topAnchor, constant: 12),
+            pv.leadingAnchor.constraint(equalTo: sep.trailingAnchor, constant: 10),
+            pv.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -10),
+            pv.bottomAnchor.constraint(equalTo: hint.topAnchor, constant: -6),
+
+            hint.leadingAnchor.constraint(equalTo: pv.leadingAnchor),
+            hint.trailingAnchor.constraint(equalTo: pv.trailingAnchor),
+            hint.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -8),
+        ])
+    }
+
+    private func makeTab(_ label: String, _ content: NSView) -> NSTabViewItem {
+        let item = NSTabViewItem()
+        item.label = label
+        item.view = content
+        return item
+    }
+
+    // MARK: - Tab content builders
+
+    private func skyContent() -> NSView {
+        configureSlider(starsSlider,      min: 0, max: 1,    target: self, action: #selector(skyChanged))
+        configureSlider(lightsSlider,     min: 0, max: 1,    target: self, action: #selector(skyChanged))
+        configureSlider(clearSlider,      min: 1, max: 3600, target: self, action: #selector(skyChanged))
+        configureSlider(buildingHtSlider, min: 0, max: 1,    target: self, action: #selector(skyChanged))
+
+        let g = makeGrid()
+        addRow(g, "Star density",        starsSlider,      starsLabel)
+        addRow(g, "Building lights",     lightsSlider,     lightsLabel)
+        addRow(g, "Clear interval (s)",  clearSlider,      clearLabel)
+        addRow(g, "Max building height", buildingHtSlider, buildingHtLabel)
+        addRestoreButton(g, action: #selector(restoreSkyDefaults))
+        return sealGrid(g)
+    }
+
+    private func effectsContent() -> NSView {
+        shootEnabledBox.target = self
+        shootEnabledBox.action = #selector(effectsChanged)
+        configureSlider(shootAvgSlider, min: 0.5, max: 120, target: self, action: #selector(effectsChanged))
+        satEnabledBox.target = self
+        satEnabledBox.action = #selector(effectsChanged)
+
+        let g = makeGrid()
+        addSectionRow(g, "Shooting Stars")
+        addCheckRow(g, shootEnabledBox)
+        addRow(g, "Avg seconds between", shootAvgSlider, shootAvgLabel)
+        addSectionRow(g, "Satellites")
+        addCheckRow(g, satEnabledBox)
+        addRestoreButton(g, action: #selector(restoreEffectsDefaults))
+        return sealGrid(g)
+    }
+
+    private func moonContent() -> NSView {
+        moonEnabledBox.target = self
+        moonEnabledBox.action = #selector(moonChanged)
+
+        configureSlider(moonSizeSlider,   min: 0.001, max: 0.25,   target: self, action: #selector(moonChanged))
+        configureSlider(moonTravSlider,   min: 60,    max: 43200,  target: self, action: #selector(moonChanged))
+        configureSlider(moonBrightSlider, min: 0.2,   max: 1.2,    target: self, action: #selector(moonChanged))
+        configureSlider(moonDarkSlider,   min: 0,     max: 0.9,    target: self, action: #selector(moonChanged))
+        configureSlider(moonPhaseSlider,  min: 0,     max: 1,      target: self, action: #selector(moonChanged))
+
+        moonTermPopup.addItems(withTitles: ["Hard", "Smooth", "Banded"])
+        moonTermPopup.target = self
+        moonTermPopup.action = #selector(moonChanged)
+
+        moonPhaseOverBox.target = self
+        moonPhaseOverBox.action = #selector(moonChanged)
+
+        let g = makeGrid()
+        addCheckRow(g, moonEnabledBox)
+        addRow(g, "Moon size (% width)",  moonSizeSlider,   moonSizeLabel,  fromDisplay: { $0 / 100 })
+        addRow(g, "Traversal time (min)", moonTravSlider,   moonTravLabel,  fromDisplay: { $0 * 60  })
+        addRow(g, "Terminator mode",      moonTermPopup,    nil)
+        addRow(g, "Lit brightness",       moonBrightSlider, moonBrightLabel)
+        addRow(g, "Dark brightness",      moonDarkSlider,   moonDarkLabel)
+        addCheckRow(g, moonPhaseOverBox)
+        addRow(g, "Phase override value", moonPhaseSlider,  moonPhaseLabel)
+        addRestoreButton(g, action: #selector(restoreMoonDefaults))
+        return sealGrid(g)
+    }
+
+    private func planetsContent() -> NSView {
+        planetsEnabledBox.target = self
+        planetsEnabledBox.action = #selector(planetsChanged)
+        moonsEnabledBox.target = self
+        moonsEnabledBox.action = #selector(planetsChanged)
+
+        horizBehavPopup.addItems(withTitles: ["Hide when below horizon",
+                                              "Always random position",
+                                              "Random when below horizon"])
+        horizBehavPopup.target = self
+        horizBehavPopup.action = #selector(planetsChanged)
+
+        phaseModePopup.addItems(withTitles: ["Forced full (fully lit)",
+                                              "Forced half (half-lit)",
+                                              "Computed (astronomical)"])
+        phaseModePopup.target = self
+        phaseModePopup.action = #selector(planetsChanged)
+
+        ringStylePopup.addItems(withTitles: ["Smooth", "Flat Retro", "Chunky Pixel"])
+        ringStylePopup.target = self
+        ringStylePopup.action = #selector(planetsChanged)
+
+        sizingModePopup.addItems(withTitles: ["Independent sizes", "Locked to Jupiter scale"])
+        sizingModePopup.target = self
+        sizingModePopup.action = #selector(sizingModeChanged)
+
+        let sizeMax = 0.2
+        for (sl, lbl) in [(mercurySlider, mercuryLabel), (venusSlider, venusLabel),
+                          (marsSlider, marsLabel),    (jupiterSlider, jupiterLabel),
+                          (saturnSlider, saturnLabel), (uranusSlider, uranusLabel),
+                          (neptuneSlider, neptuneLabel), (plutoSlider, plutoLabel)] {
+            configureSlider(sl, min: 0, max: sizeMax, target: self, action: #selector(planetsChanged))
+            _ = lbl
+        }
+
+        let g = makeGrid()
+        addCheckRow(g, planetsEnabledBox)
+        addCheckRow(g, moonsEnabledBox)
+        addRow(g, "Below-horizon", horizBehavPopup, nil)
+        addRow(g, "Phase mode",    phaseModePopup,  nil)
+        addRow(g, "Saturn rings",  ringStylePopup,  nil)
+        addSectionRow(g, "Planet Sizes (fraction of screen width)")
+        addRow(g, "Sizing mode", sizingModePopup, nil)
+        addRow(g, "Mercury", mercurySlider, mercuryLabel, fromDisplay: { $0 / 100 })
+        addRow(g, "Venus",   venusSlider,   venusLabel,   fromDisplay: { $0 / 100 })
+        addRow(g, "Mars",    marsSlider,    marsLabel,    fromDisplay: { $0 / 100 })
+        addRow(g, "Jupiter", jupiterSlider, jupiterLabel, fromDisplay: { $0 / 100 })
+        addRow(g, "Saturn",  saturnSlider,  saturnLabel,  fromDisplay: { $0 / 100 })
+        addRow(g, "Uranus",  uranusSlider,  uranusLabel,  fromDisplay: { $0 / 100 })
+        addRow(g, "Neptune", neptuneSlider, neptuneLabel, fromDisplay: { $0 / 100 })
+        addRow(g, "Pluto",   plutoSlider,   plutoLabel,   fromDisplay: { $0 / 100 })
+        addRestoreButton(g, action: #selector(restorePlanetsDefaults))
+        return sealGrid(g)
+    }
+
+    private func debugContent() -> NSView {
+        debugOverlayBox.target = self
+        debugOverlayBox.action = #selector(debugChanged)
+        debugMoonBox.target = self
+        debugMoonBox.action = #selector(debugChanged)
+
+        let g = makeGrid()
+        addCheckRow(g, debugOverlayBox)
+        addCheckRow(g, debugMoonBox)
+        addRestoreButton(g, action: #selector(restoreDebugDefaults))
+        return sealGrid(g)
+    }
+
+    // MARK: - Layout helpers
+
+    private func makeGrid() -> NSGridView {
+        let g = NSGridView()
+        g.translatesAutoresizingMaskIntoConstraints = false
+        g.rowSpacing    = 6
+        g.columnSpacing = 8
+        g.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return g
+    }
+
+    private func addRow(_ g: NSGridView, _ text: String, _ ctrl: NSView,
+                        _ val: NSTextField? = nil,
+                        fromDisplay: @escaping (Double) -> Double = { $0 }) {
+        let lbl = NSTextField(labelWithString: text)
+        lbl.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        lbl.translatesAutoresizingMaskIntoConstraints = false
+        ctrl.translatesAutoresizingMaskIntoConstraints = false
+        ctrl.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        if let vl = val, let sl = ctrl as? NSSlider {
+            vl.translatesAutoresizingMaskIntoConstraints = false
+            vl.font        = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            vl.alignment   = .right
+            vl.isEditable  = true
+            vl.isSelectable = true
+            vl.isBezeled   = true
+            vl.bezelStyle  = .roundedBezel
+            vl.drawsBackground = false
+            vl.delegate    = self
+            vl.widthAnchor.constraint(equalToConstant: 68).isActive = true
+            labelInfoMap[vl] = LabelInfo(slider: sl, fromDisplay: fromDisplay)
+            let pair = NSStackView(views: [ctrl, vl])
+            pair.orientation = .horizontal
+            pair.spacing     = 6
+            pair.translatesAutoresizingMaskIntoConstraints = false
+            pair.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            g.addRow(with: [lbl, pair])
+        } else if let vl = val {
+            vl.translatesAutoresizingMaskIntoConstraints = false
+            vl.font      = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            vl.alignment = .right
+            vl.setContentHuggingPriority(.required, for: .horizontal)
+            let pair = NSStackView(views: [ctrl, vl])
+            pair.orientation = .horizontal
+            pair.spacing     = 6
+            pair.translatesAutoresizingMaskIntoConstraints = false
+            pair.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            g.addRow(with: [lbl, pair])
+        } else {
+            g.addRow(with: [lbl, ctrl])
+        }
+    }
+
+    private func addCheckRow(_ g: NSGridView, _ btn: NSButton) {
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        g.addRow(with: [btn, NSView()])
+        let r = g.numberOfRows - 1
+        g.mergeCells(inHorizontalRange: NSRange(location: 0, length: 2),
+                     verticalRange:   NSRange(location: r, length: 1))
+        g.cell(atColumnIndex: 0, rowIndex: r).xPlacement = .fill
+    }
+
+    private func addSectionRow(_ g: NSGridView, _ text: String) {
+        let lbl = NSTextField(labelWithString: text)
+        lbl.font      = NSFont.boldSystemFont(ofSize: NSFont.smallSystemFontSize)
+        lbl.textColor = .secondaryLabelColor
+        lbl.translatesAutoresizingMaskIntoConstraints = false
+        g.addRow(with: [lbl, NSView()])
+        let r = g.numberOfRows - 1
+        g.mergeCells(inHorizontalRange: NSRange(location: 0, length: 2),
+                     verticalRange:   NSRange(location: r, length: 1))
+        g.cell(atColumnIndex: 0, rowIndex: r).xPlacement = .fill
+    }
+
+    private func addRestoreButton(_ g: NSGridView, action: Selector) {
+        let btn = NSButton(title: "Restore Defaults", target: self, action: action)
+        btn.bezelStyle = .rounded
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        g.addRow(with: [btn, NSView()])
+        let r = g.numberOfRows - 1
+        g.mergeCells(inHorizontalRange: NSRange(location: 0, length: 2),
+                     verticalRange:   NSRange(location: r, length: 1))
+        g.cell(atColumnIndex: 0, rowIndex: r).xPlacement = .trailing
+        g.row(at: r).topPadding = 6
+    }
+
+    private func sealGrid(_ g: NSGridView) -> NSView {
+        g.column(at: 0).xPlacement = .trailing
+        let wrapper = NSView()
+        wrapper.autoresizingMask = [.width, .height]
+        wrapper.addSubview(g)
+        NSLayoutConstraint.activate([
+            g.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 12),
+            g.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 12),
+            g.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -12),
+            g.bottomAnchor.constraint(lessThanOrEqualTo: wrapper.bottomAnchor, constant: -12),
+        ])
+        return wrapper
+    }
+
+    private func configureSlider(_ s: NSSlider, min: Double, max: Double,
+                                  target: AnyObject, action: Selector) {
+        s.minValue     = min
+        s.maxValue     = max
+        s.isContinuous = true
+        s.target       = target
+        s.action       = action
+    }
+
+    // MARK: - Load / Save
+
+    private func loadFromDefaults() {
+        starsSlider.doubleValue      = dm.starsFraction
+        lightsSlider.doubleValue     = dm.lightsFraction
+        clearSlider.doubleValue      = dm.clearIntervalS
+        buildingHtSlider.doubleValue = dm.buildingHeightPctMax
+
+        shootEnabledBox.state = dm.shootingStarsEnabled ? .on : .off
+        shootAvgSlider.doubleValue = dm.shootingStarsAvgSeconds
+        satEnabledBox.state = dm.satellitesEnabled ? .on : .off
+
+        moonEnabledBox.state = dm.moonEnabled ? .on : .off
+        moonSizeSlider.doubleValue   = dm.moonDiameterPercent
+        moonTravSlider.doubleValue   = dm.moonTraversalSeconds
+        moonTermPopup.selectItem(at: dm.moonTerminatorMode)
+        moonBrightSlider.doubleValue = dm.moonBrightBrightness
+        moonDarkSlider.doubleValue   = dm.moonDarkBrightness
+        moonPhaseOverBox.state = dm.moonPhaseOverrideEnabled ? .on : .off
+        moonPhaseSlider.doubleValue  = dm.moonPhaseOverrideValue
+
+        planetsEnabledBox.state = dm.planetsEnabled ? .on : .off
+        moonsEnabledBox.state   = dm.planetMoonsEnabled ? .on : .off
+        let horizIdx: Int
+        switch dm.planetBelowHorizonBehavior {
+        case "random":            horizIdx = 1
+        case "random-when-below": horizIdx = 2
+        default:                  horizIdx = 0
+        }
+        horizBehavPopup.selectItem(at: horizIdx)
+        let phaseIdx: Int
+        switch dm.planetPhaseMode {
+        case "forced-half": phaseIdx = 1
+        case "computed":    phaseIdx = 2
+        default:            phaseIdx = 0
+        }
+        phaseModePopup.selectItem(at: phaseIdx)
+        let ringIdx: Int
+        switch dm.saturnRingStyle {
+        case "smooth":       ringIdx = 0
+        case "chunky-pixel": ringIdx = 2
+        default:             ringIdx = 1
+        }
+        ringStylePopup.selectItem(at: ringIdx)
+
+        sizingModePopup.selectItem(at: dm.planetSizingMode)
+
+        mercurySlider.doubleValue = dm.mercurySize
+        venusSlider.doubleValue   = dm.venusSize
+        marsSlider.doubleValue    = dm.marsSize
+        jupiterSlider.doubleValue = dm.jupiterSize
+        saturnSlider.doubleValue  = dm.saturnSize
+        uranusSlider.doubleValue  = dm.uranusSize
+        neptuneSlider.doubleValue = dm.neptuneSize
+        plutoSlider.doubleValue   = dm.plutoSize
+
+        debugOverlayBox.state = dm.debugOverlayEnabled ? .on : .off
+        debugMoonBox.state    = dm.debugMoonColors ? .on : .off
+
+        applySizingMode()
+        refreshValueLabels()
+    }
+
+    private func saveToDefaults() {
+        dm.starsFraction            = starsSlider.doubleValue
+        dm.lightsFraction           = lightsSlider.doubleValue
+        dm.clearIntervalS           = clearSlider.doubleValue
+        dm.buildingHeightPctMax     = buildingHtSlider.doubleValue
+        dm.shootingStarsEnabled     = shootEnabledBox.state == .on
+        dm.shootingStarsAvgSeconds  = shootAvgSlider.doubleValue
+        dm.satellitesEnabled        = satEnabledBox.state == .on
+        dm.moonEnabled              = moonEnabledBox.state == .on
+        dm.moonDiameterPercent      = moonSizeSlider.doubleValue
+        dm.moonTraversalSeconds     = moonTravSlider.doubleValue
+        dm.moonTerminatorMode       = moonTermPopup.indexOfSelectedItem
+        dm.moonBrightBrightness     = moonBrightSlider.doubleValue
+        dm.moonDarkBrightness       = moonDarkSlider.doubleValue
+        dm.moonPhaseOverrideEnabled = moonPhaseOverBox.state == .on
+        dm.moonPhaseOverrideValue   = moonPhaseSlider.doubleValue
+        dm.planetsEnabled           = planetsEnabledBox.state == .on
+        dm.planetMoonsEnabled       = moonsEnabledBox.state == .on
+
+        let horizValues = ["hide", "random", "random-when-below"]
+        dm.planetBelowHorizonBehavior = horizValues[safe: horizBehavPopup.indexOfSelectedItem] ?? "hide"
+        let phaseValues = ["forced-full", "forced-half", "computed"]
+        dm.planetPhaseMode = phaseValues[safe: phaseModePopup.indexOfSelectedItem] ?? "computed"
+        let ringValues = ["smooth", "flat-retro", "chunky-pixel"]
+        dm.saturnRingStyle = ringValues[safe: ringStylePopup.indexOfSelectedItem] ?? "flat-retro"
+
+        dm.planetSizingMode = sizingModePopup.indexOfSelectedItem
+
+        dm.mercurySize = mercurySlider.doubleValue
+        dm.venusSize   = venusSlider.doubleValue
+        dm.marsSize    = marsSlider.doubleValue
+        dm.jupiterSize = jupiterSlider.doubleValue
+        dm.saturnSize  = saturnSlider.doubleValue
+        dm.uranusSize  = uranusSlider.doubleValue
+        dm.neptuneSize = neptuneSlider.doubleValue
+        dm.plutoSize   = plutoSlider.doubleValue
+
+        dm.debugOverlayEnabled = debugOverlayBox.state == .on
+        dm.debugMoonColors     = debugMoonBox.state == .on
+    }
+
+    // MARK: - Value label refresh
+
+    private func refreshValueLabels() {
+        starsLabel.stringValue      = String(format: "%.2f", starsSlider.doubleValue)
+        lightsLabel.stringValue     = String(format: "%.2f", lightsSlider.doubleValue)
+        clearLabel.stringValue      = String(format: "%.0fs", clearSlider.doubleValue)
+        buildingHtLabel.stringValue = String(format: "%.2f", buildingHtSlider.doubleValue)
+
+        shootAvgLabel.stringValue   = String(format: "%.1fs", shootAvgSlider.doubleValue)
+
+        moonSizeLabel.stringValue   = String(format: "%.1f%%", moonSizeSlider.doubleValue * 100)
+        moonTravLabel.stringValue   = String(format: "%.0fm", moonTravSlider.doubleValue / 60)
+        moonBrightLabel.stringValue = String(format: "%.2f", moonBrightSlider.doubleValue)
+        moonDarkLabel.stringValue   = String(format: "%.2f", moonDarkSlider.doubleValue)
+        moonPhaseLabel.stringValue  = String(format: "%.2f", moonPhaseSlider.doubleValue)
+
+        let pct = { (v: Double) in String(format: "%.3f%%", v * 100) }
+        mercuryLabel.stringValue = pct(mercurySlider.doubleValue)
+        venusLabel.stringValue   = pct(venusSlider.doubleValue)
+        marsLabel.stringValue    = pct(marsSlider.doubleValue)
+        jupiterLabel.stringValue = pct(jupiterSlider.doubleValue)
+        saturnLabel.stringValue  = pct(saturnSlider.doubleValue)
+        uranusLabel.stringValue  = pct(uranusSlider.doubleValue)
+        neptuneLabel.stringValue = pct(neptuneSlider.doubleValue)
+        plutoLabel.stringValue   = pct(plutoSlider.doubleValue)
+    }
+
+    // MARK: - Actions
+
+    @objc private func skyChanged(_: Any?)     { refreshValueLabels(); scheduleLiveUpdate() }
+    @objc private func effectsChanged(_: Any?) { refreshValueLabels(); scheduleLiveUpdate() }
+    @objc private func moonChanged(_: Any?)    { refreshValueLabels(); scheduleLiveUpdate() }
+    @objc private func planetsChanged(_: Any?) {
+        if sizingModePopup.indexOfSelectedItem == 1 { applySizingMode() }
+        refreshValueLabels(); scheduleLiveUpdate()
+    }
+    @objc private func debugChanged(_: Any?) { scheduleLiveUpdate() }
+
+    @objc private func sizingModeChanged(_: Any?) {
+        applySizingMode()
+        refreshValueLabels()
+        saveToDefaults()
+        scheduleLiveUpdate()
+    }
+
+    private func applySizingMode() {
+        let locked = sizingModePopup.indexOfSelectedItem == 1
+        let j = jupiterSlider.doubleValue
+        for sl in [mercurySlider, venusSlider, marsSlider, saturnSlider,
+                   uranusSlider, neptuneSlider, plutoSlider] {
+            sl.isEnabled = !locked
+        }
+        if locked {
+            mercurySlider.doubleValue = j * JupiterRatio.mercury
+            venusSlider.doubleValue   = j * JupiterRatio.venus
+            marsSlider.doubleValue    = j * JupiterRatio.mars
+            saturnSlider.doubleValue  = j * JupiterRatio.saturn
+            uranusSlider.doubleValue  = j * JupiterRatio.uranus
+            neptuneSlider.doubleValue = j * JupiterRatio.neptune
+            plutoSlider.doubleValue   = j * JupiterRatio.pluto
+        }
+    }
+
+    @objc private func restoreSkyDefaults(_: Any?) {
+        starsSlider.doubleValue      = Defaults.starsFraction
+        lightsSlider.doubleValue     = Defaults.lightsFraction
+        clearSlider.doubleValue      = Defaults.clearIntervalS
+        buildingHtSlider.doubleValue = Defaults.buildingHtMax
+        refreshValueLabels(); saveToDefaults(); scheduleLiveUpdate()
+    }
+
+    @objc private func restoreEffectsDefaults(_: Any?) {
+        shootEnabledBox.state      = Defaults.shootEnabled ? .on : .off
+        shootAvgSlider.doubleValue = Defaults.shootAvgS
+        satEnabledBox.state        = Defaults.satEnabled ? .on : .off
+        refreshValueLabels(); saveToDefaults(); scheduleLiveUpdate()
+    }
+
+    @objc private func restoreMoonDefaults(_: Any?) {
+        moonEnabledBox.state         = Defaults.moonEnabled ? .on : .off
+        moonSizeSlider.doubleValue   = Defaults.moonDiamPct
+        moonTravSlider.doubleValue   = Defaults.moonTravS
+        moonTermPopup.selectItem(at: Defaults.moonTermMode)
+        moonBrightSlider.doubleValue = Defaults.moonBrightBright
+        moonDarkSlider.doubleValue   = Defaults.moonDarkBright
+        moonPhaseOverBox.state       = Defaults.moonPhaseOver ? .on : .off
+        moonPhaseSlider.doubleValue  = Defaults.moonPhaseVal
+        refreshValueLabels(); saveToDefaults(); scheduleLiveUpdate()
+    }
+
+    @objc private func restorePlanetsDefaults(_: Any?) {
+        planetsEnabledBox.state = Defaults.planetsEnabled ? .on : .off
+        moonsEnabledBox.state   = Defaults.moonsEnabled   ? .on : .off
+        sizingModePopup.selectItem(at: Defaults.sizingModeIdx)
+        horizBehavPopup.selectItem(at: Defaults.horizBehavIdx)
+        phaseModePopup.selectItem(at:  Defaults.phaseModeIdx)
+        ringStylePopup.selectItem(at:  Defaults.ringStyleIdx)
+        mercurySlider.doubleValue = Defaults.mercurySize
+        venusSlider.doubleValue   = Defaults.venusSize
+        marsSlider.doubleValue    = Defaults.marsSize
+        jupiterSlider.doubleValue = Defaults.jupiterSize
+        saturnSlider.doubleValue  = Defaults.saturnSize
+        uranusSlider.doubleValue  = Defaults.uranusSize
+        neptuneSlider.doubleValue = Defaults.neptuneSize
+        plutoSlider.doubleValue   = Defaults.plutoSize
+        applySizingMode()
+        refreshValueLabels(); saveToDefaults(); scheduleLiveUpdate()
+    }
+
+    @objc private func restoreDebugDefaults(_: Any?) {
+        debugOverlayBox.state = Defaults.debugOverlay ? .on : .off
+        debugMoonBox.state    = Defaults.debugMoon    ? .on : .off
+        saveToDefaults(); scheduleLiveUpdate()
+    }
+
+    private func scheduleLiveUpdate() {
+        liveUpdateItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            let toml = self.currentTomlString()
+            self.onLiveChange?(toml)
+            self.rebuildPreviewEngine(toml: toml)
+        }
+        liveUpdateItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: item)
+    }
+
+    // MARK: - Preview engine lifecycle
+
+    private func startPreview() {
+        guard let pv = previewView, previewMetalLayer == nil else { return }
+        pv.wantsLayer = true
+        // Defer one run-loop cycle so the view is fully laid out.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let pv = self.previewView else { return }
+            let scale = pv.window?.screen?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor ?? 2.0
+            let mLayer = CAMetalLayer()
+            mLayer.frame = pv.bounds
+            mLayer.contentsScale = scale
+            mLayer.isOpaque = true
+            pv.layer?.addSublayer(mLayer)
+            self.previewMetalLayer = mLayer
+            self.rebuildPreviewEngine(toml: RustDefaultsManager().tomlString())
+            // Observe frame changes on pv so we can sync mLayer + Rust engine
+            // after Auto Layout finishes (windowDidResize fires *before* layout).
+            pv.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(self.previewViewFrameChanged(_:)),
+                name: NSView.frameDidChangeNotification,
+                object: pv
+            )
+            // Add to both .common and .eventTracking so the timer fires
+            // during live resize (NSEventTrackingRunLoopMode is not in .common
+            // by default on macOS).
+            let t = Timer(timeInterval: 1.0 / 60.0, target: self,
+                          selector: #selector(self.previewTick),
+                          userInfo: nil, repeats: true)
+            RunLoop.main.add(t, forMode: .common)
+            RunLoop.main.add(t, forMode: .eventTracking)
+            self.previewTimer = t
+        }
+    }
+
+    private func stopPreview() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSView.frameDidChangeNotification,
+            object: previewView
+        )
+        previewTimer?.invalidate()
+        previewTimer = nil
+        if let h = previewHandle {
+            starry_destroy(h)
+            previewHandle = nil
+        }
+        previewMetalLayer?.removeFromSuperlayer()
+        previewMetalLayer = nil
+    }
+
+    @objc private func previewViewFrameChanged(_ notification: Notification) {
+        guard let pv = previewView, let mLayer = previewMetalLayer else { return }
+        // Keep the layer filling the view while we wait for the resize to settle.
+        mLayer.frame = pv.bounds
+        // Debounce: the internal FBOs are fixed at creation size, so starry_resize
+        // alone doesn't help — we need a full engine rebuild at the new geometry.
+        resizeDebounceItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.rebuildPreviewEngine(toml: self.currentTomlString())
+        }
+        resizeDebounceItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
+    }
+
+    private func rebuildPreviewEngine(toml: String) {
+        guard let pv = previewView, let mLayer = previewMetalLayer else { return }
+        if let h = previewHandle {
+            starry_destroy(h)
+            previewHandle = nil
+        }
+        let scale = pv.window?.screen?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        mLayer.frame = pv.bounds
+        let w = UInt32(max(pv.bounds.width  * scale, 1))
+        let h = UInt32(max(pv.bounds.height * scale, 1))
+        previewHandle = toml.withCString { ptr in
+            starry_create_with_toml(
+                Unmanaged.passUnretained(mLayer).toOpaque(), w, h, ptr
+            )
+        }
+    }
+
+    @objc private func previewTick() {
+        guard let h = previewHandle else { return }
+        starry_frame(h)
+    }
+
+    // Serialises the current UI control state to TOML without touching saved defaults.
+    // Key names and format must match PartialConfig in toml_config.rs exactly.
+    func currentTomlString() -> String {
+        var lines: [String] = []
+        func f(_ key: String, _ v: Double) { lines.append("\(key) = \(v)") }
+        func b(_ key: String, _ v: Bool)   { lines.append("\(key) = \(v)") }
+        func i(_ key: String, _ v: Int)    { lines.append("\(key) = \(v)") }
+        func q(_ key: String, _ v: String) { lines.append("\(key) = \"\(v)\"") }
+
+        f("stars_fraction",             starsSlider.doubleValue)
+        f("lights_fraction",            lightsSlider.doubleValue)
+        f("clear_interval_s",           clearSlider.doubleValue)
+        f("building_height_pct_max",    buildingHtSlider.doubleValue)
+        b("shooting_stars_enabled",     shootEnabledBox.state == .on)
+        f("shooting_stars_avg_seconds", shootAvgSlider.doubleValue)
+        b("satellites_enabled",         satEnabledBox.state == .on)
+        b("moon_enabled",               moonEnabledBox.state == .on)
+        f("moon_diameter_percent",      moonSizeSlider.doubleValue)
+        f("moon_traversal_seconds",     moonTravSlider.doubleValue)
+        i("moon_terminator_mode",       moonTermPopup.indexOfSelectedItem)
+        f("moon_bright_brightness",     moonBrightSlider.doubleValue)
+        f("moon_dark_brightness",       moonDarkSlider.doubleValue)
+        b("moon_phase_override_enabled", moonPhaseOverBox.state == .on)
+        f("moon_phase_override_value",  moonPhaseSlider.doubleValue)
+        b("planets_enabled",            planetsEnabledBox.state == .on)
+        b("planet_moons_enabled",       moonsEnabledBox.state == .on)
+        let horizValues = ["hide", "random", "random-when-below"]
+        q("planet_below_horizon_behavior", horizValues[safe: horizBehavPopup.indexOfSelectedItem] ?? "hide")
+        let phaseValues = ["forced-full", "forced-half", "computed"]
+        q("planet_phase_mode",          phaseValues[safe: phaseModePopup.indexOfSelectedItem] ?? "computed")
+        let ringValues = ["smooth", "flat-retro", "chunky-pixel"]
+        q("saturn_ring_style",          ringValues[safe: ringStylePopup.indexOfSelectedItem] ?? "flat-retro")
+        f("mercury_size",               mercurySlider.doubleValue)
+        f("venus_size",                 venusSlider.doubleValue)
+        f("mars_size",                  marsSlider.doubleValue)
+        f("jupiter_size",               jupiterSlider.doubleValue)
+        f("saturn_size",                saturnSlider.doubleValue)
+        f("uranus_size",                uranusSlider.doubleValue)
+        f("neptune_size",               neptuneSlider.doubleValue)
+        f("pluto_size",                 plutoSlider.doubleValue)
+        b("debug_overlay_enabled",      debugOverlayBox.state == .on)
+        b("debug_moon_colors",          debugMoonBox.state == .on)
+        return lines.joined(separator: "\n")
+    }
+
+    @objc private func okTapped(_: Any?) {
+        saveToDefaults()
+        stopPreview()
+        window.sheetParent?.endSheet(window, returnCode: .OK)
+    }
+
+    @objc private func cancelTapped(_: Any?) {
+        stopPreview()
+        window.sheetParent?.endSheet(window, returnCode: .cancel)
+    }
+}
+
+// MARK: - NSWindowDelegate (preview lifecycle)
+
+extension StarryConfigPanel: NSWindowDelegate {
+    func windowDidBecomeKey(_ notification: Notification) {
+        startPreview()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        stopPreview()
+    }
+
+}
+
+// MARK: - NSTextFieldDelegate (editable value fields)
+
+extension StarryConfigPanel: NSTextFieldDelegate {
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field  = obj.object as? NSTextField,
+              let info   = labelInfoMap[field] else { return }
+        let stripped = field.stringValue.filter { $0.isNumber || $0 == "." || $0 == "-" }
+        guard let displayVal = Double(stripped) else {
+            refreshValueLabels()
+            return
+        }
+        let sliderVal = info.fromDisplay(displayVal)
+        let clamped   = max(info.slider.minValue, min(info.slider.maxValue, sliderVal))
+        if abs(clamped - info.slider.doubleValue) > 1e-10 {
+            info.slider.doubleValue = clamped
+            if let target = info.slider.target, let action = info.slider.action {
+                NSApp.sendAction(action, to: target, from: info.slider)
+            }
+        } else {
+            refreshValueLabels()
+        }
+    }
+}
+
+// MARK: - Array safe subscript helper (local to this file)
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}

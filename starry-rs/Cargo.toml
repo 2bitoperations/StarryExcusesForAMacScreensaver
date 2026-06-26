@@ -1,0 +1,55 @@
+[workspace]
+resolver = "3"
+members = ["starry-core", "starry-app", "starry-saver"]
+# `cargo run` / `cargo build` from the workspace root operates on starry-app
+# by default, so the post-split UX matches the pre-split single-crate days
+# ("cargo run" Just Works without remembering `-p starry-app`).
+default-members = ["starry-app"]
+
+# Shared package metadata. Each member crate inherits via `.workspace = true`
+# so version bumps, license changes, etc. happen in exactly one place.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Andrew Malota"]
+repository = "https://github.com/2bitoperations/StarryExcusesForAMacScreensaver"
+
+# Single source of truth for dependency versions across the workspace.
+# Crates opt in per-dep with `name.workspace = true`.
+[workspace.dependencies]
+# wgpu pinned to 29; mid-port upgrades reshape API surface — see AGENTS.md.
+wgpu = "29"
+winit = "0.30"
+pollster = "0.4"
+log = "0.4"
+env_logger = "0.11"
+rand = "0.8"
+bytemuck = { version = "1", features = ["derive"] }
+png = "0.17"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+# Compile-time git short SHA for the debug overlay's build-info widget; fallback keeps non-git checkouts building.
+git-version = "0.3"
+# Per-OS CPU sampling for the debug overlay; cfg-gated at the consumer site so only one of the two ships per target.
+libc = "0.2"
+windows-sys = { version = "0.59", features = ["Win32_System_Threading", "Win32_Foundation"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+# wgpu-hal 29 added a macOS occlusion check (wgpu#8309) that incorrectly
+# blocks every acquire_texture call in legacyScreenSaver.appex because the
+# screensaver host window is a remote-layer-server and never has
+# NSWindowOcclusionStateVisible set.  Patch it out locally until upstream
+# adds an opt-out mechanism.
+[patch.crates-io]
+wgpu-hal = { path = "wgpu-hal-patch" }
