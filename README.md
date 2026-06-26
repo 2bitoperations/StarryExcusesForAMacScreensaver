@@ -1,42 +1,48 @@
-# StarryExcusesForAMacScreensaver.saver
+# StarryExcusesForAMacScreensaver
 
-[![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://github.com/kimar/DeveloperExcuses/blob/master/LICENSE.md)
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](LICENSE.md)
+[![Build & Test](https://github.com/2bitoperations/StarryExcusesForAMacScreensaver/actions/workflows/build.yml/badge.svg)](https://github.com/2bitoperations/StarryExcusesForAMacScreensaver/actions)
 
-## What is this?
-This is a screensaver for MacOS that tries to be an homage to the old AfterDark Starry Night screensaver from the late 90s. Largely implemented in Swift with a Metal renderer. 
+A macOS screensaver inspired by the AfterDark *Starry Night* screensaver from the late 90s.
 
-## Status
-Very basic implementation.
-- [x] buildings
-- [x] stars
-- [x] flasher
-- [x] configuration panel
-- [ ] rain
-- [x] shooting stars
-- [x] satellites
-- [x] moon
-- [x] planets (Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto — individually toggleable)
-- [x] planetary moons (Io, Europa, Ganymede, Callisto around Jupiter; Titan around Saturn) as automatic dot sprites
+## What's here
 
-### Planets TODO
-1. **Verify render order** — Planets draw after the building layer and before the moon in `encodeCompositeAndMoon()`. This *should* place them above all buildings and behind the moon. Visually confirm this is working correctly and adjust if needed.
-2. [x] **Planet phase calculation** — Implemented Earth-Sun-planet phase angle computation with per-planet illuminated fraction and waxing sign.
-3. **Coarse geolocation** — Observer location is hardcoded to Austin, TX (30.2672°N, 97.7431°W). Detect coarse location from system timezone or CoreLocation.
-4. **Visual tuning** — Confirm all planet textures look right at runtime. Tweak band colors, Great Red Spot, limb darkening, storm details, and noise as needed.
+The entire simulation and rendering engine is written in **Rust + wgpu** (`starry-rs/`).
+On macOS it ships as a `.saver` bundle: a thin Swift wrapper (`starry-saver-osx/`) loads
+the Rust dylib and hands it a `CAMetalLayer` to draw into.
+
+The original Swift/Metal implementation that predates the Rust port has been removed.
+It served as the visual ground-truth during the port; with the Rust side at full feature
+parity there was no reason to keep two codebases.
+
+## Features
+
+- Procedural city skyline with randomised buildings and window lights
+- Stars, shooting stars, satellites, a flashing rooftop beacon
+- Moon with real-world phase (Julian-day math), traversal arc, three terminator modes
+- All 8 planets with Keplerian J2000 ephemeris, procedural textures, phase shading,
+  and Saturn's rings (three ring styles)
+- Galilean moons (Io, Europa, Ganymede, Callisto) and Titan as orbital dot sprites
+- Live options panel with editable value fields, per-tab restore-defaults, and a
+  "locked to Jupiter scale" planet-sizing mode
+- FPS / CPU debug overlay
+- Headless `--dump-png` mode; deterministic seed mode for regression testing
+
+## Building (macOS)
+
+```bash
+cd starry-rs/starry-saver-osx
+bash build-saver.sh        # builds Rust + Swift, installs to ~/Library/Screen Savers/
+killall legacyScreenSaver  # force-reload the screensaver host before testing
+```
+
+See [`starry-rs/README.md`](starry-rs/README.md) for the full build guide, CLI flags,
+and cross-platform (Linux / Windows) instructions.
 
 ## Provenance
-Fork of https://github.com/kimar/DeveloperExcuses and https://github.com/evangreen/starryn 
 
-And feel free to fork and contribute ;-)
-
-## Rust + wgpu port (in progress)
-
-A cross-platform Rust + wgpu rewrite is in progress under [`starry-rs/`](starry-rs/). The long-term plan is to migrate the entire project — including macOS — to that codebase, which can target macOS (Metal), Linux (Vulkan/GL), and Windows (D3D12) from a single source tree.
-
-Until then, the Swift code remains the visual ground-truth and the shipping macOS product. See [`starry-rs/README.md`](starry-rs/README.md) for the porting roadmap and how to build/run the Rust side.
-
-## Getting started
-Open up *DeveloperExcuses.xcodeproj* using Xcode and hit Cmd+B to build it. That's it.
+Originally forked from https://github.com/kimar/DeveloperExcuses and
+https://github.com/evangreen/starryn.
 
 ## License
 
