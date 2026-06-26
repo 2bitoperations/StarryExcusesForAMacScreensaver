@@ -346,6 +346,7 @@ final class StarryConfigPanel: NSObject {
         g.translatesAutoresizingMaskIntoConstraints = false
         g.rowSpacing    = 6
         g.columnSpacing = 8
+        g.setContentHuggingPriority(.defaultLow, for: .horizontal)
         return g
     }
 
@@ -365,6 +366,7 @@ final class StarryConfigPanel: NSObject {
             pair.orientation = .horizontal
             pair.spacing     = 6
             pair.translatesAutoresizingMaskIntoConstraints = false
+            pair.setContentHuggingPriority(.defaultLow, for: .horizontal)
             g.addRow(with: [lbl, pair])
         } else {
             g.addRow(with: [lbl, ctrl])
@@ -377,6 +379,7 @@ final class StarryConfigPanel: NSObject {
         let r = g.numberOfRows - 1
         g.mergeCells(inHorizontalRange: NSRange(location: 0, length: 2),
                      verticalRange:   NSRange(location: r, length: 1))
+        g.cell(atColumnIndex: 0, rowIndex: r).xPlacement = .fill
     }
 
     private func addSectionRow(_ g: NSGridView, _ text: String) {
@@ -388,6 +391,7 @@ final class StarryConfigPanel: NSObject {
         let r = g.numberOfRows - 1
         g.mergeCells(inHorizontalRange: NSRange(location: 0, length: 2),
                      verticalRange:   NSRange(location: r, length: 1))
+        g.cell(atColumnIndex: 0, rowIndex: r).xPlacement = .fill
     }
 
     private func sealGrid(_ g: NSGridView) -> NSView {
