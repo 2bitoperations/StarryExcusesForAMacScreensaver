@@ -331,16 +331,6 @@ final class StarryConfigPanel: NSObject {
 
     // MARK: - Layout helpers
 
-    private func vstack(_ views: [NSView]) -> NSView {
-        let sv = NSStackView(views: views)
-        sv.orientation = .vertical
-        sv.alignment   = .leading
-        sv.spacing     = 8
-        sv.edgeInsets  = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-        sv.translatesAutoresizingMaskIntoConstraints = false
-        return sv
-    }
-
     private func makeGrid() -> NSGridView {
         let g = NSGridView()
         g.translatesAutoresizingMaskIntoConstraints = false
@@ -396,7 +386,16 @@ final class StarryConfigPanel: NSObject {
 
     private func sealGrid(_ g: NSGridView) -> NSView {
         g.column(at: 0).xPlacement = .trailing
-        return vstack([g])
+        let wrapper = NSView()
+        wrapper.autoresizingMask = [.width, .height]
+        wrapper.addSubview(g)
+        NSLayoutConstraint.activate([
+            g.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 12),
+            g.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 12),
+            g.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -12),
+            g.bottomAnchor.constraint(lessThanOrEqualTo: wrapper.bottomAnchor, constant: -12),
+        ])
+        return wrapper
     }
 
     private func configureSlider(_ s: NSSlider, min: Double, max: Double,
