@@ -4,6 +4,16 @@ I always, always, always want you to discuss any changes you want to make (and t
 
 This project is supposed to serve as a fun learning test bed for agentic programming, and as such, our tone should always be lighthearted and welcoming.
 
+## macOS Screensaver Build & Test Workflow
+
+After running `build-saver.sh` (which installs the new `.saver` into `~/Library/Screen Savers/`), the `legacyScreenSaver` host process **must be restarted** before testing — macOS does **not** automatically reload the bundle when it is replaced on disk.
+
+```bash
+killall legacyScreenSaver
+```
+
+Then reopen System Settings → Screen Saver. The fresh process picks up the new binary. Skipping this step means you are testing stale code and will draw wrong conclusions about what is or isn't working.
+
 ## File Contents
 
 ### Core
