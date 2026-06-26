@@ -210,17 +210,17 @@ final class StarryConfigPanel: NSObject {
     // MARK: - Tab content builders
 
     private func skyContent() -> NSView {
-        configureSlider(starsSlider,    min: 0, max: 1,    target: self, action: #selector(skyChanged))
-        configureSlider(lightsSlider,   min: 0, max: 1,    target: self, action: #selector(skyChanged))
-        configureSlider(clearSlider,    min: 1, max: 3600, target: self, action: #selector(skyChanged))
-        configureSlider(buildingHtSlider, min: 0, max: 1,  target: self, action: #selector(skyChanged))
+        configureSlider(starsSlider,      min: 0, max: 1,    target: self, action: #selector(skyChanged))
+        configureSlider(lightsSlider,     min: 0, max: 1,    target: self, action: #selector(skyChanged))
+        configureSlider(clearSlider,      min: 1, max: 3600, target: self, action: #selector(skyChanged))
+        configureSlider(buildingHtSlider, min: 0, max: 1,    target: self, action: #selector(skyChanged))
 
-        return vstack([
-            row("Star density",           starsSlider,      starsLabel),
-            row("Building lights",        lightsSlider,     lightsLabel),
-            row("Clear interval (s)",     clearSlider,      clearLabel),
-            row("Max building height",    buildingHtSlider, buildingHtLabel),
-        ])
+        let g = makeGrid()
+        addRow(g, "Star density",        starsSlider,      starsLabel)
+        addRow(g, "Building lights",     lightsSlider,     lightsLabel)
+        addRow(g, "Clear interval (s)",  clearSlider,      clearLabel)
+        addRow(g, "Max building height", buildingHtSlider, buildingHtLabel)
+        return sealGrid(g)
     }
 
     private func effectsContent() -> NSView {
@@ -230,13 +230,13 @@ final class StarryConfigPanel: NSObject {
         satEnabledBox.target = self
         satEnabledBox.action = #selector(effectsChanged)
 
-        return vstack([
-            sectionLabel("Shooting Stars"),
-            indentRow(shootEnabledBox),
-            row("Avg seconds between",   shootAvgSlider,   shootAvgLabel),
-            sectionLabel("Satellites"),
-            indentRow(satEnabledBox),
-        ])
+        let g = makeGrid()
+        addSectionRow(g, "Shooting Stars")
+        addCheckRow(g, shootEnabledBox)
+        addRow(g, "Avg seconds between", shootAvgSlider, shootAvgLabel)
+        addSectionRow(g, "Satellites")
+        addCheckRow(g, satEnabledBox)
+        return sealGrid(g)
     }
 
     private func moonContent() -> NSView {
@@ -256,16 +256,16 @@ final class StarryConfigPanel: NSObject {
         moonPhaseOverBox.target = self
         moonPhaseOverBox.action = #selector(moonChanged)
 
-        return vstack([
-            indentRow(moonEnabledBox),
-            row("Moon size (% width)",   moonSizeSlider,   moonSizeLabel),
-            row("Traversal time (min)",  moonTravSlider,   moonTravLabel),
-            row("Terminator mode",       moonTermPopup,    nil),
-            row("Lit brightness",        moonBrightSlider, moonBrightLabel),
-            row("Dark brightness",       moonDarkSlider,   moonDarkLabel),
-            indentRow(moonPhaseOverBox),
-            row("Phase override value",  moonPhaseSlider,  moonPhaseLabel),
-        ])
+        let g = makeGrid()
+        addCheckRow(g, moonEnabledBox)
+        addRow(g, "Moon size (% width)",  moonSizeSlider,   moonSizeLabel)
+        addRow(g, "Traversal time (min)", moonTravSlider,   moonTravLabel)
+        addRow(g, "Terminator mode",      moonTermPopup,    nil)
+        addRow(g, "Lit brightness",       moonBrightSlider, moonBrightLabel)
+        addRow(g, "Dark brightness",      moonDarkSlider,   moonDarkLabel)
+        addCheckRow(g, moonPhaseOverBox)
+        addRow(g, "Phase override value", moonPhaseSlider,  moonPhaseLabel)
+        return sealGrid(g)
     }
 
     private func planetsContent() -> NSView {
@@ -299,22 +299,22 @@ final class StarryConfigPanel: NSObject {
             _ = lbl
         }
 
-        return vstack([
-            indentRow(planetsEnabledBox),
-            indentRow(moonsEnabledBox),
-            row("Below-horizon",         horizBehavPopup,   nil),
-            row("Phase mode",            phaseModePopup,    nil),
-            row("Saturn rings",          ringStylePopup,    nil),
-            sectionLabel("Planet Sizes (fraction of screen width)"),
-            row("Mercury",  mercurySlider, mercuryLabel),
-            row("Venus",    venusSlider,   venusLabel),
-            row("Mars",     marsSlider,    marsLabel),
-            row("Jupiter",  jupiterSlider, jupiterLabel),
-            row("Saturn",   saturnSlider,  saturnLabel),
-            row("Uranus",   uranusSlider,  uranusLabel),
-            row("Neptune",  neptuneSlider, neptuneLabel),
-            row("Pluto",    plutoSlider,   plutoLabel),
-        ])
+        let g = makeGrid()
+        addCheckRow(g, planetsEnabledBox)
+        addCheckRow(g, moonsEnabledBox)
+        addRow(g, "Below-horizon", horizBehavPopup,   nil)
+        addRow(g, "Phase mode",    phaseModePopup,    nil)
+        addRow(g, "Saturn rings",  ringStylePopup,    nil)
+        addSectionRow(g, "Planet Sizes (fraction of screen width)")
+        addRow(g, "Mercury", mercurySlider, mercuryLabel)
+        addRow(g, "Venus",   venusSlider,   venusLabel)
+        addRow(g, "Mars",    marsSlider,    marsLabel)
+        addRow(g, "Jupiter", jupiterSlider, jupiterLabel)
+        addRow(g, "Saturn",  saturnSlider,  saturnLabel)
+        addRow(g, "Uranus",  uranusSlider,  uranusLabel)
+        addRow(g, "Neptune", neptuneSlider, neptuneLabel)
+        addRow(g, "Pluto",   plutoSlider,   plutoLabel)
+        return sealGrid(g)
     }
 
     private func debugContent() -> NSView {
@@ -323,10 +323,10 @@ final class StarryConfigPanel: NSObject {
         debugMoonBox.target = self
         debugMoonBox.action = #selector(debugChanged)
 
-        return vstack([
-            indentRow(debugOverlayBox),
-            indentRow(debugMoonBox),
-        ])
+        let g = makeGrid()
+        addCheckRow(g, debugOverlayBox)
+        addCheckRow(g, debugMoonBox)
+        return sealGrid(g)
     }
 
     // MARK: - Layout helpers
@@ -341,56 +341,67 @@ final class StarryConfigPanel: NSObject {
         return sv
     }
 
-    private func row(_ labelText: String, _ control: NSView, _ valueLabel: NSTextField?) -> NSView {
-        let lbl = NSTextField(labelWithString: labelText)
-        lbl.translatesAutoresizingMaskIntoConstraints = false
-        lbl.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        lbl.widthAnchor.constraint(equalToConstant: 110).isActive = true
-
-        control.translatesAutoresizingMaskIntoConstraints = false
-
-        var arranged: [NSView] = [lbl, control]
-        if let vl = valueLabel {
-            vl.translatesAutoresizingMaskIntoConstraints = false
-            vl.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-            vl.alignment = .right
-            vl.widthAnchor.constraint(equalToConstant: 68).isActive = true
-            arranged.append(vl)
-        }
-
-        let sv = NSStackView(views: arranged)
-        sv.orientation = .horizontal
-        sv.spacing = 8
-        sv.translatesAutoresizingMaskIntoConstraints = false
-        return sv
+    private func makeGrid() -> NSGridView {
+        let g = NSGridView()
+        g.translatesAutoresizingMaskIntoConstraints = false
+        g.rowSpacing    = 6
+        g.columnSpacing = 8
+        return g
     }
 
-    private func indentRow(_ control: NSView) -> NSView {
-        control.translatesAutoresizingMaskIntoConstraints = false
-        let sv = NSStackView(views: [control])
-        sv.orientation = .horizontal
-        sv.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
-        sv.translatesAutoresizingMaskIntoConstraints = false
-        return sv
-    }
-
-    private func sectionLabel(_ text: String) -> NSView {
+    private func addRow(_ g: NSGridView, _ text: String, _ ctrl: NSView, _ val: NSTextField? = nil) {
         let lbl = NSTextField(labelWithString: text)
-        lbl.font = NSFont.boldSystemFont(ofSize: NSFont.smallSystemFontSize)
+        lbl.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        lbl.translatesAutoresizingMaskIntoConstraints = false
+        ctrl.translatesAutoresizingMaskIntoConstraints = false
+        ctrl.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        if let vl = val {
+            vl.translatesAutoresizingMaskIntoConstraints = false
+            vl.font      = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            vl.alignment = .right
+            vl.setContentHuggingPriority(.required, for: .horizontal)
+            vl.setContentCompressionResistancePriority(.required, for: .horizontal)
+            let pair = NSStackView(views: [ctrl, vl])
+            pair.orientation = .horizontal
+            pair.spacing     = 6
+            pair.translatesAutoresizingMaskIntoConstraints = false
+            g.addRow(with: [lbl, pair])
+        } else {
+            g.addRow(with: [lbl, ctrl])
+        }
+    }
+
+    private func addCheckRow(_ g: NSGridView, _ btn: NSButton) {
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        g.addRow(with: [btn, NSView()])
+        let r = g.numberOfRows - 1
+        g.mergeCells(inHorizontalRange: NSRange(location: 0, length: 2),
+                     verticalRange:   NSRange(location: r, length: 1))
+    }
+
+    private func addSectionRow(_ g: NSGridView, _ text: String) {
+        let lbl = NSTextField(labelWithString: text)
+        lbl.font      = NSFont.boldSystemFont(ofSize: NSFont.smallSystemFontSize)
         lbl.textColor = .secondaryLabelColor
         lbl.translatesAutoresizingMaskIntoConstraints = false
-        return lbl
+        g.addRow(with: [lbl, NSView()])
+        let r = g.numberOfRows - 1
+        g.mergeCells(inHorizontalRange: NSRange(location: 0, length: 2),
+                     verticalRange:   NSRange(location: r, length: 1))
+    }
+
+    private func sealGrid(_ g: NSGridView) -> NSView {
+        g.column(at: 0).xPlacement = .trailing
+        return vstack([g])
     }
 
     private func configureSlider(_ s: NSSlider, min: Double, max: Double,
                                   target: AnyObject, action: Selector) {
-        s.minValue = min
-        s.maxValue = max
+        s.minValue     = min
+        s.maxValue     = max
         s.isContinuous = true
-        s.target = target
-        s.action = action
-        s.translatesAutoresizingMaskIntoConstraints = false
-        s.widthAnchor.constraint(greaterThanOrEqualToConstant: 100).isActive = true
+        s.target       = target
+        s.action       = action
     }
 
     // MARK: - Load / Save
