@@ -204,6 +204,12 @@ final class RustDefaultsManager {
         set { set("pluto_size", max(0, min(0.2, newValue))) }
     }
 
+    // 0 = independent, 1 = locked to Jupiter scale
+    var planetSizingMode: Int {
+        get { i("planet_sizing_mode", default: 0, lo: 0, hi: 1) }
+        set { set("planet_sizing_mode", max(0, min(1, newValue))) }
+    }
+
     // MARK: - Debug
 
     var debugOverlayEnabled: Bool {
