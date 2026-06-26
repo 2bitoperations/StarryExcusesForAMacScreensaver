@@ -345,7 +345,7 @@ final class StarryConfigPanel: NSObject {
         let lbl = NSTextField(labelWithString: labelText)
         lbl.translatesAutoresizingMaskIntoConstraints = false
         lbl.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        lbl.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        lbl.widthAnchor.constraint(equalToConstant: 110).isActive = true
 
         control.translatesAutoresizingMaskIntoConstraints = false
 
@@ -354,7 +354,7 @@ final class StarryConfigPanel: NSObject {
             vl.translatesAutoresizingMaskIntoConstraints = false
             vl.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
             vl.alignment = .right
-            vl.widthAnchor.constraint(equalToConstant: 56).isActive = true
+            vl.widthAnchor.constraint(equalToConstant: 68).isActive = true
             arranged.append(vl)
         }
 
@@ -390,7 +390,7 @@ final class StarryConfigPanel: NSObject {
         s.target = target
         s.action = action
         s.translatesAutoresizingMaskIntoConstraints = false
-        s.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
+        s.widthAnchor.constraint(greaterThanOrEqualToConstant: 100).isActive = true
     }
 
     // MARK: - Load / Save
